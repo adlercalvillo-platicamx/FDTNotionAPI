@@ -1,0 +1,19 @@
+---
+description: Restricciones de arquitectura de fdt-notion-api — leer antes de cualquier cambio
+alwaysApply: true
+---
+
+# fdt-notion-api — lo que no se negocia
+
+Lee README.md completo antes de proponer cambios — tiene el porqué de cada punto de abajo, no solo el qué.
+
+- **`booking.service.js` usa un mutex en memoria de un solo proceso.** Solo funciona si este servicio corre en **1 sola réplica** de Coolify. No lo quites, no lo reemplaces, no lo "simplifiques" — no es código de más.
+- **Nunca dupliques `google.service.js` aquí.** Calendar se llama por HTTP vía `calendar-client.service.js` contra el servicio que ya está en producción (`platica-google-docs-api`). Si algo falla al llamar Calendar, el arreglo NUNCA es "importemos la librería de Google directo".
+- **Notion se llama por REST directo** (`src/utils/notion-client.js`), nunca vía MCP — la escritura tiene que ser determinística, no una decisión de un agente/LLM.
+- **Reglas de negocio ya confirmadas — no cambiarlas sin que Adler lo pida explícitamente:**
+  - Bronce no participa en citas 1a1 (bloqueado con error explícito en `matchmaking.service.js`)
+  - Prioridad de sponsor: Cristal > Diamante > Oro
+  - `topN` por sponsor = `Citas Minimas Prometidas` + `MARGEN_CANDIDATOS` — nunca un número fijo para todos
+  - "Principal" no existe como nivel de patrocinio (confirmado, no es un dato faltante)
+- Antes de correr `npm install` de paquetes nuevos, borrar archivos, o cualquier comando que modifique algo fuera del repo: preguntar primero, no asumir "Auto-run".
+- Si algo no está confirmado en el código (buscar comentarios que digan "sin confirmar", "borrador", "no verificado") — señalarlo antes de construir encima, no asumir que ya se resolvió.

@@ -1,0 +1,25 @@
+---
+description: Cómo correr e interpretar las pruebas manuales de este repo
+globs: tests/**
+alwaysApply: false
+---
+
+# Pruebas manuales — no hay Jest todavía
+
+Son scripts que se corren directo con `node tests/archivo.js`, no un framework de testing. Se corren así:
+
+```
+node tests/matchmaking.manual-test.js
+node tests/matchmaking-global.manual-test.js
+node tests/checklist.manual-test.js
+```
+
+**Patrón importante si agregas una prueba nueva:** los tests de matchmaking inyectan mocks directo en `require.cache` ANTES de requerir el servicio real (ver el inicio de `matchmaking.manual-test.js`), para probar el archivo real que vive en `src/services/` y no una copia aparte. Sigue ese mismo patrón — no copies `matchmaking.service.js` a otra carpeta para probarlo, eso desincroniza la prueba del código real.
+
+**Resultado ya validado — si corres esto y cambia sin que se haya tocado lógica de negocio a propósito, algo se rompió:**
+
+- `matchmaking.manual-test.js`: Carlos Medina → 0 candidatos (la etapa de Ana no matchea con lo que busca Carlos; es un caso real de la tabla de equivalencias sin confirmar con Laura, no un bug). Laura Espinoza → 1 candidato (Ana), score 1095.
+- `matchmaking-global.manual-test.js`: 1 solapamiento detectado (Ana entre dos sponsors), con Diamante ordenado antes que Oro — por nivel de patrocinio, no por score de match.
+- `checklist.manual-test.js`: Carlos → incompleto, le faltan 5 campos del bloque Speaker (foto, logo, sitio web, Instagram, LinkedIn). Laura → completo.
+
+Si algo de esto cambia inesperadamente, repórtalo antes de "corregir" el test para que vuelva a pasar — puede ser una regresión real, no un test mal escrito.
