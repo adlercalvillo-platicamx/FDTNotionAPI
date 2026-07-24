@@ -45,6 +45,7 @@ async function main() {
     for (const s of resultado.sugerencias) {
       console.log(`  -> ${s.nombre} (${s.empresa}) — score: ${s.score}`);
       s.detalle.forEach((d) => console.log(`       · ${d}`));
+      console.log(`       📝 ${s.explicacion}`);
     }
   }
 }

@@ -19,10 +19,10 @@
 // ANTES de que esto funcione — es la conexión OAuth que Adler dijo que
 // maneja él directamente, no es un paso de este repo.
 //
-// ⚠️ El shape exacto de la respuesta de /calendar/crear-evento no se
-// verificó end-to-end desde este repo — el campo `evento_id` de abajo es la
-// mejor suposición a partir de la revisión de código de google_service.js.
-// Confirmar con una llamada de prueba antes de ir a producción.
+// ✅ El shape de la respuesta de /calendar/crear-evento SÍ se verificó
+// end-to-end el 22 de julio 2026, con una reserva real (mutex → Notion →
+// Calendar → Notion confirmado) contra el calendario "Prueba FDT" y el
+// cliente_id "adler-calvillo". `evento_id` viene donde se esperaba.
 
 const BASE_URL = process.env.GOOGLE_API_BASE_URL;
 const API_KEY = process.env.GOOGLE_API_KEY;

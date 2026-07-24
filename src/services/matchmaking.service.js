@@ -148,10 +148,23 @@ function empresaMencionadaEn(empresaCandidato, textoLibreSponsor) {
 function calcularScore(sponsor, candidato, cuotaPendiente) {
   let score = 0;
   const detalle = [];
+  // Señales estructuradas — separadas del `detalle` (que es texto para depurar) para
+  // que generarExplicacionNatural() no tenga que parsear strings, solo leer datos.
+  // puestosCoincidentes/solucionesCoincidentes son ARREGLOS a propósito — un sponsor
+  // puede elegir hasta 3 Solucion y varios Puestos Buscados, y cada coincidencia real
+  // debe contar, no solo la primera que se encuentre.
+  const senales = {
+    oroMolido: false,
+    puestosCoincidentes: [],
+    solucionesCoincidentes: [],
+    cuotaPendiente,
+    fuenteDeclarada: candidato.fuenteDato === 'Declarado',
+  };
 
   if (empresaMencionadaEn(candidato.empresa, sponsor.clientesPotencialesDeseados)) {
     score += PESOS.ORO_MOLIDO;
     detalle.push('oro_molido: empresa mencionada explícitamente por el sponsor');
+    senales.oroMolido = true;
   }
 
   const rolNorm = normalizar(candidato.rolPuesto);
@@ -159,7 +172,9 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     if (contieneAlguna(rolNorm, PALABRAS_CLAVE_PUESTO[puesto] || [])) {
       score += PESOS.PUESTO;
       detalle.push(`puesto: coincide con "${puesto}"`);
-      break; // no sumar varias veces por el mismo candidato
+      senales.puestosCoincidentes.push(puesto);
+      // sin "break" — el sponsor puede tener varios puestos buscados, cada
+      // coincidencia real suma, no solo la primera que se encuentre.
     }
   }
 
@@ -168,7 +183,9 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     if (contieneAlguna(solucionTexto, PALABRAS_CLAVE_SOLUCION[solucion] || [])) {
       score += PESOS.SOLUCION;
       detalle.push(`solucion: coincide con "${solucion}"`);
-      break;
+      senales.solucionesCoincidentes.push(solucion);
+      // mismo criterio: un sponsor puede elegir hasta 3 Solucion, cada
+      // coincidencia real cuenta.
     }
   }
 
@@ -183,7 +200,55 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     score += PESOS.DATO_INFERIDO;
   }
 
-  return { score, detalle };
+  return { score, detalle, senales };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Explicación en lenguaje natural para los reportes que ve Laura —
+// separada a propósito de `detalle` (que es para depurar el código, no
+// para leérselo a un cliente). Basada en plantillas, no en un LLM: cada
+// frase solo aparece si la señal estructurada correspondiente es real,
+// así que nunca puede "inventar" una razón que no esté respaldada por el
+// cálculo. Si algún día se prefiere una redacción más variada con un LLM,
+// esta función es el único lugar que habría que reemplazar — el resto del
+// motor no cambia.
+// ─────────────────────────────────────────────────────────────
+function generarExplicacionNatural(candidato, senales) {
+  const frases = [];
+
+  if (senales.oroMolido) {
+    frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
+  }
+  if (senales.puestosCoincidentes.length === 1) {
+    frases.push(`el puesto de ${candidato.nombre} coincide con el tipo de contacto que el sponsor está buscando`);
+  } else if (senales.puestosCoincidentes.length > 1) {
+    frases.push(`el puesto de ${candidato.nombre} coincide con ${senales.puestosCoincidentes.length} de los perfiles que el sponsor está buscando`);
+  }
+  if (senales.solucionesCoincidentes.length === 1) {
+    frases.push(`lo que el sponsor ofrece coincide con lo que ${candidato.nombre} declaró que está buscando`);
+  } else if (senales.solucionesCoincidentes.length > 1) {
+    frases.push(`${senales.solucionesCoincidentes.length} de las soluciones que ofrece el sponsor coinciden con lo que ${candidato.nombre} declaró que está buscando`);
+  }
+
+  let texto;
+  if (frases.length === 0) {
+    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) por su etapa de negocio y disponibilidad, aunque sin una coincidencia específica adicional detectada.`;
+  } else if (frases.length === 1) {
+    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases[0]}.`;
+  } else {
+    const ultima = frases.pop();
+    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases.join(', ')}, y además ${ultima}.`;
+  }
+
+  if (senales.cuotaPendiente > 0) {
+    texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota, así que es buen momento para ofrecer esta reunión.`;
+  }
+
+  if (!senales.fuenteDeclarada) {
+    texto += ` (Nota: parte de la información de este candidato fue inferida, no declarada directamente por la persona.)`;
+  }
+
+  return texto;
 }
 
 /**
@@ -242,8 +307,8 @@ async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion
   // Capa 2 — ranking
   const rankeados = candidatosValidos
     .map((candidato) => {
-      const { score, detalle } = calcularScore(sponsor, candidato, cuotaPendiente);
-      return { candidato, score, detalle };
+      const { score, detalle, senales } = calcularScore(sponsor, candidato, cuotaPendiente);
+      return { candidato, score, detalle, senales };
     })
     .sort((a, b) => b.score - a.score);
 
@@ -267,6 +332,7 @@ async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion
       empresa: r.candidato.empresa,
       score: r.score,
       detalle: r.detalle,
+      explicacion: generarExplicacionNatural(r.candidato, r.senales),
     })),
   };
 }
@@ -366,6 +432,7 @@ module.exports = {
   // exportados para pruebas unitarias / depuración:
   getEtapasValidas,
   calcularScore,
+  generarExplicacionNatural,
   empresaMencionadaEn,
   EQUIVALENCIA_ETAPA,
   PRIORIDAD_NIVEL_PATROCINIO,

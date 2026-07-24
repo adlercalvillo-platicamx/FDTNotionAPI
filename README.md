@@ -75,5 +75,5 @@ node tests/checklist.manual-test.js
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
 - Cron de reconciliación para citas que quedan en "Pendiente Calendar" por un crash a media ejecución.
 - Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada` (ver `matchmaking-spec-fdt.md`).
-- El shape exacto de la respuesta de `/calendar/crear-evento` en `platica-google-docs-api` no se verificó end-to-end — confirmar antes de producción (ver nota en `calendar-client.service.js`).
+- ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — **verificado el 22 de julio con una reserva real de punta a punta** (mutex → Notion → Calendar → Notion confirmado), contra el calendario "Prueba FDT" y el cliente_id `adler-calvillo`. `evento_id` sí viene donde se esperaba.
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
