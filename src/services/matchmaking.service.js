@@ -1,140 +1,122 @@
 // src/services/matchmaking.service.js
 //
-// Implementa la especificación de matchmaking-spec-fdt.md: Capa 1 (filtros
-// duros, sin LLM) + Capa 2 (ranking ponderado). Solo ESCRIBE sugerencias en
-// "Match Sugerido" — nunca toca "Match Aprobado" ni crea citas. Esa frontera
-// es intencional: la aprobación es de Liz/Laura, no de este código.
+// REDISEÑO 2026 — match directo, sin heurística de texto.
+//
+// Contexto de por qué cambió: hasta julio 2026, el formulario de registro de
+// asistentes (Ticketópolis) y el formulario de sponsors (Google Forms) usaban
+// vocabularios distintos, así que el matchmaking dependía de una tabla de
+// traducción y de heurísticas de palabras clave sobre texto libre — frágil y
+// con falsos negativos silenciosos. Liz Melchor rediseñó el registro de
+// asistentes para que las respuestas caigan en LAS MISMAS listas controladas
+// que ya usaba el sponsor. Este archivo implementa ese match directo.
+//
+// Las 3 relaciones directas (confirmadas por Liz, sesión del 24 de julio):
+//   sponsor "Etapa Cliente Buscada"  ↔  asistente "Etapa de Negocio"
+//   sponsor "Puestos Buscados"       ↔  asistente "Area"
+//   sponsor "Solucion"               ↔  asistente "Soluciones Buscadas"
+// Más una relación de texto libre, débil:
+//   sponsor "Clientes Potenciales Deseados" ↔ asistente "Otra Solucion Buscada"
+//
+// Ver documentación completa en 09-matchmaking-directo-2026.md
 
 const notionContactos = require('./contactos.service');
 const notionCitas = require('./citas.service');
 
 // ─────────────────────────────────────────────────────────────
-// Tabla de equivalencia Etapa Cliente Buscada (sponsor) ↔ Etapa de Negocio
-// (asistente). BORRADOR MÍO, sin confirmar con Laura — ver sección 4 de
-// matchmaking-spec-fdt.md. Dos pares son débiles, marcados abajo.
+// ALIAS DE ETAPA — la única traducción que sigue haciendo falta.
+//
+// 4 de las 5 opciones son idénticas palabra por palabra entre los dos
+// formularios. La quinta NO:
+//   sponsor:   "Venta por redes sociales"
+//   asistente: "Vendo principalmente por redes sociales"
+// Sin este alias, ese caso se descartaría en silencio (sin error, solo
+// perdiendo candidatos válidos). Verificado contra el schema real de Notion
+// el 30 de julio 2026.
+//
+// Si algún día se homologan las dos listas al 100%, este mapa se puede
+// vaciar y todo sigue funcionando.
 // ─────────────────────────────────────────────────────────────
-const EQUIVALENCIA_ETAPA = {
-  'Exploracion de e-commerce': ['Por lanzar mi marca o negocio'],
-  'Operacion basica de e-commerce': ['Ya vendo en redes sociales - por lanzar e-commerce'],
-  'Escalamiento de e-commerce': ['Ya tengo mi e-commerce propio y quiero crecer ventas'],
-  'Estrategia omnicanal avanzada': ['Ya tengo tienda en linea - quiero mas rentabilidad'],
-  // Par débil — no hay equivalente claro, se aproxima al más cercano por texto.
-  'Venta por redes sociales': ['Ya vendo en redes sociales - por lanzar e-commerce'],
+const ALIAS_ETAPA_SPONSOR_A_ASISTENTE = {
+  'Venta por redes sociales': ['Vendo principalmente por redes sociales'],
 };
-// "Ninguna de las anteriores" del asistente nunca se traduce a nada — un
-// asistente con esa respuesta solo pasa el filtro si el sponsor no
-// especificó ninguna Etapa Cliente Buscada (ver getEtapasValidas).
 
 // ─────────────────────────────────────────────────────────────
-// Prioridad de Nivel de Patrocinio — CONFIRMADO por Laura el 16 de julio:
-//   Cristal (Flow y Blip): 6 citas — el número más alto = mayor prioridad
-//   Diamante (casi todos los sponsors): 4 citas
-//   Oro: 2 citas
-//   Bronce: NO participa en citas 1a1 — se bloquea explícitamente abajo.
+// Prioridad de Nivel de Patrocinio — CONFIRMADO por Laura el 16 de julio.
+// Cristal (6 citas) > Diamante (4) > Oro (2). Bronce no participa.
+// "Principal" no existe como nivel.
 //
-// "Principal" no existe como nivel — Laura lo confirmó el 16 de julio.
-// Los únicos niveles reales son los 4 de arriba.
-//
-// Laura dijo "casi todas" para Diamante — implica que puede haber
-// excepciones negociadas por sponsor. Por eso "Citas Minimas Prometidas"
-// se mantiene como campo editable por sponsor en Notion, NO se deriva
-// automáticamente de este mapa — este mapa es solo para el DESEMPATE de
-// prioridad entre sponsors, no para fijar la cuota.
+// ⚠️ Liz aclaró el 24 de julio que la cuota real se NEGOCIA por sponsor
+// (vio un caso donde el nivel daba 6 pero Laura le dio 4). Por eso
+// "Citas Minimas Prometidas" es un campo editable por sponsor en Notion y
+// NUNCA se deriva de este mapa. Este mapa es solo para el DESEMPATE.
 // ─────────────────────────────────────────────────────────────
-const PRIORIDAD_NIVEL_PATROCINIO = {
-  Cristal: 3,
-  Diamante: 2,
-  Oro: 1,
-};
+const PRIORIDAD_NIVEL_PATROCINIO = { Cristal: 3, Diamante: 2, Oro: 1 };
 const NIVELES_SIN_CITAS_1A1 = ['Bronce'];
 
-// ─────────────────────────────────────────────────────────────
-// Cuántos candidatos sugerir por sponsor, cuando no se especifica
-// explícitamente. DEFINIDO POR PLÁTICA, no por Laura — ella misma dijo que
-// ni su equipo lo tenía claro, así que se calcula:
-//
-//   topN = Citas Minimas Prometidas del sponsor + MARGEN_CANDIDATOS
-//
-// Un número fijo para todos los sponsors no funciona: un Cristal necesita
-// 6 citas confirmadas, así que sugerirle menos de 6 candidatos hace
-// matemáticamente imposible llenar su cuota aunque el 100% acepte.
-//
-// El margen de +2 es una estimación de que no todos los candidatos
-// sugeridos van a aceptar/tener tiempo — es un supuesto nuestro, no un
-// dato medido. Ajustar esta constante cuando haya una tasa de aceptación
-// real del evento (después de correrlo una vez).
-// ─────────────────────────────────────────────────────────────
+// Cuántos candidatos sugerir por sponsor cuando no se especifica:
+// su cuota + margen. Un número fijo no sirve — un Cristal necesita 6 citas,
+// sugerirle menos de 6 candidatos hace imposible llenar su cuota.
 const MARGEN_CANDIDATOS = 2;
 
 // ─────────────────────────────────────────────────────────────
-// Heurística de palabras clave para el problema de vocabulario controlado
-// (sponsor) vs. texto libre (asistente) — ver sección 4 del spec, opción
-// puente mientras no exista una clasificación real en la captura de datos.
-// Coincidencia parcial e imperfecta a propósito: es una señal de ranking,
-// no un filtro duro, así que un falso negativo aquí solo baja el score,
-// no elimina al candidato.
+// PESOS DEL RANKING (Capa 2)
+//
+// Decisión de diseño sobre VIP, tomada por Plática (NO confirmada por Laura,
+// pendiente de validar en la demo):
+// Liz confirmó que un asistente VIP tiene prioridad sobre un Presencial. Pero
+// se implementa como un IMPULSO FUERTE, no como un override absoluto, porque:
+//   - Liz también dijo que el VIP depende del perfil ("si nos llenaron que sí
+//     pero no cumplen el perfil, pues no") — la calidad del match importa.
+//   - Con override absoluto, un VIP con match mediocre le ganaría a un
+//     Presencial que el sponsor pidió POR NOMBRE en su formulario. Eso sería
+//     un mal resultado de negocio y Laura lo notaría.
+// Con VIP=500 y ORO_MOLIDO=1000: el VIP gana todos los casos normales y
+// cerrados, pero un candidato explícitamente pedido por el sponsor le gana.
+// Ese es justamente el "caso cerrado" que Adler intuyó como excepción.
 // ─────────────────────────────────────────────────────────────
-const PALABRAS_CLAVE_PUESTO = {
-  'Direccion General / Founder / CEO': ['director general', 'ceo', 'founder', 'fundador', 'dueñ', 'presidente'],
-  'Comercial / Ventas / Business Development': ['comercial', 'ventas', 'business development', 'account manager'],
-  'Marketing / Branding / Comunicacion / PR': ['marketing', 'branding', 'comunicaci', 'prensa', 'publicidad'],
-  'eCommerce / Canal Digital / Omnicanal': ['ecommerce', 'e-commerce', 'canal digital', 'omnicanal', 'digital'],
-  'Retail / Expansion de tiendas': ['retail', 'tiendas', 'expansion', 'sucursales'],
-  'Compras / Merchandising / Planeacion de producto': ['compras', 'merchandising', 'buyer', 'planeacion de producto'],
-  'Operaciones / Logistica / Supply Chain': ['operaciones', 'logistica', 'supply chain', 'cadena de suministro'],
-  'Tecnologia / Innovacion / Transformacion Digital': ['tecnolog', 'cto', 'sistemas', 'innovaci', 'transformacion digital'],
-  'Diseno / Desarrollo de Producto': ['diseñ', 'desarrollo de producto'],
-  'Consultoria / Servicios para la industria': ['consultor', 'asesor'],
-};
-
-const PALABRAS_CLAVE_SOLUCION = {
-  'Analitica / data': ['analitica', 'data', 'datos', 'bi ', 'business intelligence'],
-  'CRM / automatizacion': ['crm', 'automatizacion', 'automation'],
-  'Customer experience': ['customer experience', 'cx', 'experiencia del cliente', 'servicio al cliente'],
-  'Estrategia de marketing digital': ['marketing digital', 'estrategia de marketing', 'performance', 'pauta'],
-  'Inteligencia artificial': ['inteligencia artificial', ' ia ', 'ai ', 'machine learning'],
-  Internacionalizacion: ['internacional', 'exportacion', 'cross border'],
-  'Logistica / fulfillment': ['logistica', 'fulfillment', 'envios', 'ultima milla'],
-  Marketplaces: ['marketplace', 'amazon', 'mercado libre', 'mercadolibre'],
-  Omnichannel: ['omnicanal', 'omnichannel'],
-  Pagos: ['pagos', 'payment', 'pasarela'],
-  'Performance marketing': ['performance marketing', 'pauta digital', 'ads'],
-  'Plataforma eCommerce': ['plataforma', 'shopify', 'vtex', 'magento', 'ecommerce', 'e-commerce'],
-};
-
 const PESOS = {
-  ORO_MOLIDO: 1000, // cliente potencial deseado mencionado explícitamente — dominante
-  PUESTO: 40,
-  SOLUCION: 40,
-  CUOTA_PENDIENTE_POR_CITA: 15, // se multiplica por el número de citas pendientes
+  ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor
+  VIP: 500, // asistente con boleto Presencial VIP
+  AREA: 60, // match directo de área/puesto
+  SOLUCION: 60, // match directo por cada solución coincidente
+  OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
+  CUOTA_PENDIENTE_POR_CITA: 15,
   DATO_DECLARADO: 10,
   DATO_INFERIDO: 3,
 };
+
+// "Otro" existe como opción en ambos lados de área y solución, pero que un
+// sponsor busque "Otro" y un asistente sea "Otro" NO es una señal real de
+// afinidad — son dos "no sé" que coinciden por accidente. Se excluye del match.
+const VALOR_COMODIN = 'Otro';
 
 function normalizar(texto) {
   return (texto || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, ''); // quita acentos para comparar
+    .replace(/[\u0300-\u036f]/g, ''); // quita acentos
 }
 
-function contieneAlguna(textoNormalizado, palabrasClave) {
-  return palabrasClave.some((p) => textoNormalizado.includes(normalizar(p)));
-}
-
-/** Traduce las Etapa Cliente Buscada del sponsor a la lista de valores válidos de Etapa de Negocio. */
+/**
+ * Traduce las "Etapa Cliente Buscada" del sponsor a los valores válidos de
+ * "Etapa de Negocio" del asistente, aplicando los alias donde hagan falta.
+ * Regresa null si el sponsor no especificó ninguna (no se filtra por etapa).
+ */
 function getEtapasValidas(sponsor) {
-  if (!sponsor.etapaClienteBuscada || sponsor.etapaClienteBuscada.length === 0) {
-    return null; // sponsor no especificó — no se filtra por esto
-  }
+  if (!sponsor.etapaClienteBuscada || sponsor.etapaClienteBuscada.length === 0) return null;
   const set = new Set();
   for (const etapaSponsor of sponsor.etapaClienteBuscada) {
-    (EQUIVALENCIA_ETAPA[etapaSponsor] || []).forEach((e) => set.add(e));
+    const alias = ALIAS_ETAPA_SPONSOR_A_ASISTENTE[etapaSponsor];
+    if (alias) {
+      alias.forEach((a) => set.add(a));
+    } else {
+      set.add(etapaSponsor); // match literal — el caso de 4 de las 5 opciones
+    }
   }
   return Array.from(set);
 }
 
-/** Filtro difuso: ¿la Empresa del candidato aparece mencionada en el texto del sponsor? */
+/** ¿La empresa del candidato aparece mencionada dentro de un texto libre del sponsor? */
 function empresaMencionadaEn(empresaCandidato, textoLibreSponsor) {
   if (!empresaCandidato || !textoLibreSponsor) return false;
   const empresaNorm = normalizar(empresaCandidato).trim();
@@ -142,23 +124,46 @@ function empresaMencionadaEn(empresaCandidato, textoLibreSponsor) {
   return normalizar(textoLibreSponsor).includes(empresaNorm);
 }
 
+/**
+ * Señal débil de texto libre: lo que el asistente escribió en "¿Hay alguna otra
+ * solución que estés buscando?" vs. lo que el sponsor escribió en "Nombres y/o
+ * descripción de clientes potenciales".
+ *
+ * Liz señaló explícitamente que estos dos campos abiertos se relacionan, pero
+ * también que son los más difíciles de automatizar. Aquí se implementa como una
+ * coincidencia de palabras significativas — deliberadamente conservadora
+ * (palabras de 5+ letras, mínimo 2 coincidencias) para no generar ruido.
+ * Es un empujón al ranking, nunca un filtro duro.
+ */
+function coincidenciaTextoLibre(textoAsistente, textoSponsor) {
+  if (!textoAsistente || !textoSponsor) return false;
+  const palabrasAsistente = normalizar(textoAsistente)
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p.length >= 5);
+  if (palabrasAsistente.length === 0) return false;
+  const sponsorNorm = normalizar(textoSponsor);
+  const coincidencias = palabrasAsistente.filter((p) => sponsorNorm.includes(p));
+  return coincidencias.length >= 2;
+}
+
 // ─────────────────────────────────────────────────────────────
-// Capa 2 — scoring
+// Capa 2 — scoring con match directo
 // ─────────────────────────────────────────────────────────────
 function calcularScore(sponsor, candidato, cuotaPendiente) {
   let score = 0;
   const detalle = [];
-  // Señales estructuradas — separadas del `detalle` (que es texto para depurar) para
-  // que generarExplicacionNatural() no tenga que parsear strings, solo leer datos.
-  // puestosCoincidentes/solucionesCoincidentes son ARREGLOS a propósito — un sponsor
-  // puede elegir hasta 3 Solucion y varios Puestos Buscados, y cada coincidencia real
-  // debe contar, no solo la primera que se encuentre.
   const senales = {
     oroMolido: false,
-    puestosCoincidentes: [],
+    esVip: false,
+    areaCoincidente: null,
     solucionesCoincidentes: [],
+    coincidenciaTextoLibre: false,
     cuotaPendiente,
-    fuenteDeclarada: candidato.fuenteDato === 'Declarado',
+    // Distinguir "inferido" de "sin dato" importa: el reporte que lee Laura
+    // afirma cosas sobre el candidato, y decir "esta info fue inferida" cuando
+    // en realidad el campo está vacío es afirmarle algo falso. Solo se marca
+    // como inferido si el dato lo dice explícitamente.
+    fuenteInferida: candidato.fuenteDato === 'Inferido',
   };
 
   if (empresaMencionadaEn(candidato.empresa, sponsor.clientesPotencialesDeseados)) {
@@ -167,26 +172,43 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.oroMolido = true;
   }
 
-  const rolNorm = normalizar(candidato.rolPuesto);
-  for (const puesto of sponsor.puestosBuscados) {
-    if (contieneAlguna(rolNorm, PALABRAS_CLAVE_PUESTO[puesto] || [])) {
-      score += PESOS.PUESTO;
-      detalle.push(`puesto: coincide con "${puesto}"`);
-      senales.puestosCoincidentes.push(puesto);
-      // sin "break" — el sponsor puede tener varios puestos buscados, cada
-      // coincidencia real suma, no solo la primera que se encuentre.
-    }
+  // Prioridad VIP — ver nota de diseño arriba.
+  if (candidato.ticketTipo === 'Presencial VIP') {
+    score += PESOS.VIP;
+    detalle.push('vip: asistente con boleto Presencial VIP (citas incluidas)');
+    senales.esVip = true;
   }
 
-  const solucionTexto = normalizar(`${candidato.servicios} ${candidato.intencionComercial}`);
-  for (const solucion of sponsor.solucion) {
-    if (contieneAlguna(solucionTexto, PALABRAS_CLAVE_SOLUCION[solucion] || [])) {
+  // MATCH DIRECTO de área — el "Area" del asistente contra "Puestos Buscados"
+  // del sponsor. Son listas idénticas, así que es comparación exacta, no
+  // heurística. "Otro" no cuenta (ver VALOR_COMODIN).
+  if (
+    candidato.area &&
+    candidato.area !== VALOR_COMODIN &&
+    (sponsor.puestosBuscados || []).includes(candidato.area)
+  ) {
+    score += PESOS.AREA;
+    detalle.push(`area: coincide con "${candidato.area}"`);
+    senales.areaCoincidente = candidato.area;
+  }
+
+  // MATCH DIRECTO de soluciones — intersección de dos multi-select con las
+  // mismas opciones. Cada coincidencia suma por separado (un sponsor puede
+  // ofrecer hasta 3 soluciones y el asistente puede buscar varias).
+  const solucionesSponsor = sponsor.solucion || [];
+  for (const solucion of candidato.solucionesBuscadas || []) {
+    if (solucion !== VALOR_COMODIN && solucionesSponsor.includes(solucion)) {
       score += PESOS.SOLUCION;
       detalle.push(`solucion: coincide con "${solucion}"`);
       senales.solucionesCoincidentes.push(solucion);
-      // mismo criterio: un sponsor puede elegir hasta 3 Solucion, cada
-      // coincidencia real cuenta.
     }
+  }
+
+  // Señal débil de texto libre ↔ texto libre.
+  if (coincidenciaTextoLibre(candidato.otraSolucionBuscada, sponsor.clientesPotencialesDeseados)) {
+    score += PESOS.OTRA_SOLUCION_TEXTO;
+    detalle.push('texto_libre: lo que el asistente escribió se parece a lo que describió el sponsor');
+    senales.coincidenciaTextoLibre = true;
   }
 
   if (cuotaPendiente > 0) {
@@ -194,24 +216,16 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     detalle.push(`cuota_pendiente: ${cuotaPendiente} citas por cubrir`);
   }
 
-  if (candidato.fuenteDato === 'Declarado') {
-    score += PESOS.DATO_DECLARADO;
-  } else if (candidato.fuenteDato === 'Inferido') {
-    score += PESOS.DATO_INFERIDO;
-  }
+  if (candidato.fuenteDato === 'Declarado') score += PESOS.DATO_DECLARADO;
+  else if (candidato.fuenteDato === 'Inferido') score += PESOS.DATO_INFERIDO;
 
   return { score, detalle, senales };
 }
 
 // ─────────────────────────────────────────────────────────────
-// Explicación en lenguaje natural para los reportes que ve Laura —
-// separada a propósito de `detalle` (que es para depurar el código, no
-// para leérselo a un cliente). Basada en plantillas, no en un LLM: cada
-// frase solo aparece si la señal estructurada correspondiente es real,
-// así que nunca puede "inventar" una razón que no esté respaldada por el
-// cálculo. Si algún día se prefiere una redacción más variada con un LLM,
-// esta función es el único lugar que habría que reemplazar — el resto del
-// motor no cambia.
+// Explicación en lenguaje natural para los reportes que ve Laura.
+// Por plantillas, no por LLM: cada frase solo aparece si su señal
+// estructurada es real, así que nunca inventa una razón.
 // ─────────────────────────────────────────────────────────────
 function generarExplicacionNatural(candidato, senales) {
   const frases = [];
@@ -219,20 +233,22 @@ function generarExplicacionNatural(candidato, senales) {
   if (senales.oroMolido) {
     frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
   }
-  if (senales.puestosCoincidentes.length === 1) {
-    frases.push(`el puesto de ${candidato.nombre} coincide con el tipo de contacto que el sponsor está buscando`);
-  } else if (senales.puestosCoincidentes.length > 1) {
-    frases.push(`el puesto de ${candidato.nombre} coincide con ${senales.puestosCoincidentes.length} de los perfiles que el sponsor está buscando`);
+  if (senales.areaCoincidente) {
+    frases.push(`trabaja en ${senales.areaCoincidente}, que es justo una de las áreas con las que el sponsor quiere reunirse`);
   }
   if (senales.solucionesCoincidentes.length === 1) {
-    frases.push(`lo que el sponsor ofrece coincide con lo que ${candidato.nombre} declaró que está buscando`);
+    frases.push(`está buscando ${senales.solucionesCoincidentes[0]}, que es exactamente lo que el sponsor ofrece`);
   } else if (senales.solucionesCoincidentes.length > 1) {
-    frases.push(`${senales.solucionesCoincidentes.length} de las soluciones que ofrece el sponsor coinciden con lo que ${candidato.nombre} declaró que está buscando`);
+    const lista = senales.solucionesCoincidentes.join(', ');
+    frases.push(`está buscando ${senales.solucionesCoincidentes.length} de las soluciones que ofrece el sponsor (${lista})`);
+  }
+  if (senales.coincidenciaTextoLibre) {
+    frases.push(`lo que describió que busca se parece al tipo de cliente que el sponsor está buscando`);
   }
 
   let texto;
   if (frases.length === 0) {
-    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) por su etapa de negocio y disponibilidad, aunque sin una coincidencia específica adicional detectada.`;
+    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque su etapa de negocio es la que el sponsor busca, aunque sin más coincidencias específicas.`;
   } else if (frases.length === 1) {
     texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases[0]}.`;
   } else {
@@ -240,36 +256,35 @@ function generarExplicacionNatural(candidato, senales) {
     texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases.join(', ')}, y además ${ultima}.`;
   }
 
-  if (senales.cuotaPendiente > 0) {
-    texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota, así que es buen momento para ofrecer esta reunión.`;
+  if (senales.esVip) {
+    texto += ` Es asistente VIP, así que sus citas de negocio ya vienen incluidas en su boleto y tiene prioridad.`;
   }
-
-  if (!senales.fuenteDeclarada) {
-    texto += ` (Nota: parte de la información de este candidato fue inferida, no declarada directamente por la persona.)`;
+  if (senales.cuotaPendiente > 0) {
+    texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota.`;
+  }
+  if (senales.fuenteInferida) {
+    texto += ` (Nota: parte de la información de este candidato fue inferida automáticamente, no declarada directamente por la persona.)`;
   }
 
   return texto;
 }
 
 /**
- * Orquesta el matchmaking completo para un sponsor: Capa 1 (filtrar) + Capa 2
- * (rankear) + escritura de sugerencias. No crea citas ni aprueba nada — eso
- * sigue siendo trabajo humano (Liz) y del endpoint de reservas por separado.
+ * Matchmaking para un sponsor: Capa 1 (filtros duros) + Capa 2 (ranking).
+ * Solo ESCRIBE en "Match Sugerido" — nunca toca "Match Aprobado" ni crea citas.
  *
  * @param {string} sponsorPageId
  * @param {object} [opciones]
- * @param {number} [opciones.topN] - cuántos candidatos sugerir. Si se omite,
- *   se calcula como (Citas Minimas Prometidas del sponsor + MARGEN_CANDIDATOS)
- *   — definido por Plática, no por Laura (ella misma dijo que ni su equipo
- *   lo tenía definido). Un topN fijo para todos los sponsors no funciona:
- *   un Cristal necesita 6 citas confirmadas, así que sugerirle menos de 6
- *   candidatos hace matemáticamente imposible llenar su cuota aunque el
- *   100% acepte.
- * @param {boolean} [opciones.escribirEnNotion=true] - si es false, solo
- *   calcula y regresa el resultado sin escribir (útil para probar sin
- *   modificar datos reales).
+ * @param {number} [opciones.topN] - default: cuota del sponsor + MARGEN_CANDIDATOS
+ * @param {boolean} [opciones.escribirEnNotion=true]
+ * @param {boolean} [opciones.incluirVirtual=false] - modo de excepción, ver
+ *   contactos.service.js. Solo para sponsors que no lograron cubrir su cuota
+ *   cerca de la fecha del evento.
  */
-async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion = true } = {}) {
+async function sugerirMatchesParaSponsor(
+  sponsorPageId,
+  { topN, escribirEnNotion = true, incluirVirtual = false } = {}
+) {
   const sponsor = await notionContactos.obtenerContacto(sponsorPageId);
   if (sponsor.categoria !== 'Sponsor') {
     throw new Error(`El contacto ${sponsorPageId} no tiene Categoria = Sponsor (tiene: ${sponsor.categoria})`);
@@ -282,25 +297,23 @@ async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion
 
   const topNEfectivo = typeof topN === 'number' ? topN : (sponsor.citasMinimasPrometidas || 0) + MARGEN_CANDIDATOS;
 
-  // Capa 1a — filtro duro vía query de Notion (categoría, boleto, etapa)
+  // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
+  // dado de baja, etapa de negocio).
   const etapasValidas = getEtapasValidas(sponsor);
-  const candidatosBrutos = await notionContactos.buscarAsistentesCandidatos({ etapasValidas });
+  const candidatosBrutos = await notionContactos.buscarAsistentesCandidatos({ etapasValidas, incluirVirtual });
 
-  // Capa 1b — filtros que necesitan texto libre o cruzar con Citas, se
-  // aplican en JS porque Notion no los puede resolver en un solo query.
+  // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
   const candidatosValidos = [];
   for (const candidato of candidatosBrutos) {
-    if (empresaMencionadaEn(candidato.empresa, sponsor.clientesActuales)) continue; // ya es cliente
+    if (empresaMencionadaEn(candidato.empresa, sponsor.clientesActuales)) continue; // ya es su cliente
     const yaTieneCita = await notionCitas.existeCitaActivaEntre({
       sponsorPageId,
       asistentePageId: candidato.id,
     });
-    if (yaTieneCita) continue; // ya matcheado con este sponsor
+    if (yaTieneCita) continue;
     candidatosValidos.push(candidato);
   }
 
-  // Cuota pendiente del sponsor — se calcula una sola vez, es la misma para
-  // todos los candidatos de esta corrida.
   const citasConfirmadas = await notionCitas.contarCitasConfirmadasPorSponsor(sponsorPageId);
   const cuotaPendiente = Math.max(0, (sponsor.citasMinimasPrometidas || 0) - citasConfirmadas);
 
@@ -322,14 +335,16 @@ async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion
   }
 
   return {
-    sponsor: { id: sponsor.id, nombre: sponsor.nombre },
+    sponsor: { id: sponsor.id, nombre: sponsor.nombre, nivelPatrocinio: sponsor.nivelPatrocinio },
     cuotaPendiente,
+    incluyoVirtuales: incluirVirtual,
     totalCandidatosEvaluados: candidatosBrutos.length,
     totalCandidatosValidos: candidatosValidos.length,
     sugerencias: top.map((r) => ({
       id: r.candidato.id,
       nombre: r.candidato.nombre,
       empresa: r.candidato.empresa,
+      ticketTipo: r.candidato.ticketTipo,
       score: r.score,
       detalle: r.detalle,
       explicacion: generarExplicacionNatural(r.candidato, r.senales),
@@ -338,59 +353,52 @@ async function sugerirMatchesParaSponsor(sponsorPageId, { topN, escribirEnNotion
 }
 
 /**
- * Compara dos niveles de patrocinio y regresa cuál gana el desempate.
- * Todavía no hay ningún código que la use en producción — la orquestación
- * de "correr matchmaking para TODOS los sponsors y resolver cuando dos
- * compiten por el mismo asistente" no está construida. Se deja exportada
- * y lista para cuando se construya esa pieza.
+ * Compara dos niveles de patrocinio para el desempate.
+ * Un nivel desconocido cae al fondo (-1) en vez de tronar.
  */
 function compararPrioridadSponsor(nivelA, nivelB) {
-  const prioridadA = PRIORIDAD_NIVEL_PATROCINIO[nivelA] ?? -1;
-  const prioridadB = PRIORIDAD_NIVEL_PATROCINIO[nivelB] ?? -1;
-  if (prioridadA === prioridadB) return 'empate';
-  return prioridadA > prioridadB ? 'A' : 'B';
+  const a = PRIORIDAD_NIVEL_PATROCINIO[nivelA] ?? -1;
+  const b = PRIORIDAD_NIVEL_PATROCINIO[nivelB] ?? -1;
+  if (a === b) return 'empate';
+  return a > b ? 'A' : 'B';
 }
 
 /**
- * Corre matchmaking para TODOS los sponsors activos (excluye Bronce
- * automáticamente, vía el mismo guard de sugerirMatchesParaSponsor — un
- * Bronce no tumba la corrida completa, se registra en "omitidos") y
- * detecta cuándo el mismo asistente aparece como candidato sugerido para
- * más de un sponsor a la vez.
+ * Corre matchmaking para todos los sponsors activos y detecta cuándo el mismo
+ * asistente sale como candidato para más de uno.
  *
- * IMPORTANTE — interpretación mía, no texto literal de sesión 3: como NO
- * hay tope de citas por asistente, esto no excluye a nadie de ningún
- * sponsor. Lo que hace es ORDENAR por prioridad (Cristal > Diamante > Oro)
- * los casos donde hay solapamiento, para que Liz sepa a quién ofrecerle
- * primero si de verdad se vuelve un conflicto de horario — el conflicto de
- * horario en sí ya lo resuelve booking.service.js por separado (mutex +
- * capacidad de mesas), esto no lo reemplaza, es una capa de visibilidad.
+ * NO excluye a nadie: como no hay tope de citas por asistente, esto es una capa
+ * de visibilidad para Liz (a quién ofrecerle primero si de verdad se vuelve un
+ * conflicto de horario). El conflicto real de horario lo resuelve
+ * booking.service.js por separado.
  *
- * "Principal" no existe como nivel (confirmado por Laura) — no aparece en
- * PRIORIDAD_NIVEL_PATROCINIO ni necesita manejo especial.
- *
- * Si no se pasa topN explícito, cada sponsor usa el suyo propio (su cuota
- * + MARGEN_CANDIDATOS) — no se fuerza un número fijo para todos.
+ * Un sponsor Bronce (o cualquier error individual) NO tumba la corrida
+ * completa — se registra en "omitidos" y sigue con el resto.
  */
-async function sugerirMatchesGlobal({ topN } = {}) {
+async function sugerirMatchesGlobal({ topN, incluirVirtual = false } = {}) {
   const sponsors = await notionContactos.listarSponsorsActivos();
   const resultadosPorSponsor = [];
   const omitidos = [];
 
   for (const sponsor of sponsors) {
     try {
-      const resultado = await sugerirMatchesParaSponsor(sponsor.id, { topN, escribirEnNotion: true });
+      const resultado = await sugerirMatchesParaSponsor(sponsor.id, {
+        topN,
+        escribirEnNotion: true,
+        incluirVirtual,
+      });
       resultadosPorSponsor.push({ sponsor, resultado });
     } catch (err) {
       omitidos.push({ sponsorId: sponsor.id, nombre: sponsor.nombre, motivo: err.message });
     }
   }
 
-  // Agrupar por asistente candidato para detectar solapamientos entre sponsors
   const porAsistente = new Map();
   for (const { sponsor, resultado } of resultadosPorSponsor) {
     for (const sug of resultado.sugerencias) {
-      if (!porAsistente.has(sug.id)) porAsistente.set(sug.id, { nombre: sug.nombre, empresa: sug.empresa, apariciones: [] });
+      if (!porAsistente.has(sug.id)) {
+        porAsistente.set(sug.id, { nombre: sug.nombre, empresa: sug.empresa, ticketTipo: sug.ticketTipo, apariciones: [] });
+      }
       porAsistente.get(sug.id).apariciones.push({
         sponsorId: sponsor.id,
         sponsorNombre: sponsor.nombre,
@@ -404,14 +412,15 @@ async function sugerirMatchesGlobal({ topN } = {}) {
   for (const [asistenteId, info] of porAsistente.entries()) {
     if (info.apariciones.length < 2) continue;
     const ordenados = [...info.apariciones].sort((a, b) => {
-      const prioridadA = PRIORIDAD_NIVEL_PATROCINIO[a.nivelPatrocinio] ?? -1;
-      const prioridadB = PRIORIDAD_NIVEL_PATROCINIO[b.nivelPatrocinio] ?? -1;
-      return prioridadB - prioridadA;
+      const pa = PRIORIDAD_NIVEL_PATROCINIO[a.nivelPatrocinio] ?? -1;
+      const pb = PRIORIDAD_NIVEL_PATROCINIO[b.nivelPatrocinio] ?? -1;
+      return pb - pa;
     });
     solapamientos.push({
       asistenteId,
       asistenteNombre: info.nombre,
       asistenteEmpresa: info.empresa,
+      asistenteTicket: info.ticketTipo,
       ordenDePrioridad: ordenados,
     });
   }
@@ -429,11 +438,13 @@ module.exports = {
   sugerirMatchesParaSponsor,
   sugerirMatchesGlobal,
   compararPrioridadSponsor,
-  // exportados para pruebas unitarias / depuración:
+  // exportados para pruebas / depuración:
   getEtapasValidas,
   calcularScore,
   generarExplicacionNatural,
   empresaMencionadaEn,
-  EQUIVALENCIA_ETAPA,
+  coincidenciaTextoLibre,
+  ALIAS_ETAPA_SPONSOR_A_ASISTENTE,
   PRIORIDAD_NIVEL_PATROCINIO,
+  PESOS,
 };

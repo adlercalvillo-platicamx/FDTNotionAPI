@@ -53,6 +53,20 @@ function parsearContacto(pagina) {
     matchSugerido: relacionIds(p['Match Sugerido']),
     dadoDeBaja: checkbox(p['Dado de Baja']),
     motivoBaja: select(p['Motivo Baja']),
+    // ── Campos del REGISTRO 2026 (Ticketópolis rediseñado) ──────────────
+    // Estos son los que hacen posible el matchmaking DIRECTO — ver
+    // 09-matchmaking-directo-2026.md. Antes de julio 2026 no existían y
+    // el match se hacía con heurística de palabras clave sobre texto libre.
+    area: select(p['Area']),                              // ↔ Puestos Buscados del sponsor (mismas 11 opciones)
+    solucionesBuscadas: multiSelect(p['Soluciones Buscadas']), // ↔ Solucion del sponsor (mismas 12 opciones)
+    otraSolucionBuscada: texto(p['Otra Solucion Buscada']),    // campo abierto, NO se usa para el match automático
+    quiereCitas1a1: checkbox(p['Quiere Citas 1a1']),      // solo aplica a Presencial; VIP lo trae por default
+    formatoRegistro: select(p['Formato Registro']),       // '2026' | 'Legacy pre-2026'
+    giroIndustria: select(p['Giro / Industria']),
+    // Campos legacy — contactos de años anteriores, con el formato viejo.
+    // No sirven para matchmaking directo (ver doc), son contexto histórico.
+    etapaDeNegocioLegacy: select(p['Etapa de Negocio (Legacy)']),
+    giroIndustriaLegacy: select(p['Giro / Industria (Legacy)']),
     // Campos de checklist (Sponsor + Speaker):
     esSpeaker: checkbox(p['Es Speaker']),
     email: email(p['Email']),
@@ -74,7 +88,9 @@ function parsearContacto(pagina) {
     tamanoEmpresaExa: texto(p['Tamano Empresa (Exa)']),
     modeloNegocioExa: select(p['Modelo de Negocio (Exa)']),
     madurezEcommerceExa: texto(p['Madurez Ecommerce (Exa)']),
-    icpModaEcommerce: checkbox(p['ICP Moda/Ecommerce']),
+    // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
+    // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
+    icpModaEcommerce: select(p['ICP Moda/Ecommerce']),
     presenciaDigitalExa: texto(p['Presencia Digital (Exa)']),
   };
 }
@@ -86,24 +102,63 @@ async function obtenerContacto(pageId) {
 }
 
 /**
- * Capa 1 — filtro duro por Categoria=Asistente, acceso a citas (≠ Expo), y
- * Etapa de Negocio dentro de la lista ya traducida por la tabla de
- * equivalencia (ver matchmaking.service.js). El resto de los filtros duros
- * (exclusión de clientes actuales, cita ya existente) se aplican después en
- * JS porque necesitan texto libre / cruzar con la tabla Citas.
+ * Capa 1 — filtros duros que Notion puede resolver en un solo query.
+ *
+ * ELEGIBILIDAD POR TIPO DE BOLETO (confirmado por Liz, sesión del 24 de julio):
+ *   - "Presencial VIP" → SIEMPRE elegible. Las citas vienen incluidas en el
+ *     boleto, por eso a los VIP ni siquiera se les hace la pregunta de opt-in.
+ *   - "Presencial"     → elegible SOLO si marcó "Quiere Citas 1a1" = true
+ *     (es el único tipo de boleto que trae la pregunta "¿Te gustaría tener
+ *     reuniones con proveedores relevantes durante el evento?").
+ *   - "Expo"           → NUNCA. Solo da acceso al piso de exhibición.
+ *   - "Virtual"        → NUNCA por default. Solo entra si se pasa
+ *     `incluirVirtual: true`, que es el escenario de excepción ya acordado
+ *     con Laura: si a una semana del evento un sponsor no logró cubrir su
+ *     cuota prometida, se amplía la búsqueda a virtuales. Liz confirmó que
+ *     los virtuales SÍ tienen "Etapa de Negocio", pero NO tienen
+ *     "Soluciones Buscadas" ni "Area" — así que sus matches siempre van a
+ *     ser de menor calidad. No activarlo salvo en ese caso de excepción.
+ *
+ * También excluye "Dado de Baja" — no tiene sentido proponer una cita a
+ * alguien que pidió no ser contactado.
+ *
+ * El resto de los filtros duros (exclusión de clientes actuales, cita ya
+ * existente con ese sponsor) se aplican después en JS: necesitan comparar
+ * texto libre o cruzar con la tabla Citas.
+ *
+ * @param {object} params
+ * @param {string[]|null} params.etapasValidas - valores de "Etapa de Negocio"
+ *   aceptados, ya expandidos con alias (ver matchmaking.service.js). null = no filtrar.
+ * @param {boolean} [params.incluirVirtual=false] - modo de excepción, ver arriba.
  */
-async function buscarAsistentesCandidatos({ etapasValidas }) {
+async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = false }) {
   requireDataSourceId();
-  const filtroEtapas =
-    etapasValidas && etapasValidas.length > 0
-      ? { or: etapasValidas.map((e) => ({ property: 'Etapa de Negocio', select: { equals: e } })) }
-      : null;
+
+  // Elegibilidad de citas según tipo de boleto.
+  const opcionesElegibles = [
+    { property: 'Ticket / Tipo Asistencia', select: { equals: 'Presencial VIP' } },
+    {
+      and: [
+        { property: 'Ticket / Tipo Asistencia', select: { equals: 'Presencial' } },
+        { property: 'Quiere Citas 1a1', checkbox: { equals: true } },
+      ],
+    },
+  ];
+  if (incluirVirtual) {
+    opcionesElegibles.push({ property: 'Ticket / Tipo Asistencia', select: { equals: 'Virtual' } });
+  }
 
   const condiciones = [
     { property: 'Categoria', select: { equals: 'Asistente' } },
-    { property: 'Ticket / Tipo Asistencia', select: { does_not_equal: 'Expo' } },
+    { property: 'Dado de Baja', checkbox: { equals: false } },
+    { or: opcionesElegibles },
   ];
-  if (filtroEtapas) condiciones.push(filtroEtapas);
+
+  if (etapasValidas && etapasValidas.length > 0) {
+    condiciones.push({
+      or: etapasValidas.map((e) => ({ property: 'Etapa de Negocio', select: { equals: e } })),
+    });
+  }
 
   const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
