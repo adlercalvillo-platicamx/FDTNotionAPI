@@ -276,14 +276,20 @@ function generarExplicacionNatural(candidato, senales) {
  * @param {string} sponsorPageId
  * @param {object} [opciones]
  * @param {number} [opciones.topN] - default: cuota del sponsor + MARGEN_CANDIDATOS
- * @param {boolean} [opciones.escribirEnNotion=true]
+ * @param {boolean} [opciones.escribirEnNotion=false] - default cambiado a false
+ *   el 5 de agosto (hallazgo B): antes era true, lo que divergía del default
+ *   de la herramienta MCP (false). El endpoint REST (matchmaking.controller.js)
+ *   no se ve afectado por este cambio porque ya pasa el valor explícito
+ *   (`escribirEnNotion: escribirEnNotion !== false`) — este default solo
+ *   protege a consumidores futuros que llamen esta función sin especificar
+ *   la opción.
  * @param {boolean} [opciones.incluirVirtual=false] - modo de excepción, ver
  *   contactos.service.js. Solo para sponsors que no lograron cubrir su cuota
  *   cerca de la fecha del evento.
  */
 async function sugerirMatchesParaSponsor(
   sponsorPageId,
-  { topN, escribirEnNotion = true, incluirVirtual = false } = {}
+  { topN, escribirEnNotion = false, incluirVirtual = false } = {}
 ) {
   const sponsor = await notionContactos.obtenerContacto(sponsorPageId);
   if (sponsor.categoria !== 'Sponsor') {
