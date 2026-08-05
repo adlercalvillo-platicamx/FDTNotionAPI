@@ -135,23 +135,31 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   requireDataSourceId();
 
   // Elegibilidad de citas según tipo de boleto.
-  const opcionesElegibles = [
-    { property: 'Ticket / Tipo Asistencia', select: { equals: 'Presencial VIP' } },
-    {
-      and: [
-        { property: 'Ticket / Tipo Asistencia', select: { equals: 'Presencial' } },
-        { property: 'Quiere Citas 1a1', checkbox: { equals: true } },
-      ],
-    },
-  ];
+  //
+  // ⚠️ Notion permite máximo 2 niveles de anidamiento en filtros compuestos
+  // (confirmado en developers.notion.com/reference/post-database-query-filter,
+  // "Nesting is supported up to two levels deep"). La condición real es
+  // "Presencial VIP" OR ("Presencial" AND "Quiere Citas 1a1"), pero como el
+  // filtro raíz { and: condiciones } ya es nivel 1, meter ese "and" interno
+  // dentro del "or" de aquí llegaría a nivel 3 y Notion lo rechaza
+  // (bug encontrado el 5 de agosto: bloqueaba sugerir_matches_para_sponsor
+  // para CUALQUIER sponsor que llegara a esta función).
+  //
+  // Fix: bajamos "Quiere Citas 1a1" del filtro de Notion y lo aplicamos en
+  // JS después de traer los resultados — mismo patrón que ya se usa abajo
+  // para "empresa mencionada" y "cita ya existente" (ver comentario más
+  // arriba: "El resto de los filtros duros... se aplican después en JS").
+  // El filtro de Notion queda en solo 2 niveles: and (raíz) → or (tipo de
+  // boleto elegible, sin el and interno).
+  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial'];
   if (incluirVirtual) {
-    opcionesElegibles.push({ property: 'Ticket / Tipo Asistencia', select: { equals: 'Virtual' } });
+    tiposBoletoElegibles.push('Virtual');
   }
 
   const condiciones = [
     { property: 'Categoria', select: { equals: 'Asistente' } },
     { property: 'Dado de Baja', checkbox: { equals: false } },
-    { or: opcionesElegibles },
+    { or: tiposBoletoElegibles.map((tipo) => ({ property: 'Ticket / Tipo Asistencia', select: { equals: tipo } })) },
   ];
 
   if (etapasValidas && etapasValidas.length > 0) {
@@ -164,7 +172,18 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     method: 'POST',
     body: JSON.stringify({ filter: { and: condiciones }, page_size: 100 }),
   });
-  return data.results.map(parsearContacto);
+
+  // Post-filtrado en JS: "Presencial" SOLO es elegible si "Quiere Citas 1a1"
+  // = true. "Presencial VIP" siempre es elegible (las citas vienen incluidas
+  // en el boleto), y "Virtual" (si incluirVirtual=true) no requiere este
+  // checkbox — confirmado por Liz, sesión del 24 de julio, ver comentario
+  // arriba.
+  const candidatos = data.results.map(parsearContacto).filter((c) => {
+    if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 === true;
+    return true; // Presencial VIP y Virtual (si aplica) ya vinieron filtrados por Notion
+  });
+
+  return candidatos;
 }
 
 /**
