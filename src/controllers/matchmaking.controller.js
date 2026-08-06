@@ -40,7 +40,14 @@ module.exports = { sugerirMatches, sugerirMatchesTodos };
 async function sugerirMatchesTodos(req, res) {
   const { topN } = req.body || {};
   try {
-    const resultado = await sugerirMatchesGlobal({ topN: typeof topN === 'number' ? topN : undefined });
+    const resultado = await sugerirMatchesGlobal({
+      topN: typeof topN === 'number' ? topN : undefined,
+      // Explícito para preservar el comportamiento de siempre de este
+      // endpoint (escribir en Notion) — el default de sugerirMatchesGlobal
+      // cambió a false el 6 de agosto al agregar la herramienta MCP
+      // sugerir_matches_global (ver comentario en matchmaking.service.js).
+      escribirEnNotion: true,
+    });
     return res.status(200).json(resultado);
   } catch (error) {
     console.error('[MatchmakingController] Error en corrida global:', error);

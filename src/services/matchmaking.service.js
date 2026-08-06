@@ -380,8 +380,20 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  *
  * Un sponsor Bronce (o cualquier error individual) NO tumba la corrida
  * completa — se registra en "omitidos" y sigue con el resto.
+ *
+ * @param {object} [opciones]
+ * @param {number} [opciones.topN]
+ * @param {boolean} [opciones.escribirEnNotion=false] - antes venía hardcodeado
+ *   en `true` sin opción de cambiarlo (encontrado el 6 de agosto al construir
+ *   la herramienta MCP sugerir_matches_global) — cualquier llamada escribía
+ *   en "Match Sugerido" de TODOS los sponsors activos sin posibilidad de
+ *   dry-run. Ahora default false, consistente con sugerirMatchesParaSponsor
+ *   y con la capa MCP. El endpoint REST (matchmaking.controller.js,
+ *   sugerirMatchesTodos) NO pasaba este valor — se corrigió ahí también para
+ *   pasar `true` explícito y no cambiar su comportamiento existente.
+ * @param {boolean} [opciones.incluirVirtual=false]
  */
-async function sugerirMatchesGlobal({ topN, incluirVirtual = false } = {}) {
+async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVirtual = false } = {}) {
   const sponsors = await notionContactos.listarSponsorsActivos();
   const resultadosPorSponsor = [];
   const omitidos = [];
@@ -390,7 +402,7 @@ async function sugerirMatchesGlobal({ topN, incluirVirtual = false } = {}) {
     try {
       const resultado = await sugerirMatchesParaSponsor(sponsor.id, {
         topN,
-        escribirEnNotion: true,
+        escribirEnNotion,
         incluirVirtual,
       });
       resultadosPorSponsor.push({ sponsor, resultado });

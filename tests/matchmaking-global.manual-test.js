@@ -102,7 +102,11 @@ require.cache[citasRealPath] = { id: citasRealPath, filename: citasRealPath, loa
 const { sugerirMatchesGlobal } = require('../src/services/matchmaking.service');
 
 async function main() {
-  const resultado = await sugerirMatchesGlobal({ topN: 3 });
+  // escribirEnNotion: true explícito — el default de sugerirMatchesGlobal
+  // cambió a false el 6 de agosto (ver matchmaking.service.js). Este test
+  // sigue ejercitando el camino de escritura (mockeado en mockContactos.
+  // sugerirMatches arriba) para no perder esa cobertura.
+  const resultado = await sugerirMatchesGlobal({ topN: 3, escribirEnNotion: true });
   console.log('\n=== Resultado de sugerirMatchesGlobal ===');
   console.log(`Sponsors evaluados: ${resultado.totalSponsorsEvaluados}`);
   console.log(`Sponsors omitidos: ${resultado.totalSponsorsOmitidos}`);

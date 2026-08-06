@@ -5,12 +5,12 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (5 ago 2026): pasos 1 y 2 del orden sugerido en 10-backend-como-mcp.md
-// completos — consultar_checklist (lectura), revisar_checklists_pendientes
-// (lectura + actualiza estado), sugerir_matches_para_sponsor (escritura
-// acotada a "Match Sugerido", con dry-run por default). Falta:
-// sugerir_matches_global (paso siguiente) y decidir con Laura si
-// reservar_cita se expone.
+// Estado (6 ago 2026): pasos 1, 2 y 3 del orden sugerido en
+// 10-backend-como-mcp.md completos — consultar_checklist (lectura),
+// revisar_checklists_pendientes (lectura + actualiza estado),
+// sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada
+// a "Match Sugerido", con dry-run por default en ambas). Falta: decidir con
+// Laura si reservar_cita se expone.
 //
 // reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
 // aparte con Laura — cada cita necesita aprobación humana antes de
@@ -81,6 +81,41 @@ function crearServidorMcp() {
       } catch (err) {
         // Errores esperados del servicio (categoría incorrecta, nivel sin citas
         // 1a1, etc.) se regresan como mensaje, no como excepción sin contexto.
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── Herramienta de ESCRITURA ACOTADA, versión masiva — corre
+  // sugerir_matches_para_sponsor para TODOS los sponsors activos y detecta
+  // solapamientos (mismo asistente sugerido para más de un sponsor). Es
+  // pesada (recorre todos los sponsors) y con más superficie de escritura
+  // si escribirEnNotion=true (potencialmente todos a la vez, no solo uno)
+  // — avisar antes de correrla si no es evidente que el usuario la pidió
+  // explícitamente, con más razón que revisar_checklists_pendientes.
+  // Dry-run por default, mismo patrón que sugerir_matches_para_sponsor.
+  server.tool(
+    'sugerir_matches_global',
+    'Corre matchmaking para TODOS los sponsors activos de Fashion Digital Talks 2026 a la vez y detecta cuándo el mismo asistente sale como candidato fuerte para más de un sponsor (solapamiento) — útil para que Liz sepa a quién ofrecerle primero si se vuelve un conflicto de horario real. Operación pesada. Por default NO escribe en Notion (dry-run) — solo cuando escribirEnNotion=true guarda las sugerencias de cada sponsor en su campo "Match Sugerido". NO crea citas ni aprueba nada. Un sponsor con error individual (ej. nivel Bronce) no detiene la corrida completa, se reporta en "omitidos".',
+    {
+      topN: z.number().optional().describe('Cuántos candidatos sugerir por sponsor; por default, su cuota pendiente + margen configurado'),
+      escribirEnNotion: z.boolean().optional().default(false).describe('Si true, guarda las sugerencias de CADA sponsor en su campo "Match Sugerido" en Notion. Default false (dry-run) — solo calcula y regresa el resultado sin escribir en ningún sponsor.'),
+      incluirVirtual: z.boolean().optional().default(false).describe('Modo de excepción: incluye candidatos virtuales. Solo para sponsors que no cubrieron su cuota cerca de la fecha del evento.'),
+    },
+    async ({ topN, escribirEnNotion, incluirVirtual }) => {
+      try {
+        const resultado = await matchmakingService.sugerirMatchesGlobal({
+          topN,
+          escribirEnNotion,
+          incluirVirtual,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
         return {
           content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
           isError: true,
