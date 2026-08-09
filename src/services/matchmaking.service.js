@@ -271,7 +271,9 @@ function generarExplicacionNatural(candidato, senales) {
 
 /**
  * Matchmaking para un sponsor: Capa 1 (filtros duros) + Capa 2 (ranking).
- * Solo ESCRIBE en "Match Sugerido" — nunca toca "Match Aprobado" ni crea citas.
+ * Con escribirEnNotion=true crea una fila en Citas por candidato (Estatus=
+ * "Sugerido"). Ya NO escribe "Match Sugerido" (campo en desuso desde el 9
+ * de agosto). Nunca toca Calendar ni crea citas con horario.
  *
  * @param {string} sponsorPageId
  * @param {object} [opciones]
@@ -333,11 +335,19 @@ async function sugerirMatchesParaSponsor(
 
   const top = rankeados.slice(0, topNEfectivo);
 
+  // Ya NO escribe "Match Sugerido" (campo en desuso a partir del 9 de agosto)
+  // — en su lugar crea una fila en Citas por cada candidato, en estado "Sugerido".
   if (escribirEnNotion && top.length > 0) {
-    await notionContactos.sugerirMatches({
-      sponsorPageId,
-      asistentePageIds: top.map((r) => r.candidato.id),
-    });
+    for (const r of top) {
+      await notionCitas.crearCitaSugerida({
+        sponsorPageId,
+        asistentePageId: r.candidato.id,
+        sponsorNombre: sponsor.nombre,
+        asistenteNombre: r.candidato.nombre,
+        score: r.score,
+        explicacion: generarExplicacionNatural(r.candidato, r.senales),
+      });
+    }
   }
 
   return {
@@ -386,11 +396,12 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  * @param {boolean} [opciones.escribirEnNotion=false] - antes venía hardcodeado
  *   en `true` sin opción de cambiarlo (encontrado el 6 de agosto al construir
  *   la herramienta MCP sugerir_matches_global) — cualquier llamada escribía
- *   en "Match Sugerido" de TODOS los sponsors activos sin posibilidad de
- *   dry-run. Ahora default false, consistente con sugerirMatchesParaSponsor
- *   y con la capa MCP. El endpoint REST (matchmaking.controller.js,
- *   sugerirMatchesTodos) NO pasaba este valor — se corrigió ahí también para
- *   pasar `true` explícito y no cambiar su comportamiento existente.
+ *   sugerencias de TODOS los sponsors activos sin posibilidad de dry-run.
+ *   Ahora default false, consistente con sugerirMatchesParaSponsor y con la
+ *   capa MCP. El endpoint REST (matchmaking.controller.js, sugerirMatchesTodos)
+ *   NO pasaba este valor — se corrigió ahí también para pasar `true` explícito
+ *   y no cambiar su comportamiento existente. Desde el 9 de agosto la escritura
+ *   va a filas Citas en "Sugerido", no a "Match Sugerido".
  * @param {boolean} [opciones.incluirVirtual=false]
  */
 async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVirtual = false } = {}) {
@@ -452,9 +463,82 @@ async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVir
   };
 }
 
+/**
+ * Marca como aprobado el match entre un sponsor y un asistente específico.
+ * Requiere que exista una fila en Citas con Estatus="Sugerido" para ese
+ * par exacto — si no existe, lanza error explícito en vez de crear una
+ * fila nueva o aprobar algo que nunca se sugirió.
+ *
+ * La decisión de SI aprobar (confirmación humana, verificación de
+ * identidad) es responsabilidad del agente/prompt que llama esta
+ * función — aquí solo se ejecuta el cambio de estado ya decidido.
+ *
+ * @param {string} sponsorPageId
+ * @param {string} asistentePageId
+ * @returns {object} el resultado de la escritura en Notion, más los
+ * nombres resueltos para que el agente pueda confirmar en su respuesta
+ * qué exactamente quedó aprobado.
+ */
+async function aprobarMatch(sponsorPageId, asistentePageId) {
+  const sponsor = await notionContactos.obtenerContacto(sponsorPageId);
+  const asistente = await notionContactos.obtenerContacto(asistentePageId);
+
+  const filas = await notionCitas.buscarSugerenciasPendientesPorSponsor(sponsorPageId);
+  // Filtra TODAS las filas del par, no solo la primera — un find() aquí
+  // dejaría en silencio una segunda fila huérfana si por alguna razón
+  // (carrera entre dos corridas de sugerir_matches, dato viejo antes de
+  // esta corrección) llegaran a existir dos filas activas para el mismo
+  // par. Ese escenario no debería pasar gracias a la corrección de
+  // existeCitaActivaEntre, pero si pasa, es mejor bloquear con un mensaje
+  // claro que aprobar arbitrariamente "la primera que encontró".
+  const filasDelPar = filas.filter((f) => {
+    const principales = (f.properties['Contacto Principal']?.relation || []).map((r) => r.id);
+    return principales.includes(asistentePageId);
+  });
+
+  if (filasDelPar.length === 0) {
+    throw new Error(
+      `No existe una sugerencia pendiente entre "${sponsor.nombre}" y "${asistente.nombre}". ` +
+      `Solo se puede aprobar un match que ya fue sugerido con sugerir_matches_para_sponsor ` +
+      `(escribirEnNotion=true). Verifica los IDs o vuelve a correr la sugerencia primero.`
+    );
+  }
+
+  if (filasDelPar.length > 1) {
+    throw new Error(
+      `Se encontraron ${filasDelPar.length} filas de sugerencia activas entre "${sponsor.nombre}" ` +
+      `y "${asistente.nombre}" — esto no debería pasar y necesita revisión manual en la tabla Citas ` +
+      `antes de aprobar nada, para no aprobar la fila equivocada. IDs: ${filasDelPar.map((f) => f.id).join(', ')}`
+    );
+  }
+
+  const filaDelPar = filasDelPar[0];
+
+  const estatusActual = filaDelPar.properties['Estatus']?.select?.name;
+  if (estatusActual === 'Aprobado') {
+    return {
+      yaEstabaAprobado: true,
+      sponsor: sponsor.nombre,
+      asistente: asistente.nombre,
+      mensaje: `Este match ya estaba aprobado — no se hizo ningún cambio.`,
+    };
+  }
+
+  await notionCitas.marcarCitaAprobada(filaDelPar.id);
+
+  return {
+    yaEstabaAprobado: false,
+    sponsor: sponsor.nombre,
+    asistente: asistente.nombre,
+    citaPageId: filaDelPar.id,
+    mensaje: `Match aprobado: ${asistente.nombre} (${asistente.empresa}) × ${sponsor.nombre} (${sponsor.empresa}).`,
+  };
+}
+
 module.exports = {
   sugerirMatchesParaSponsor,
   sugerirMatchesGlobal,
+  aprobarMatch,
   compararPrioridadSponsor,
   // exportados para pruebas / depuración:
   getEtapasValidas,

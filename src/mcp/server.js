@@ -124,6 +124,38 @@ function crearServidorMcp() {
     }
   );
 
+  // ═══════════════════════════════════════════════════════════════
+  // HERRAMIENTA NUEVA — aprobar_match (9 de agosto)
+  //
+  // Primera herramienta MCP que escribe fuera del campo "Match Sugerido" —
+  // marca una fila de Citas como "Aprobado". Sigue existiendo la misma
+  // regla de fondo del proyecto: NUNCA crea una cita real ni toca Calendar.
+  // Eso lo sigue haciendo exclusivamente reservar_cita (fuera del MCP, API
+  // REST separada, con su propia exigencia de aprobación humana previa a
+  // ESE paso).
+  // ═══════════════════════════════════════════════════════════════
+  server.tool(
+    'aprobar_match',
+    'Marca como aprobado un match específico entre un sponsor y un asistente de Fashion Digital Talks 2026, previamente calculado por sugerir_matches_para_sponsor o sugerir_matches_global con escribirEnNotion=true. SOLO usar cuando el usuario ya confirmó explícitamente, en la conversación, que quiere aprobar ESE match específico — nunca inferirlo de un comentario ambiguo como "se ve bien" o de simplemente haber mostrado las sugerencias. No crea ninguna cita ni toca Google Calendar — solo marca la decisión de negocio en Notion. Reservar la cita real es un paso posterior y separado (reservar_cita), que además requiere su propia aprobación explícita.',
+    {
+      sponsorPageId: z.string().describe('page_id del sponsor en Notion'),
+      asistentePageId: z.string().describe('page_id del asistente en Notion'),
+    },
+    async ({ sponsorPageId, asistentePageId }) => {
+      try {
+        const resultado = await matchmakingService.aprobarMatch(sponsorPageId, asistentePageId);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
   return server;
 }
 

@@ -163,10 +163,123 @@ async function contarCitasConfirmadasPorSponsor(sponsorPageId) {
   return data.results.length;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// NUEVO (9 de agosto) — flujo de aprobación conversacional de matches
+//
+// Contexto del rediseño: "Match Aprobado" era un checkbox único por
+// SPONSOR — no distinguía CUÁL de varios candidatos sugeridos fue
+// aprobado. Con "Citas Minimas Prometidas" confirmado como variable por
+// sponsor (Laura negocia caso por caso), un sponsor puede tener varios
+// candidatos sugeridos y varias citas a la vez — el checkbox no alcanza.
+//
+// La tabla `Citas` ya tenía la forma correcta para esto: una fila por par
+// (sponsor, asistente). Se extendió `Estatus` con dos valores nuevos,
+// AL FRENTE del ciclo de vida existente:
+//   Sugerido → Aprobado → Pendiente Calendar → Confirmada
+//                                             ↘ Fallida
+//   (Cancelada / Completada / No-show sin cambios, aplican después de Confirmada)
+//
+// `Match Sugerido` (relation en el sponsor) queda EN DESUSO a partir de
+// este cambio — la fuente de verdad de qué está sugerido/aprobado pasa a
+// ser esta tabla. No se borra el campo del schema (por si hay que
+// consultar el historial de antes del 9 de agosto), pero ningún código
+// nuevo debe escribirlo.
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * Verifica si ya existe una cita activa (Confirmada o Pendiente Calendar)
- * entre este sponsor y este asistente específico — para no sugerir dos veces
- * el mismo par. No filtra por horario, es una verificación global del par.
+ * Crea una fila de cita en estado "Sugerido" — el resultado de
+ * sugerir_matches_para_sponsor cuando escribirEnNotion=true. Una fila por
+ * candidato, no una relación de varios en el sponsor.
+ *
+ * A diferencia de crearCitaPendiente (que ya tiene inicio/fin porque viene
+ * de reservar_cita con un horario elegido), esta fila todavía no tiene
+ * horario — el horario se decide después, en el flujo de reservar_cita.
+ * "Fecha y Hora" se deja sin escribir a propósito.
+ */
+async function crearCitaSugerida({ sponsorPageId, asistentePageId, sponsorNombre, asistenteNombre, score, explicacion }) {
+  requireDataSourceId();
+  return notionFetch('/pages', {
+    method: 'POST',
+    body: JSON.stringify({
+      parent: { type: 'data_source_id', data_source_id: CITAS_DATA_SOURCE_ID },
+      properties: {
+        Nombre: { title: [{ text: { content: `Sugerido: ${asistenteNombre} × ${sponsorNombre}` } }] },
+        Estatus: { select: { name: 'Sugerido' } },
+        'Contacto Match': { relation: [{ id: sponsorPageId }] },
+        'Contacto Principal': { relation: [{ id: asistentePageId }] },
+        Notas: {
+          rich_text: [
+            { text: { content: `Score: ${score}. ${explicacion}`.slice(0, 1900) } },
+          ],
+        },
+      },
+    }),
+  });
+}
+
+/**
+ * Busca todas las filas "Sugerido" o "Aprobado" para un sponsor específico
+ * — usado para mostrarle a Laura/Liz el reporte de candidatos pendientes de
+ * decisión, y para que reservar_cita pueda encontrar la fila correcta a
+ * partir del par (sponsor, asistente) sin que el agente tenga que rastrear
+ * el page_id de la fila de Citas por su cuenta.
+ */
+async function buscarSugerenciasPendientesPorSponsor(sponsorPageId) {
+  requireDataSourceId();
+  const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: {
+        and: [
+          { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Sugerido' } },
+              { property: 'Estatus', select: { equals: 'Aprobado' } },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+  return data.results;
+}
+
+/**
+ * Marca como "Aprobado" la fila de Citas que corresponde a un par
+ * (sponsor, asistente) específico. Requiere que la fila ya exista en
+ * estado "Sugerido" — no crea una fila nueva ni aprueba a ciegas un par
+ * que nunca fue sugerido primero (ver verificación en el service que la
+ * llama, matchmaking.service.js → aprobarMatch).
+ *
+ * Esta función es puramente de escritura determinística — la decisión de
+ * SI se debe aprobar (confirmación explícita de identidad, repetir el
+ * match antes de escribir) vive en el prompt del agente, no aquí. Esta
+ * función solo ejecuta el cambio de estado una vez que esa decisión ya
+ * se tomó.
+ */
+async function marcarCitaAprobada(notionPageId) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Estatus: { select: { name: 'Aprobado' } },
+      },
+    }),
+  });
+}
+
+/**
+ * Verifica si ya existe una cita activa entre este sponsor y este asistente
+ * específico — para no sugerir dos veces el mismo par. No filtra por horario,
+ * es una verificación global del par.
+ *
+ * CORRECCIÓN (9 de agosto): además de "Confirmada" y "Pendiente Calendar",
+ * un par ya en "Sugerido" o "Aprobado" también cuenta como activo — si no,
+ * sugerir_matches_para_sponsor podría volver a sugerir (y crear una fila
+ * duplicada para) un par que ya está esperando decisión o ya fue aprobado
+ * pero aún no se convirtió en cita real.
  */
 async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
   requireDataSourceId();
@@ -179,6 +292,8 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
           { property: 'Contacto Principal', relation: { contains: asistentePageId } },
           {
             or: [
+              { property: 'Estatus', select: { equals: 'Sugerido' } },
+              { property: 'Estatus', select: { equals: 'Aprobado' } },
               { property: 'Estatus', select: { equals: 'Confirmada' } },
               { property: 'Estatus', select: { equals: 'Pendiente Calendar' } },
             ],
@@ -198,5 +313,8 @@ module.exports = {
   confirmarCita,
   marcarCitaFallida,
   contarCitasConfirmadasPorSponsor,
+  crearCitaSugerida,
+  buscarSugerenciasPendientesPorSponsor,
+  marcarCitaAprobada,
   existeCitaActivaEntre,
 };
