@@ -24,7 +24,7 @@ src/
 │   ├── matchmaking.controller.js
 │   └── checklist.controller.js
 ├── services/
-│   ├── citas.service.js              # Queries/escrituras sobre `Citas` en Notion
+│   ├── citas.service.js              # Queries/escrituras sobre `Citas` en Notion — incluye el flujo Sugerido→Aprobado (9-ago)
 │   ├── contactos.service.js          # Queries/escrituras sobre `Contactos` en Notion
 │   ├── booking.service.js            # Orquesta la reserva (mutex + patrón de rollback)
 │   ├── matchmaking.service.js        # Capa 1 (filtros duros) + Capa 2 (ranking)
@@ -51,7 +51,7 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON, no hay `GE
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
 | POST | `/citas/reservar` | Reserva una cita 1a1 con protección de concurrencia (mutex + Notion como árbitro). |
-| POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor, escribe sugerencias en `Match Sugerido`. |
+| POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. Con escritura activa, crea una fila `Sugerido` en `Citas` por candidato (ya NO escribe en `Match Sugerido`, en desuso desde el 9 de agosto — ver sección MCP). |
 | POST | `/matchmaking/sugerir-todos` | Corre matchmaking para todos los sponsors activos, detecta solapamientos (mismo asistente sugerido para más de uno). |
 | GET | `/checklist/consultar?nombre=...` | Consulta bajo demanda — "cómo va fulano". |
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
@@ -68,8 +68,11 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
-| `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — solo escribe en `Match Sugerido` si se pide explícito |
+| `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato |
 | `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos. Mismo patrón dry-run que la anterior |
+| `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
+
+**Rediseño del 9 de agosto — de dónde salió `aprobar_match`:** el campo `Match Aprobado` (checkbox único por sponsor) no distinguía CUÁL de varios candidatos sugeridos había sido aprobado — un hueco de diseño que se volvió real en cuanto `Citas Minimas Prometidas` se confirmó como variable por sponsor (un sponsor con cuota de 4+ tiene 4+ candidatos sugeridos, no 1). La tabla `Citas` ya tenía la forma correcta (una fila por par sponsor-asistente), así que se extendió su `Estatus` con `Sugerido` y `Aprobado` como los dos primeros pasos del ciclo de vida, antes de `Pendiente Calendar`. `Match Sugerido` (relation en el sponsor) queda en desuso a partir de este cambio — se conserva en el schema por historial, pero ningún código nuevo lo escribe.
 
 **`reservar_cita` deliberadamente NO se expone como herramienta MCP.** Crea un evento real en el calendario de un sponsor real, y la regla de negocio del cliente exige aprobación humana antes de ofrecer una cita — una herramienta que el agente pudiera invocar por una interpretación equivocada en conversación contradice esa regla directamente. En su lugar, `POST /citas/reservar` se conectó como herramienta de **API REST** directamente en la plataforma de Plática, con la instrucción explícita de invocarse solo tras aprobación humana.
 
@@ -91,6 +94,7 @@ No hay suite automatizada con Jest todavía — son scripts que se corren a mano
 node tests/matchmaking.manual-test.js
 node tests/matchmaking-global.manual-test.js
 node tests/checklist.manual-test.js
+node tests/aprobar-match.manual-test.js
 ```
 
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
@@ -103,5 +107,6 @@ node tests/checklist.manual-test.js
 
 Documentados aquí porque afectaban tanto a rutas REST como a las herramientas MCP correspondientes — no eran exclusivos de una capa:
 
+- **`Match Aprobado` no distinguía candidato individual** (9 de agosto): era un checkbox único por sponsor; con un sponsor teniendo varios candidatos sugeridos a la vez (confirmado con datos reales: 7 sponsors de prueba con Match Sugerido de 2+ candidatos cada uno), no había forma de decir "el match con Ana está aprobado pero el de Carlos no". Resuelto extendiendo `Citas` con estados `Sugerido`/`Aprobado` en vez de parchar el checkbox — ver sección MCP arriba.
 - **Anidamiento de filtros de Notion en `buscarAsistentesCandidatos`** (`contactos.service.js`): el filtro tenía 3 niveles de anidamiento (`and`→`or`→`and`); Notion solo soporta 2. Bloqueaba matchmaking para *cualquier* sponsor, no un caso aislado. Corregido moviendo una condición a post-filtrado en JavaScript.
 - **`escribirEnNotion` con default divergente/ausente** entre `sugerirMatchesParaSponsor` (default `true` en el service vs. `false` ya usado en MCP) y `sugerirMatchesGlobal` (hardcodeado en `true`, sin opción de dry-run en absoluto). Ambos homologados a default `false`; los endpoints REST correspondientes se ajustaron para pasar `true` explícito y preservar su comportamiento ya probado.
