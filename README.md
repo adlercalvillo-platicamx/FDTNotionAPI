@@ -24,10 +24,10 @@ src/
 │   ├── matchmaking.controller.js
 │   └── checklist.controller.js
 ├── services/
-│   ├── citas.service.js              # Queries/escrituras sobre `Citas` en Notion — incluye el flujo Sugerido→Aprobado (9-ago)
+│   ├── citas.service.js              # Queries/escrituras sobre `Citas` en Notion — flujo Sugerido→Aprobado (9-ago); caché de pares con cita activa para evitar timeout en matchmaking global (10-ago)
 │   ├── contactos.service.js          # Queries/escrituras sobre `Contactos` en Notion
 │   ├── booking.service.js            # Orquesta la reserva (mutex + patrón de rollback)
-│   ├── matchmaking.service.js        # Capa 1 (filtros duros) + Capa 2 (ranking)
+│   ├── matchmaking.service.js        # Capa 1 (filtros duros) + Capa 2 (ranking) — sugerirMatchesGlobal usa caché de citas activas desde el 10-ago, ver sección Bugs
 │   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 │   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api
 ├── mcp/
@@ -69,7 +69,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato |
-| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos. Mismo patrón dry-run que la anterior |
+| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos. Mismo patrón dry-run que la anterior. **Corregido el 10-ago** — antes fallaba por timeout con datos reales (ver sección Bugs), ahora carga la lista de citas activas una sola vez en vez de consultar Notion por cada candidato |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
 
 **Rediseño del 9 de agosto — de dónde salió `aprobar_match`:** el campo `Match Aprobado` (checkbox único por sponsor) no distinguía CUÁL de varios candidatos sugeridos había sido aprobado — un hueco de diseño que se volvió real en cuanto `Citas Minimas Prometidas` se confirmó como variable por sponsor (un sponsor con cuota de 4+ tiene 4+ candidatos sugeridos, no 1). La tabla `Citas` ya tenía la forma correcta (una fila por par sponsor-asistente), así que se extendió su `Estatus` con `Sugerido` y `Aprobado` como los dos primeros pasos del ciclo de vida, antes de `Pendiente Calendar`. `Match Sugerido` (relation en el sponsor) queda en desuso a partir de este cambio — se conserva en el schema por historial, pero ningún código nuevo lo escribe.
@@ -95,6 +95,7 @@ node tests/matchmaking.manual-test.js
 node tests/matchmaking-global.manual-test.js
 node tests/checklist.manual-test.js
 node tests/aprobar-match.manual-test.js
+node tests/global-cache-citas.manual-test.js
 ```
 
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
@@ -103,10 +104,11 @@ node tests/aprobar-match.manual-test.js
 - ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — **verificado el 22 de julio con una reserva real de punta a punta** (mutex → Notion → Calendar → Notion confirmado), contra el calendario "Prueba FDT" y el cliente_id `adler-calvillo`. `evento_id` sí viene donde se esperaba.
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
 
-## Bugs reales encontrados y corregidos (6 de agosto)
+## Bugs reales encontrados y corregidos
 
 Documentados aquí porque afectaban tanto a rutas REST como a las herramientas MCP correspondientes — no eran exclusivos de una capa:
 
 - **`Match Aprobado` no distinguía candidato individual** (9 de agosto): era un checkbox único por sponsor; con un sponsor teniendo varios candidatos sugeridos a la vez (confirmado con datos reales: 7 sponsors de prueba con Match Sugerido de 2+ candidatos cada uno), no había forma de decir "el match con Ana está aprobado pero el de Carlos no". Resuelto extendiendo `Citas` con estados `Sugerido`/`Aprobado` en vez de parchar el checkbox — ver sección MCP arriba.
+- **`sugerir_matches_global` fallaba por timeout con datos reales** (10 de agosto): la función original llamaba a `existeCitaActivaEntre` (una petición HTTP a Notion) **una vez por cada candidato evaluado**, dentro de un loop por cada sponsor. Con 8 sponsors reales y ~15-20 candidatos elegibles cada uno, eran ~130-150 llamadas HTTP secuenciales en una sola invocación — más de 40-100 segundos incluso en el mejor caso, muy por encima de cualquier timeout razonable de un tool call MCP. Por eso `sugerir_matches_para_sponsor` (1 sponsor, ~15-20 llamadas) siempre funcionó bien mientras la versión global fallaba consistentemente. Corregido trayendo, una sola vez al inicio de `sugerirMatchesGlobal`, la lista completa de pares (sponsor, asistente) con cita activa — con paginación real, no asumida — y consultándola en memoria en vez de volver a golpear Notion por cada candidato. Esto bajó el número de llamadas HTTP de ~130-150 a un puñado. `sugerir_matches_para_sponsor` individual no cambió su comportamiento — el volumen ahí nunca fue el problema.
 - **Anidamiento de filtros de Notion en `buscarAsistentesCandidatos`** (`contactos.service.js`): el filtro tenía 3 niveles de anidamiento (`and`→`or`→`and`); Notion solo soporta 2. Bloqueaba matchmaking para *cualquier* sponsor, no un caso aislado. Corregido moviendo una condición a post-filtrado en JavaScript.
 - **`escribirEnNotion` con default divergente/ausente** entre `sugerirMatchesParaSponsor` (default `true` en el service vs. `false` ya usado en MCP) y `sugerirMatchesGlobal` (hardcodeado en `true`, sin opción de dry-run en absoluto). Ambos homologados a default `false`; los endpoints REST correspondientes se ajustaron para pasar `true` explícito y preservar su comportamiento ya probado.
