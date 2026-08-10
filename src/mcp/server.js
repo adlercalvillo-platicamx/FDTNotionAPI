@@ -5,12 +5,14 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (6 ago 2026): pasos 1, 2 y 3 del orden sugerido en
-// 10-backend-como-mcp.md completos — consultar_checklist (lectura),
+// Estado (9 ago 2026): 5 herramientas — consultar_checklist (lectura),
 // revisar_checklists_pendientes (lectura + actualiza estado),
-// sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada
-// a "Match Sugerido", con dry-run por default en ambas). Falta: decidir con
-// Laura si reservar_cita se expone.
+// sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
+// crean filas en Citas con Estatus "Sugerido", dry-run por default en
+// ambas), aprobar_match (marca una fila de Citas como "Aprobado"). El
+// campo "Match Sugerido" del sponsor quedó en desuso el 9 de agosto — ver
+// 03-reglas-negocio-y-matchmaking.md y 10-backend-como-mcp.md §9.
+// reservar_cita sigue sin exponerse aquí — ver nota abajo.
 //
 // reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
 // aparte con Laura — cada cita necesita aprobación humana antes de
@@ -54,18 +56,19 @@ function crearServidorMcp() {
     }
   );
 
-  // ── Herramienta de ESCRITURA ACOTADA — solo escribe en "Match Sugerido",
-  // nunca en "Match Aprobado" ni crea citas. Soporta dry-run (escribirEnNotion:
-  // false) para que el agente pueda mostrar sugerencias sin comprometer datos
-  // que Liz todavía no ha revisado — usar dry-run como default salvo que el
+  // ── Herramienta de ESCRITURA ACOTADA — crea filas en Citas con Estatus
+  // "Sugerido" (nunca las mueve a "Aprobado" — eso es aprobar_match — ni
+  // crea citas reales). Soporta dry-run (escribirEnNotion: false) para que
+  // el agente pueda mostrar sugerencias sin comprometer datos que Liz
+  // todavía no ha revisado — usar dry-run como default salvo que el
   // usuario pida explícitamente que se guarde en Notion.
   server.tool(
     'sugerir_matches_para_sponsor',
-    'Calcula candidatos sugeridos de citas 1a1 para un sponsor específico de Fashion Digital Talks 2026 (Capa 1: filtros duros + Capa 2: ranking ponderado). Por default NO escribe en Notion (dry-run) — solo cuando escribirEnNotion=true guarda el resultado en el campo "Match Sugerido" para que Liz lo revise. NO crea citas ni aprueba nada.',
+    'Calcula candidatos sugeridos de citas 1a1 para un sponsor específico de Fashion Digital Talks 2026 (Capa 1: filtros duros + Capa 2: ranking ponderado). Por default NO escribe en Notion (dry-run) — solo cuando escribirEnNotion=true crea una fila nueva en la tabla Citas por cada candidato, con Estatus "Sugerido", para que Liz lo revise y decida con aprobar_match. NO crea citas reales ni aprueba nada.',
     {
       sponsorPageId: z.string().describe('page_id del sponsor en Notion'),
       topN: z.number().optional().describe('Cuántos candidatos sugerir; por default, su cuota pendiente + margen configurado'),
-      escribirEnNotion: z.boolean().optional().default(false).describe('Si true, guarda las sugerencias en el campo "Match Sugerido" en Notion. Default false (dry-run) — solo calcula y regresa el resultado sin escribir.'),
+      escribirEnNotion: z.boolean().optional().default(false).describe('Si true, crea una fila en Citas por cada candidato con Estatus "Sugerido". Default false (dry-run) — solo calcula y regresa el resultado sin escribir.'),
       incluirVirtual: z.boolean().optional().default(false).describe('Modo de excepción: incluye candidatos virtuales. Solo para sponsors que no cubrieron su cuota cerca de la fecha del evento.'),
     },
     async ({ sponsorPageId, topN, escribirEnNotion, incluirVirtual }) => {
@@ -99,10 +102,10 @@ function crearServidorMcp() {
   // Dry-run por default, mismo patrón que sugerir_matches_para_sponsor.
   server.tool(
     'sugerir_matches_global',
-    'Corre matchmaking para TODOS los sponsors activos de Fashion Digital Talks 2026 a la vez y detecta cuándo el mismo asistente sale como candidato fuerte para más de un sponsor (solapamiento) — útil para que Liz sepa a quién ofrecerle primero si se vuelve un conflicto de horario real. Operación pesada. Por default NO escribe en Notion (dry-run) — solo cuando escribirEnNotion=true guarda las sugerencias de cada sponsor en su campo "Match Sugerido". NO crea citas ni aprueba nada. Un sponsor con error individual (ej. nivel Bronce) no detiene la corrida completa, se reporta en "omitidos".',
+    'Corre matchmaking para TODOS los sponsors activos de Fashion Digital Talks 2026 a la vez y detecta cuándo el mismo asistente sale como candidato fuerte para más de un sponsor (solapamiento) — útil para que Liz sepa a quién ofrecerle primero si se vuelve un conflicto de horario real. Operación pesada. Por default NO escribe en Notion (dry-run) — solo cuando escribirEnNotion=true crea filas en Citas con Estatus "Sugerido" para los candidatos de cada sponsor. NO crea citas reales ni aprueba nada. Un sponsor con error individual (ej. nivel Bronce) no detiene la corrida completa, se reporta en "omitidos".',
     {
       topN: z.number().optional().describe('Cuántos candidatos sugerir por sponsor; por default, su cuota pendiente + margen configurado'),
-      escribirEnNotion: z.boolean().optional().default(false).describe('Si true, guarda las sugerencias de CADA sponsor en su campo "Match Sugerido" en Notion. Default false (dry-run) — solo calcula y regresa el resultado sin escribir en ningún sponsor.'),
+      escribirEnNotion: z.boolean().optional().default(false).describe('Si true, crea filas en Citas con Estatus "Sugerido" para los candidatos de CADA sponsor. Default false (dry-run) — solo calcula y regresa el resultado sin escribir en ningún sponsor.'),
       incluirVirtual: z.boolean().optional().default(false).describe('Modo de excepción: incluye candidatos virtuales. Solo para sponsors que no cubrieron su cuota cerca de la fecha del evento.'),
     },
     async ({ topN, escribirEnNotion, incluirVirtual }) => {
