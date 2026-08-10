@@ -34,10 +34,22 @@ async function marcarCitaAprobada(notionPageId) {
   return { id: notionPageId };
 }
 
+// ── NUEVO (10 de agosto) — mocks para la caché de sugerirMatchesGlobal ──
+
+async function obtenerParesConCitaActiva() {
+  return new Set();
+}
+
+function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePageId }) {
+  return paresActivos.has(`${sponsorPageId}|${asistentePageId}`);
+}
+
 module.exports = {
   existeCitaActivaEntre,
   contarCitasConfirmadasPorSponsor,
   crearCitaSugerida,
   buscarSugerenciasPendientesPorSponsor,
   marcarCitaAprobada,
+  obtenerParesConCitaActiva,
+  existeCitaActivaEntreEnCache,
 };

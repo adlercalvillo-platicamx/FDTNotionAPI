@@ -94,6 +94,16 @@ const mockContactos = {
 const mockCitas = {
   existeCitaActivaEntre: async () => false,
   contarCitasConfirmadasPorSponsor: async () => 0,
+  async crearCitaSugerida({ sponsorNombre, asistenteNombre, score }) {
+    console.log(`  [mock] crearCitaSugerida: ${asistenteNombre} × ${sponsorNombre} (score ${score})`);
+    return { id: 'mock-cita' };
+  },
+  async obtenerParesConCitaActiva() {
+    return new Set();
+  },
+  existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePageId }) {
+    return paresActivos.has(`${sponsorPageId}|${asistentePageId}`);
+  },
 };
 
 require.cache[contactosRealPath] = { id: contactosRealPath, filename: contactosRealPath, loaded: true, exports: mockContactos };

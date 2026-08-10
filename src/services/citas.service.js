@@ -305,6 +305,110 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
   return data.results.length > 0;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// NUEVO (10 de agosto) — fix del timeout de sugerir_matches_global
+//
+// Diagnóstico confirmado: sugerirMatchesGlobal() llama a
+// sugerirMatchesParaSponsor() por cada sponsor, y esa función llama a
+// existeCitaActivaEntre() UNA VEZ POR CADA CANDIDATO evaluado. Con 8
+// sponsors reales x ~15-20 candidatos elegibles cada uno, son ~130-150
+// llamadas HTTP SECUENCIALES a Notion en una sola invocación del MCP —
+// estimado en 40-100+ segundos incluso en el mejor caso, muy por encima de
+// cualquier timeout razonable de un tool call. Esto explica por qué
+// sugerir_matches_para_sponsor (1 sponsor) siempre funcionó bien pero
+// sugerir_matches_global (8 sponsors) falla consistentemente.
+//
+// Fix: en vez de preguntarle a Notion "¿existe cita activa entre A y B?"
+// una vez por cada par, se trae UNA SOLA VEZ la lista completa de citas
+// activas (con paginación real, no asumiendo que caben en una página) y
+// se guarda en un Set en memoria para lookup O(1). Esto baja el número de
+// llamadas HTTP de ~130-150 a 1-2 (según cuántas páginas haga falta,
+// prácticamente siempre 1 con el volumen actual del proyecto).
+// ═══════════════════════════════════════════════════════════════
+
+const ESTATUS_ACTIVOS = ['Sugerido', 'Aprobado', 'Confirmada', 'Pendiente Calendar'];
+
+/**
+ * Trae TODAS las filas de Citas cuyo Estatus esté en ESTATUS_ACTIVOS, con
+ * paginación explícita (nunca asume que caben en una sola página — la API
+ * de Notion pagina en bloques de 100 por default).
+ *
+ * Regresa un Set de strings "sponsorId|asistenteId" para lookup O(1) por
+ * par exacto, exactamente el mismo criterio de "activo" que ya usaba
+ * existeCitaActivaEntre() por candidato individual.
+ *
+ * Si una fila no tiene sponsor o asistente resuelto (dato corrupto o
+ * incompleto), se omite del Set en vez de tronar — más seguro fallar
+ * "abierto" en la caché (no bloquea un match que sí debería sugerirse)
+ * que tronar toda la corrida de sugerir_matches_global por una fila mal
+ * formada.
+ */
+async function obtenerParesConCitaActiva() {
+  requireDataSourceId();
+  const pares = new Set();
+  let cursor = undefined;
+  let paginasLeidas = 0;
+  const MAX_PAGINAS = 50; // salvaguarda — 50 páginas x 100 filas = 5000 filas, muy por encima de cualquier volumen real esperado; si se llega aquí, algo está mal y es mejor detenerse que loopear indefinidamente
+
+  do {
+    const body = {
+      filter: {
+        or: ESTATUS_ACTIVOS.map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+      page_size: 100,
+    };
+    if (cursor) body.start_cursor = cursor;
+
+    const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    for (const fila of data.results) {
+      const sponsorIds = (fila.properties?.['Contacto Match']?.relation || []).map((r) => r.id);
+      const asistenteIds = (fila.properties?.['Contacto Principal']?.relation || []).map((r) => r.id);
+      // Normalmente es 1 sponsor y 1 asistente por fila, pero se itera por si
+      // acaso — no asumir cardinalidad exacta que el schema no garantiza.
+      for (const sponsorId of sponsorIds) {
+        for (const asistenteId of asistenteIds) {
+          pares.add(`${sponsorId}|${asistenteId}`);
+        }
+      }
+    }
+
+    cursor = data.has_more ? data.next_cursor : undefined;
+    paginasLeidas += 1;
+    if (paginasLeidas >= MAX_PAGINAS) {
+      throw new Error(
+        `obtenerParesConCitaActiva: se alcanzó el límite de seguridad de ${MAX_PAGINAS} páginas ` +
+        `sin terminar de paginar Citas. Esto no debería pasar con el volumen actual del proyecto — ` +
+        `revisar manualmente antes de confiar en el resultado.`
+      );
+    }
+  } while (cursor);
+
+  return pares;
+}
+
+/**
+ * Versión de existeCitaActivaEntre que consulta un Set ya cargado en
+ * memoria (ver obtenerParesConCitaActiva) en vez de hacer una llamada HTTP
+ * nueva. Misma semántica exacta, mismo criterio de "activo" — la única
+ * diferencia es de dónde saca el dato.
+ *
+ * NO reemplaza a existeCitaActivaEntre() — esa función se conserva tal
+ * cual para sugerir_matches_para_sponsor (1 solo sponsor, el costo de una
+ * llamada por candidato ahí es aceptable y no vale la pena la complejidad
+ * extra de cachear para un solo caso). Esta versión es exclusiva para
+ * sugerirMatchesGlobal, donde el volumen sí lo justifica.
+ */
+function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePageId }) {
+  return paresActivos.has(`${sponsorPageId}|${asistentePageId}`);
+}
+
 module.exports = {
   contarCitasEnBloque,
   sponsorOcupadoEnBloque,
@@ -317,4 +421,6 @@ module.exports = {
   buscarSugerenciasPendientesPorSponsor,
   marcarCitaAprobada,
   existeCitaActivaEntre,
+  obtenerParesConCitaActiva,
+  existeCitaActivaEntreEnCache,
 };

@@ -288,10 +288,16 @@ function generarExplicacionNatural(candidato, senales) {
  * @param {boolean} [opciones.incluirVirtual=false] - modo de excepción, ver
  *   contactos.service.js. Solo para sponsors que no lograron cubrir su cuota
  *   cerca de la fecha del evento.
+ * @param {Set<string>} [opciones._paresConCitaActivaCache] - USO INTERNO
+ *   SOLAMENTE, llamado por sugerirMatchesGlobal para evitar el timeout (ver
+ *   fix del 10 de agosto). Si se provee, se usa en vez de consultar Notion
+ *   por cada candidato. NO documentar como parámetro público de la tool MCP
+ *   ni del endpoint REST — es un detalle de implementación, no una opción
+ *   que el agente o un cliente externo deba conocer o pasar.
  */
 async function sugerirMatchesParaSponsor(
   sponsorPageId,
-  { topN, escribirEnNotion = false, incluirVirtual = false } = {}
+  { topN, escribirEnNotion = false, incluirVirtual = false, _paresConCitaActivaCache = null } = {}
 ) {
   const sponsor = await notionContactos.obtenerContacto(sponsorPageId);
   if (sponsor.categoria !== 'Sponsor') {
@@ -314,10 +320,18 @@ async function sugerirMatchesParaSponsor(
   const candidatosValidos = [];
   for (const candidato of candidatosBrutos) {
     if (empresaMencionadaEn(candidato.empresa, sponsor.clientesActuales)) continue; // ya es su cliente
-    const yaTieneCita = await notionCitas.existeCitaActivaEntre({
-      sponsorPageId,
-      asistentePageId: candidato.id,
-    });
+
+    // Con caché (sugerirMatchesGlobal): lookup O(1) en memoria.
+    // Sin caché (camino individual): una llamada HTTP a Notion por candidato.
+    const yaTieneCita = _paresConCitaActivaCache
+      ? notionCitas.existeCitaActivaEntreEnCache(_paresConCitaActivaCache, {
+          sponsorPageId,
+          asistentePageId: candidato.id,
+        })
+      : await notionCitas.existeCitaActivaEntre({
+          sponsorPageId,
+          asistentePageId: candidato.id,
+        });
     if (yaTieneCita) continue;
     candidatosValidos.push(candidato);
   }
@@ -391,6 +405,23 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  * Un sponsor Bronce (o cualquier error individual) NO tumba la corrida
  * completa — se registra en "omitidos" y sigue con el resto.
  *
+ * FIX DEL 10 DE AGOSTO — timeout por volumen de llamadas a Notion.
+ * Diagnóstico: con 8 sponsors reales, el patrón anterior (una llamada HTTP
+ * a existeCitaActivaEntre por cada candidato evaluado, dentro del loop de
+ * cada sponsor) generaba ~130-150 llamadas secuenciales en una sola
+ * invocación — muy por encima de cualquier timeout razonable de un tool
+ * call MCP. Fix: se trae UNA sola vez (con paginación real) la lista
+ * completa de pares con cita activa, ANTES del loop de sponsors, y se pasa
+ * como caché interna a cada llamada de sugerirMatchesParaSponsor. Esto
+ * baja el número de llamadas HTTP de ~130-150 a un puñado (1-2 para la
+ * caché + 1 por sponsor para buscarAsistentesCandidatos + 1 por sponsor
+ * para contarCitasConfirmadasPorSponsor — ninguna de estas dos últimas se
+ * tocó, siguen igual que antes).
+ *
+ * sugerirMatchesParaSponsor() individual (fuera de este loop) NO cambia su
+ * comportamiento — sigue consultando Notion por candidato, porque para un
+ * solo sponsor el volumen nunca fue el problema.
+ *
  * @param {object} [opciones]
  * @param {number} [opciones.topN]
  * @param {boolean} [opciones.escribirEnNotion=false] - antes venía hardcodeado
@@ -406,6 +437,10 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  */
 async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVirtual = false } = {}) {
   const sponsors = await notionContactos.listarSponsorsActivos();
+
+  // Cargar la caché UNA sola vez ANTES del loop — fix del timeout (10 ago).
+  const paresConCitaActivaCache = await notionCitas.obtenerParesConCitaActiva();
+
   const resultadosPorSponsor = [];
   const omitidos = [];
 
@@ -415,6 +450,7 @@ async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVir
         topN,
         escribirEnNotion,
         incluirVirtual,
+        _paresConCitaActivaCache: paresConCitaActivaCache,
       });
       resultadosPorSponsor.push({ sponsor, resultado });
     } catch (err) {
