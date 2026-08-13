@@ -53,3 +53,32 @@ asistentePageId: 3a590fe2-7345-81c7-849a-fc5321cd05b4
 Ambas pruebas pasan. Nada más que verificar por ahora según `verificacion-puntual-cursor.md`.
 
 **Pendiente abierto (infra, no prompt):** `sugerir_matches_global` sigue fallando por MCP en Plática — el agente ya lo reporta bien; falta diagnosticar la causa del timeout en el lado del servidor/tool.
+→ **CERRADO** el mismo día, ver Prueba 3.
+
+---
+
+## Prueba 3 — `sugerir_matches_global` dry-run después del fix de timeout — PASS (20:04–20:06 UTC)
+
+**Fix probado:** commit `e6f7417` ("evita timeout en `sugerir_matches_global` cacheando pares con cita activa") — carga los pares con cita activa **una sola vez** con paginación real (`obtenerParesConCitaActiva`) antes del loop de sponsors, en vez de ~130-150 llamadas HTTP secuenciales a Notion (una por candidato). El camino individual `sugerirMatchesParaSponsor` **no cambió** de comportamiento.
+
+**Corridas (2, vía Orquestador → subagente Matchmaking):**
+
+| # | Chat | Llamada a la herramienta | Resultado |
+|---|---|---|---|
+| 1 | `chat_811566b1-ea23-4471-b8f5-dd8a0b72f1e1` | `{"topN":null,...}` → error validación; luego `{"escribirEnNotion":false,"incluirVirtual":false}` | JSON completo, **mismo minuto** (20:04 → 20:04 UTC) |
+| 2 | `chat_28789afd-5cf8-4958-a204-8cacf24233bd` | `{"escribirEnNotion":false,"incluirVirtual":false}` (sin `topN` inválido) | JSON completo, 20:05 → 20:06 UTC |
+
+**Output (idéntico en ambas):** 19 sponsors evaluados, 1 omitido (**Sergio Palacios (ejemplo)**, Bronce → regla de negocio aplicada correctamente), 13 solapamientos.
+
+**Dry-run verificado en Notion:** `Citas` sigue con **23 filas** y `MAX(createdTime)` = `2026-08-10 17:00:13Z`, ~3 horas *antes* de ambas corridas. Cero escrituras.
+
+**Hallazgo menor (prompt, no bloqueante):** en la corrida 1 el subagente volvió a mandar `topN: null` como primera llamada, lo que gasta un turno en un error de validación antes de reintentar sin el parámetro. La corrida 2 no lo hizo. → **CORREGIDO**, ver abajo.
+
+### Ajustes de prompt aplicados a `DEMO - Subagente Matchmaking, Citas y Checklist`
+
+| Prompt ID | Cambio |
+|---|---|
+| `DB40WKL86s5HzBDxs4MJ` | En HERRAMIENTA 4: omitir `topN` por completo salvo que el usuario pida un número específico de candidatos; nunca mandarlo como `null` (el schema espera número). Aplica igual a `sugerir_matches_para_sponsor`. |
+| `F3KkCsS0UIIIzCG0Brwm` (activo) | Se quitó el texto que describía el timeout de `sugerir_matches_global` como falla conocida y esperada — ya no es cierto. Se conserva la disciplina de reporte de errores (no inventar resultados, no reintentar más de una vez) y se aclara que si vuelve a fallar es algo nuevo que debe reportarse como tal. |
+
+**Corrida 3 de verificación del prompt** (`chat_67e2bcb8-e850-40b3-a289-b9a172790be6`, 20:09 → 20:10 UTC): **una sola** llamada, `{"escribirEnNotion":false,"incluirVirtual":false}`, sin `topN`. Mismo output (19 / 1 omitido / 13 solapamientos). Sin turno desperdiciado en error de validación.

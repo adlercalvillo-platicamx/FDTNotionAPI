@@ -54,7 +54,8 @@ const CONTACTOS = [
     rolPuesto: 'Dueña',
     servicios: '',
     ticketTipo: 'Presencial',
-    quiereCitas1a1: true,
+    // Formato select (12 ago): 'Sí' / 'No' / null — ya no boolean.
+    quiereCitas1a1: 'Sí',
     etapaDeNegocio: 'Vendo principalmente por redes sociales',
     area: 'Direccion General / Founder / CEO',
     solucionesBuscadas: ['Logistica / fulfillment'],
@@ -70,13 +71,40 @@ const CONTACTOS = [
     formatoRegistro: '2026',
     dadoDeBaja: false,
   },
+  // Caso "vacío histórico" (12 ago): Presencial que nunca contestó
+  // Quiere Citas 1a1 — con el fix debe seguir siendo elegible (solo se
+  // excluye 'No' explícito).
+  {
+    id: 'contacto-vacio-historico',
+    nombre: 'Contacto Vacío Histórico (ejemplo)',
+    categoria: 'Asistente',
+    empresa: 'Marca Histórica MX',
+    rolPuesto: 'Dueña',
+    servicios: '',
+    ticketTipo: 'Presencial',
+    quiereCitas1a1: null,
+    etapaDeNegocio: 'Vendo principalmente por redes sociales',
+    area: 'Direccion General / Founder / CEO',
+    solucionesBuscadas: ['Logistica / fulfillment'],
+    otraSolucionBuscada: '',
+    etapaClienteBuscada: [],
+    solucion: [],
+    puestosBuscados: [],
+    clientesActuales: '',
+    clientesPotencialesDeseados: '',
+    nivelPatrocinio: null,
+    citasMinimasPrometidas: 0,
+    fuenteDato: 'Declarado',
+    formatoRegistro: 'Legacy pre-2026',
+    dadoDeBaja: false,
+  },
 ];
 
 /** Replica la elegibilidad real de la Capa 1 (ver contactos.service.js). */
 function esElegibleParaCitas(c, incluirVirtual) {
   if (c.dadoDeBaja) return false;
   if (c.ticketTipo === 'Presencial VIP') return true;
-  if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 === true;
+  if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 !== 'No';
   if (c.ticketTipo === 'Virtual') return incluirVirtual === true;
   return false; // Expo y cualquier otro
 }
