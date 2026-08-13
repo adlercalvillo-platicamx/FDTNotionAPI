@@ -89,7 +89,21 @@ async function consultarChecklist(nombreAproximado) {
 
   const contacto = candidatos[0];
   const resultado = evaluarChecklist(contacto);
-  return { encontrado: true, contacto: { id: contacto.id, nombre: contacto.nombre, empresa: contacto.empresa }, ...resultado };
+  // calendarioGoogleId: se lee de Notion en parseContacto desde el 12-ago
+  // (multi-calendario), pero no se exponía en este return — el agente no
+  // podía resolver sponsor_calendario_id al reservar. Evidencia: Caso 5 de
+  // bitacora-verificacion-12ago.md. Vacío/null = sponsor sin calendario
+  // dedicado todavía; el agente debe reportarlo y no inventar un ID.
+  return {
+    encontrado: true,
+    contacto: {
+      id: contacto.id,
+      nombre: contacto.nombre,
+      empresa: contacto.empresa,
+      calendarioGoogleId: contacto.calendarioGoogleId || null,
+    },
+    ...resultado,
+  };
 }
 
 /**

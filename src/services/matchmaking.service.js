@@ -365,7 +365,17 @@ async function sugerirMatchesParaSponsor(
   }
 
   return {
-    sponsor: { id: sponsor.id, nombre: sponsor.nombre, nivelPatrocinio: sponsor.nivelPatrocinio },
+    // calendarioGoogleId: se lee de Notion en parseContacto desde el 12-ago
+    // (multi-calendario), pero no se exponía en este return — el agente no
+    // podía resolver sponsor_calendario_id al reservar. Evidencia: Caso 5 de
+    // bitacora-verificacion-12ago.md. Vacío/null = sponsor sin calendario
+    // dedicado todavía; el agente debe reportarlo y no inventar un ID.
+    sponsor: {
+      id: sponsor.id,
+      nombre: sponsor.nombre,
+      nivelPatrocinio: sponsor.nivelPatrocinio,
+      calendarioGoogleId: sponsor.calendarioGoogleId || null,
+    },
     cuotaPendiente,
     incluyoVirtuales: incluirVirtual,
     totalCandidatosEvaluados: candidatosBrutos.length,
