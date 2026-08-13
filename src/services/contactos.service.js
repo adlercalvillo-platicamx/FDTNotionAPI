@@ -48,6 +48,12 @@ function parsearContacto(pagina) {
     clientesPotencialesDeseados: texto(p['Clientes Potenciales Deseados']),
     nivelPatrocinio: select(p['Nivel de Patrocinio']),
     citasMinimasPrometidas: numero(p['Citas Minimas Prometidas']) || 0,
+    // Agregado 12 de agosto — soporte multi-calendario. Un ID por sponsor,
+    // en vez de un solo sponsor_calendario_id fijo por .env. Vacío = sponsor
+    // todavía sin calendario dedicado creado (ver 09-matchmaking-directo-2026.md).
+    // No confundir con un campo obligatorio: solo se necesita al momento de
+    // reservar_cita, no antes.
+    calendarioGoogleId: texto(p['Calendario Google ID']),
     fuenteDato: select(p['Fuente del Dato ICP/Intencion']),
     esVip: checkbox(p['Es VIP']),
     matchSugerido: relacionIds(p['Match Sugerido']),
@@ -60,7 +66,14 @@ function parsearContacto(pagina) {
     area: select(p['Area']),                              // ↔ Puestos Buscados del sponsor (mismas 11 opciones)
     solucionesBuscadas: multiSelect(p['Soluciones Buscadas']), // ↔ Solucion del sponsor (mismas 12 opciones)
     otraSolucionBuscada: texto(p['Otra Solucion Buscada']),    // campo abierto, NO se usa para el match automático
-    quiereCitas1a1: checkbox(p['Quiere Citas 1a1']),      // solo aplica a Presencial; VIP lo trae por default
+    // ⚠️ CAMBIÓ el 12 de agosto: de checkbox a select ("Sí" / "No" / vacío).
+    // Motivo: un checkbox de Notion no distingue "nunca contestó" de
+    // "contestó que no" — ambos llegan como false, y eso rompía la regla de
+    // negocio de Laura (ver más abajo, en buscarAsistentesCandidatos). Con
+    // select, quiereCitas1a1 vale exactamente 'Sí', 'No', o null — un tercer
+    // estado real. Solo aplica a Presencial; VIP lo trae por default (nunca
+    // se le pregunta, ver comentario de buscarAsistentesCandidatos).
+    quiereCitas1a1: select(p['Quiere Citas 1a1']),
     formatoRegistro: select(p['Formato Registro']),       // '2026' | 'Legacy pre-2026'
     giroIndustria: select(p['Giro / Industria']),
     // Campos legacy — contactos de años anteriores, con el formato viejo.
@@ -156,10 +169,24 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     tiposBoletoElegibles.push('Virtual');
   }
 
+  // Filtro de Giro/Industria — agregado 12 de agosto, confirmado por Laura
+  // en la demo del 11 de agosto: "todo lo demás, no me interesa que tengan
+  // citas". Aplica a TODOS los boletos elegibles, VIP incluido (confirmado
+  // con Adler el 12 de agosto — no hay excepción para VIP).
+  // Los proveedores de servicios (marketing, tecnología, logística, etc.)
+  // no se sientan con otros proveedores de servicios (que es el perfil de
+  // los sponsors) — se sientan con marcas de moda, retailers y manufactura.
+  const GIROS_ELEGIBLES_MATCHMAKING = [
+    'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
+    'Retailer / tienda multimarca / Marketplace',
+    'Manufactura / produccion / sourcing',
+  ];
+
   const condiciones = [
     { property: 'Categoria', select: { equals: 'Asistente' } },
     { property: 'Dado de Baja', checkbox: { equals: false } },
     { or: tiposBoletoElegibles.map((tipo) => ({ property: 'Ticket / Tipo Asistencia', select: { equals: tipo } })) },
+    { or: GIROS_ELEGIBLES_MATCHMAKING.map((giro) => ({ property: 'Giro / Industria', select: { equals: giro } })) },
   ];
 
   if (etapasValidas && etapasValidas.length > 0) {
@@ -173,14 +200,29 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     body: JSON.stringify({ filter: { and: condiciones }, page_size: 100 }),
   });
 
-  // Post-filtrado en JS: "Presencial" SOLO es elegible si "Quiere Citas 1a1"
-  // = true. "Presencial VIP" siempre es elegible (las citas vienen incluidas
-  // en el boleto), y "Virtual" (si incluirVirtual=true) no requiere este
-  // checkbox — confirmado por Liz, sesión del 24 de julio, ver comentario
-  // arriba.
+  // Post-filtrado en JS: "Presencial" es elegible salvo que haya marcado
+  // EXPLÍCITAMENTE 'No'.
+  //
+  // ⚠️ CORREGIDO el 12 de agosto — comportamiento anterior incorrecto: exigía
+  // quiereCitas1a1 === true (cuando el campo aún era checkbox), lo que
+  // excluía en silencio a los contactos con el campo vacío (28 de 55 en la
+  // base real, registrados antes de que existiera la pregunta en el
+  // formulario — confirmado contra el CSV original de Ticketópolis el 12 de
+  // agosto). Decisión de Laura en la demo del 11 de agosto, cita textual:
+  // "yo descartaría a los que expresamente te pusieron no" — se excluye
+  // SOLO 'No' explícito, no la ausencia de dato.
+  // El campo se convirtió de checkbox a select ('Sí'/'No') el mismo día para
+  // que esta distinción fuera posible de representar en Notion (ver
+  // parsearContacto arriba) — con checkbox, vacío y 'No' eran indistinguibles
+  // y este fix no podía funcionar sin importar cómo se escribiera la
+  // condición.
+  // "Presencial VIP" sigue siempre elegible (las citas vienen incluidas en
+  // el boleto, ni siquiera se le hace la pregunta) y "Virtual" (si
+  // incluirVirtual=true) tampoco requiere este campo — confirmado por Liz,
+  // sesión del 24 de julio, ver comentario arriba.
   const candidatos = data.results.map(parsearContacto).filter((c) => {
-    if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 === true;
-    return true; // Presencial VIP y Virtual (si aplica) ya vinieron filtrados por Notion
+    if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 !== 'No';
+    return true; // Presencial VIP y Virtual (si aplica) ya vienen filtrados por Notion
   });
 
   return candidatos;
