@@ -60,14 +60,27 @@ Prioridades del prompt:
 - `disponibilidad.local-smoke.js`
 - `matchmaking-2026.manual-test.js` (VIP 690 = 500+150+…; Presencial nombrado 1310)
 
-## Pendiente post-commit
+## Commit / push
 
-1. Push a `main` + **redeploy manual Coolify** + `/health`
-2. Prueba MCP real: 2× `sugerir_matches_para_sponsor`, 2× `reservar_cita` (inválida + válida)
-3. DIFF-10 / DIFF-11 en prompts Plática
-4. Docs: Adler
+- Commit: `e542694` — `feat: Madurez Negocio + Virtual en matchmaking y validacion 30min/fechas en booking`
+- Push: `main` → `origin/main` OK (`f23b948..e542694`)
+
+## DIFF-10 / DIFF-11 — prompts Plática (aplicados)
+
+| Agente | ID | Qué se hizo |
+|---|---|---|
+| Orquestador (ya se llamaba Agente 1 en UI) | `iCcgnFhYPUyg5ReD7prB` | Prompt: quitó DEMO, nota nomenclatura 14-ago, numeración Agente 1/2/3 actualizada, TONO sin "demo" |
+| Subagente Matchmaking | `gZ4oJ84r1JT79zd9AEZg` | Prompt: rename identidad + dataset sin "demo" + notas Virtual/Presencial y Madurez Negocio; **nombre UI** → `Agente 1 — Subagente Matchmaking, Citas y Checklist` |
+| Enriquecimiento Exa | `vhmqfLCnNLKsBDh2HEd2` | **No tocado** (fuera de alcance) |
+
+## Pendiente todavía
+
+1. **Redeploy manual Coolify** + confirmar `/health` = healthy
+2. Prueba MCP real post-redeploy: 2× `sugerir_matches_para_sponsor`, 2× `reservar_cita` (inválida + válida)
+3. Docs: Adler (DIFF-3…9, 12, 14)
 
 ## Desviaciones del plan
 
 - Ninguna en código.
 - Docs fuera de alcance por instrucción explícita de Adler en esta sesión.
+- No existe ya un agente llamado literalmente "DEMO - Agente Orquestador FDT"; el orquestador vivo es `Agente 1 | Fuente de Verdad y Matchmaking` (`iCcgnFhYPUyg5ReD7prB`) — se aplicó DIFF-10 ahí.
