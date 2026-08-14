@@ -77,8 +77,30 @@ const MARGEN_CANDIDATOS = 2;
 const PESOS = {
   ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor
   VIP: 500, // asistente con boleto Presencial VIP
+  // Agregado 13 de agosto — Virtual pasó a ser elegible por default en
+  // buscarAsistentesCandidatos (ver contactos.service.js), pero Laura pidió
+  // seguir priorizando presencial sobre virtual. Mismo patrón de diseño que
+  // VIP: impulso fuerte en el ranking, no exclusión — un Virtual con match
+  // excelente (área+solución+oro molido) sigue pudiendo ganarle a un
+  // Presencial sin señales específicas; entre dos candidatos con match
+  // idéntico, el presencial gana. Deliberadamente menor que VIP (esto es
+  // sobre canal, no sobre calidad de perfil) pero mayor que cualquier señal
+  // individual de match (área/solución), para que el desempate sea claro.
+  PRESENCIAL: 150, // aplica a "Presencial" y "Presencial VIP"; 0 para "Virtual"
   AREA: 60, // match directo de área/puesto
   SOLUCION: 60, // match directo por cada solución coincidente
+  // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
+  // empresa 100% es un criterio... es lo más importante". Esto NO es el
+  // filtro duro de descarte que ella pidió formalmente (ese sigue bloqueado,
+  // pendiente de que ella defina el criterio operativo) — es un adelanto
+  // acotado usando la señal que ya existe hoy en Notion vía el
+  // enriquecimiento de Luis (Madurez Negocio (Exa): Temprano/PyME/Consolidado).
+  // Pesos por debajo de Área/Solución a propósito: es una inferencia
+  // automática, no un match directo de catálogo ni un dato declarado por el
+  // propio contacto — mismo criterio de cautela que ya distingue Declarado
+  // (10) de Inferido (3) más abajo. "Temprano" no suma ni resta.
+  MADUREZ_NEGOCIO_CONSOLIDADO: 40,
+  MADUREZ_NEGOCIO_PYME: 15,
   OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
   CUOTA_PENDIENTE_POR_CITA: 15,
   DATO_DECLARADO: 10,
@@ -155,9 +177,11 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   const senales = {
     oroMolido: false,
     esVip: false,
+    esPresencial: false,
     areaCoincidente: null,
     solucionesCoincidentes: [],
     coincidenciaTextoLibre: false,
+    madurezNegocio: null, // "Temprano" | "PyME" | "Consolidado" | null
     cuotaPendiente,
     // Distinguir "inferido" de "sin dato" importa: el reporte que lee Laura
     // afirma cosas sobre el candidato, y decir "esta info fue inferida" cuando
@@ -177,6 +201,34 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     score += PESOS.VIP;
     detalle.push('vip: asistente con boleto Presencial VIP (citas incluidas)');
     senales.esVip = true;
+  }
+
+  // Prioridad de modalidad presencial sobre virtual — agregado 13 de agosto,
+  // ver nota de diseño en PESOS.PRESENCIAL arriba. Cualquier modalidad
+  // presencial (con o sin VIP) recibe el mismo empujón; Virtual no recibe
+  // nada aquí (0 puntos, no se resta nada tampoco).
+  if (candidato.ticketTipo === 'Presencial VIP' || candidato.ticketTipo === 'Presencial') {
+    score += PESOS.PRESENCIAL;
+    detalle.push('presencial: asistente con boleto presencial (prioridad sobre virtual)');
+    senales.esPresencial = true;
+  }
+
+  // Madurez Negocio (Exa) — agregado 14 de agosto, ver nota de diseño en
+  // PESOS.MADUREZ_NEGOCIO_* arriba. Solo suma si el campo está poblado;
+  // "Temprano" y vacío se tratan igual (ninguno suma), pero se distinguen en
+  // `senales.madurezNegocio` para que la explicación en lenguaje natural
+  // pueda diferenciar "no se sabe" de "se sabe que es una empresa temprana"
+  // si algún día hace falta.
+  if (candidato.madurezNegocioExa === 'Consolidado') {
+    score += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
+    detalle.push('madurez_negocio: empresa consolidada (Exa)');
+    senales.madurezNegocio = 'Consolidado';
+  } else if (candidato.madurezNegocioExa === 'PyME') {
+    score += PESOS.MADUREZ_NEGOCIO_PYME;
+    detalle.push('madurez_negocio: PyME (Exa)');
+    senales.madurezNegocio = 'PyME';
+  } else if (candidato.madurezNegocioExa === 'Temprano') {
+    senales.madurezNegocio = 'Temprano'; // no suma, pero se registra
   }
 
   // MATCH DIRECTO de área — el "Area" del asistente contra "Puestos Buscados"
@@ -259,6 +311,14 @@ function generarExplicacionNatural(candidato, senales) {
   if (senales.esVip) {
     texto += ` Es asistente VIP, así que sus citas de negocio ya vienen incluidas en su boleto y tiene prioridad.`;
   }
+  if (senales.esPresencial && !senales.esVip) {
+    texto += ` Asistirá de forma presencial, lo cual se prioriza sobre los asistentes virtuales.`;
+  }
+  if (senales.madurezNegocio === 'Consolidado') {
+    texto += ` El enriquecimiento automático identificó su negocio como consolidado.`;
+  } else if (senales.madurezNegocio === 'PyME') {
+    texto += ` El enriquecimiento automático identificó su negocio como una PyME establecida.`;
+  }
   if (senales.cuotaPendiente > 0) {
     texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota.`;
   }
@@ -285,9 +345,11 @@ function generarExplicacionNatural(candidato, senales) {
  *   (`escribirEnNotion: escribirEnNotion !== false`) — este default solo
  *   protege a consumidores futuros que llamen esta función sin especificar
  *   la opción.
- * @param {boolean} [opciones.incluirVirtual=false] - modo de excepción, ver
- *   contactos.service.js. Solo para sponsors que no lograron cubrir su cuota
- *   cerca de la fecha del evento.
+ * @param {boolean} [opciones.incluirVirtual=false] - ⚠️ DEPRECADO el 13 de
+ *   agosto. Virtual ahora es elegible por default (ver contactos.service.js,
+ *   buscarAsistentesCandidatos) — este parámetro ya no tiene ningún efecto,
+ *   se conserva solo por compatibilidad con llamadas existentes (tools MCP,
+ *   endpoint REST) que todavía lo pasan explícito.
  * @param {Set<string>} [opciones._paresConCitaActivaCache] - USO INTERNO
  *   SOLAMENTE, llamado por sugerirMatchesGlobal para evitar el timeout (ver
  *   fix del 10 de agosto). Si se provee, se usa en vez de consultar Notion
@@ -443,7 +505,11 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  *   NO pasaba este valor — se corrigió ahí también para pasar `true` explícito
  *   y no cambiar su comportamiento existente. Desde el 9 de agosto la escritura
  *   va a filas Citas en "Sugerido", no a "Match Sugerido".
- * @param {boolean} [opciones.incluirVirtual=false]
+ * @param {boolean} [opciones.incluirVirtual=false] - ⚠️ DEPRECADO el 13 de
+ *   agosto. Virtual ahora es elegible por default (ver contactos.service.js,
+ *   buscarAsistentesCandidatos) — este parámetro ya no tiene ningún efecto,
+ *   se conserva solo por compatibilidad con llamadas existentes (tools MCP,
+ *   endpoint REST) que todavía lo pasan explícito.
  */
 async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVirtual = false } = {}) {
   const sponsors = await notionContactos.listarSponsorsActivos();

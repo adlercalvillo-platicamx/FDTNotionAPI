@@ -101,6 +101,12 @@ function parsearContacto(pagina) {
     tamanoEmpresaExa: texto(p['Tamano Empresa (Exa)']),
     modeloNegocioExa: select(p['Modelo de Negocio (Exa)']),
     madurezEcommerceExa: texto(p['Madurez Ecommerce (Exa)']),
+    // Madurez Negocio (Exa) — Select de 3 valores ("Temprano"/"PyME"/
+    // "Consolidado"), DISTINTO de Madurez Ecommerce (Exa) de arriba (que es
+    // texto libre). Existía en Notion pero no estaba mapeado aquí hasta el
+    // 14 de agosto — agregado para el peso nuevo de matchmaking.service.js
+    // (criterio de tamaño de empresa, pedido por Laura en la Demo 2, 13-ago).
+    madurezNegocioExa: select(p['Madurez Negocio (Exa)']),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
     icpModaEcommerce: select(p['ICP Moda/Ecommerce']),
@@ -117,20 +123,32 @@ async function obtenerContacto(pageId) {
 /**
  * Capa 1 — filtros duros que Notion puede resolver en un solo query.
  *
- * ELEGIBILIDAD POR TIPO DE BOLETO (confirmado por Liz, sesión del 24 de julio):
- *   - "Presencial VIP" → SIEMPRE elegible. Las citas vienen incluidas en el
- *     boleto, por eso a los VIP ni siquiera se les hace la pregunta de opt-in.
- *   - "Presencial"     → elegible SOLO si marcó "Quiere Citas 1a1" = true
- *     (es el único tipo de boleto que trae la pregunta "¿Te gustaría tener
- *     reuniones con proveedores relevantes durante el evento?").
- *   - "Expo"           → NUNCA. Solo da acceso al piso de exhibición.
- *   - "Virtual"        → NUNCA por default. Solo entra si se pasa
- *     `incluirVirtual: true`, que es el escenario de excepción ya acordado
- *     con Laura: si a una semana del evento un sponsor no logró cubrir su
- *     cuota prometida, se amplía la búsqueda a virtuales. Liz confirmó que
- *     los virtuales SÍ tienen "Etapa de Negocio", pero NO tienen
- *     "Soluciones Buscadas" ni "Area" — así que sus matches siempre van a
- *     ser de menor calidad. No activarlo salvo en ese caso de excepción.
+ * ELEGIBILIDAD POR TIPO DE BOLETO:
+ *   - "Presencial VIP" → SIEMPRE elegible (confirmado por Liz, 24 de julio).
+ *     Las citas vienen incluidas en el boleto, por eso a los VIP ni siquiera
+ *     se les hace la pregunta de opt-in.
+ *   - "Presencial" → elegible SALVO que haya marcado explícitamente que no
+ *     quiere citas (ver el post-filtro de `Quiere Citas 1a1` más abajo).
+ *   - "Virtual" → ⚠️ CAMBIÓ el 13 de agosto: antes NUNCA entraba salvo con
+ *     `incluirVirtual: true` (modo de excepción para sponsors sin cuota
+ *     cubierta cerca del evento). Ahora entra por default, con la MISMA
+ *     regla que Presencial. Motivo: Liz confirmó en la demo del 11 de agosto
+ *     que el formulario de Virtual ya tiene la pregunta "¿Te gustaría tener
+ *     reuniones...?" desde hace poco — cita textual: "justo Adler faltaría
+ *     agregar el virtual, porque ya se agregó esa pregunta". Laura ya había
+ *     confirmado en sesión previa (13 de julio) que VIP/Presencial/Virtual
+ *     tienen derecho a citas — solo Expo queda fuera.
+ *     Nota de calidad de match, sigue vigente: los virtuales NO tienen
+ *     "Soluciones Buscadas" ni "Area" en su formulario (solo "Etapa de
+ *     Negocio"), así que sus matches van a tener menos señales de forma
+ *     natural — no hace falta ningún filtro adicional para reflejar esto,
+ *     el ranking (Capa 2) ya los va a mostrar más abajo por tener menos
+ *     puntos, sin necesidad de excluirlos.
+ *   - "Expo" → NUNCA. Solo da acceso al piso de exhibición.
+ *
+ * `incluirVirtual` se conserva como parámetro por compatibilidad con las
+ * tools MCP y el endpoint REST existentes, pero ya NO tiene efecto — ver
+ * nota de deprecación en la firma de la función.
  *
  * También excluye "Dado de Baja" — no tiene sentido proponer una cita a
  * alguien que pidió no ser contactado.
@@ -142,7 +160,13 @@ async function obtenerContacto(pageId) {
  * @param {object} params
  * @param {string[]|null} params.etapasValidas - valores de "Etapa de Negocio"
  *   aceptados, ya expandidos con alias (ver matchmaking.service.js). null = no filtrar.
- * @param {boolean} [params.incluirVirtual=false] - modo de excepción, ver arriba.
+ * @param {boolean} [params.incluirVirtual=false] - ⚠️ DEPRECADO el 13 de
+ *   agosto. Virtual ahora es elegible por default (ver arriba), así que este
+ *   parámetro ya no tiene ningún efecto — se conserva únicamente para no
+ *   romper llamadas existentes (tools MCP, endpoint REST) que todavía lo
+ *   pasan explícito. No usarlo en código nuevo. Candidato a eliminarse por
+ *   completo en un cambio futuro, junto con su limpieza en matchmaking.service.js
+ *   y en las descripciones de las tools MCP correspondientes.
  */
 async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = false }) {
   requireDataSourceId();
@@ -164,10 +188,10 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // arriba: "El resto de los filtros duros... se aplican después en JS").
   // El filtro de Notion queda en solo 2 niveles: and (raíz) → or (tipo de
   // boleto elegible, sin el and interno).
-  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial'];
-  if (incluirVirtual) {
-    tiposBoletoElegibles.push('Virtual');
-  }
+  // Virtual entra por default desde el 13 de agosto — ver comentario de la
+  // función arriba. `incluirVirtual` ya no se usa aquí, se ignora
+  // intencionalmente (queda solo por compatibilidad de firma).
+  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual'];
 
   // Filtro de Giro/Industria — agregado 12 de agosto, confirmado por Laura
   // en la demo del 11 de agosto: "todo lo demás, no me interesa que tengan
@@ -200,10 +224,11 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     body: JSON.stringify({ filter: { and: condiciones }, page_size: 100 }),
   });
 
-  // Post-filtrado en JS: "Presencial" es elegible salvo que haya marcado
-  // EXPLÍCITAMENTE 'No'.
+  // Post-filtrado en JS: "Presencial" y "Virtual" son elegibles salvo que
+  // hayan marcado EXPLÍCITAMENTE 'No' a "Quiere Citas 1a1".
   //
-  // ⚠️ CORREGIDO el 12 de agosto — comportamiento anterior incorrecto: exigía
+  // ⚠️ CORREGIDO el 12 de agosto (Presencial) y AMPLIADO el 13 de agosto
+  // (Virtual) — comportamiento anterior incorrecto: exigía
   // quiereCitas1a1 === true (cuando el campo aún era checkbox), lo que
   // excluía en silencio a los contactos con el campo vacío (28 de 55 en la
   // base real, registrados antes de que existiera la pregunta en el
@@ -216,13 +241,16 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // parsearContacto arriba) — con checkbox, vacío y 'No' eran indistinguibles
   // y este fix no podía funcionar sin importar cómo se escribiera la
   // condición.
-  // "Presencial VIP" sigue siempre elegible (las citas vienen incluidas en
-  // el boleto, ni siquiera se le hace la pregunta) y "Virtual" (si
-  // incluirVirtual=true) tampoco requiere este campo — confirmado por Liz,
-  // sesión del 24 de julio, ver comentario arriba.
+  // Virtual se agregó a esta misma regla el 13 de agosto: Liz confirmó que
+  // el formulario de Virtual ya tiene la misma pregunta de opt-in que
+  // Presencial (antes solo Presencial la tenía). "Presencial VIP" sigue
+  // siempre elegible (las citas vienen incluidas en el boleto, ni siquiera
+  // se le hace la pregunta).
   const candidatos = data.results.map(parsearContacto).filter((c) => {
-    if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 !== 'No';
-    return true; // Presencial VIP y Virtual (si aplica) ya vienen filtrados por Notion
+    if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Virtual') {
+      return c.quiereCitas1a1 !== 'No';
+    }
+    return true; // Presencial VIP ya viene filtrado por Notion, no requiere este campo
   });
 
   return candidatos;

@@ -37,6 +37,74 @@ const citasService = require('./citas.service');
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
 const bookingMutex = new Mutex();
 
+// ─────────────────────────────────────────────────────────────
+// DURACIÓN Y RANGO DE FECHAS — confirmado por Laura en la Demo 2 (13-ago),
+// cita textual: "siempre es 30 minutos... siempre el 100% de las veces" y
+// "tiene que ser entre 7 y 8 de octubre... si no puede ninguno de esos dos
+// días, que pregunte". Hardcodeado a propósito (decisión de Adler, 14-ago):
+// es un dato fijo del evento, no algo que deba variar por ambiente.
+//
+// Si el evento cambia de fecha en algún momento (poco probable a estas
+// alturas, pero posible), este es el único lugar que hay que tocar para
+// el rango — la duración es independiente de la fecha del evento.
+// ─────────────────────────────────────────────────────────────
+const DURACION_CITA_MINUTOS = 30;
+const FECHA_EVENTO_INICIO = '2026-10-07'; // primer día válido, inclusive
+const FECHA_EVENTO_FIN = '2026-10-08'; // último día válido, inclusive
+
+/**
+ * Valida que una cita cumpla la duración exacta de 30 minutos y que ambos
+ * extremos caigan dentro del rango del evento (7-8 de octubre de 2026,
+ * inclusive, en cualquier hora de esos días).
+ *
+ * Lanza BookingError('INVALID_INPUT', ...) si algo no cumple — mismo código
+ * que ya usan las demás validaciones de entrada en reservarCita(), para que
+ * el controller lo mapee al mismo 400 sin necesitar un caso nuevo.
+ *
+ * @param {string} inicio - ISO 8601
+ * @param {string} fin - ISO 8601
+ */
+function validarDuracionYFecha(inicio, fin) {
+  const fechaInicio = new Date(inicio);
+  const fechaFin = new Date(fin);
+
+  if (Number.isNaN(fechaInicio.getTime()) || Number.isNaN(fechaFin.getTime())) {
+    throw new BookingError('INVALID_INPUT', '"inicio" o "fin" no son fechas ISO 8601 válidas.');
+  }
+
+  const duracionMinutos = (fechaFin.getTime() - fechaInicio.getTime()) / 60000;
+  if (duracionMinutos !== DURACION_CITA_MINUTOS) {
+    throw new BookingError(
+      'INVALID_INPUT',
+      `Las citas 1a1 duran exactamente ${DURACION_CITA_MINUTOS} minutos (confirmado por Laura). ` +
+        `Esta solicitud tiene una duración de ${duracionMinutos} minutos.`
+    );
+  }
+
+  // Rango de fechas: se compara solo la parte de fecha (no hora), en la
+  // zona horaria en que llega el ISO string — el "día" de un timestamp con
+  // offset ya viene resuelto por el propio formato ISO 8601, no hace falta
+  // reconvertir a America/Mexico_City aquí porque quien arma el request
+  // (el agente/frontend) ya debe mandar el offset correcto.
+  const diaInicio = inicio.slice(0, 10); // 'YYYY-MM-DD'
+  const diaFin = fin.slice(0, 10);
+
+  if (diaInicio < FECHA_EVENTO_INICIO || diaInicio > FECHA_EVENTO_FIN) {
+    throw new BookingError(
+      'INVALID_INPUT',
+      `Las citas 1a1 solo se pueden agendar entre el ${FECHA_EVENTO_INICIO} y el ${FECHA_EVENTO_FIN} ` +
+        `(los dos días del evento). La fecha de inicio solicitada (${diaInicio}) está fuera de ese rango.`
+    );
+  }
+  if (diaFin < FECHA_EVENTO_INICIO || diaFin > FECHA_EVENTO_FIN) {
+    throw new BookingError(
+      'INVALID_INPUT',
+      `Las citas 1a1 solo se pueden agendar entre el ${FECHA_EVENTO_INICIO} y el ${FECHA_EVENTO_FIN} ` +
+        `(los dos días del evento). La fecha de fin solicitada (${diaFin}) está fuera de ese rango.`
+    );
+  }
+}
+
 class BookingError extends Error {
   constructor(code, message) {
     super(message);
@@ -82,6 +150,12 @@ async function reservarCita({
   if (!inicio || !fin) {
     throw new BookingError('INVALID_INPUT', '"inicio" y "fin" son requeridos en formato ISO 8601');
   }
+
+  // Duración exacta de 30 min + rango de fechas del evento — agregado
+  // 14-ago, punto 2.7 del pendiente. Se valida antes del chequeo de
+  // idempotencia a propósito: no tiene sentido gastar una consulta a
+  // Notion por una reserva que de entrada tiene fechas inválidas.
+  validarDuracionYFecha(inicio, fin);
 
   // Chequeo de idempotencia fuera del lock: es solo lectura, no necesita
   // serializarse. Si ya existe, regresamos el resultado anterior tal cual.
@@ -210,4 +284,4 @@ async function reservarCita({
   });
 }
 
-module.exports = { reservarCita, BookingError };
+module.exports = { reservarCita, BookingError, validarDuracionYFecha };
