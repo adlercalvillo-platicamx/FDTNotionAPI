@@ -546,6 +546,9 @@ module.exports = {
   obtenerParesConCitaActiva,
   existeCitaActivaEntreEnCache,
   obtenerDisponibilidadSponsor,
-  // exportado para smoke local de bloques (tests/disponibilidad.local-smoke.js)
+  // exportados para smoke local y para que booking.service.js valide
+  // contra exactamente los mismos slots / fail-fast de horario (14-ago).
   generarBloquesParaFecha,
+  requireHorarioConfigurado,
+  obtenerFechasEvento,
 };

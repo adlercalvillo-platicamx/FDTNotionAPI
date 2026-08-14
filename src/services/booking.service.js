@@ -38,28 +38,25 @@ const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas 
 const bookingMutex = new Mutex();
 
 // ─────────────────────────────────────────────────────────────
-// DURACIÓN Y RANGO DE FECHAS — confirmado por Laura en la Demo 2 (13-ago),
-// cita textual: "siempre es 30 minutos... siempre el 100% de las veces" y
-// "tiene que ser entre 7 y 8 de octubre... si no puede ninguno de esos dos
-// días, que pregunte". Hardcodeado a propósito (decisión de Adler, 14-ago):
-// es un dato fijo del evento, no algo que deba variar por ambiente.
+// DURACIÓN + DÍA DEL EVENTO + HORARIO OPERATIVO (misma fuente que
+// GET /citas/disponibilidad). Confirmado Laura: duración fija 30 min;
+// miércoles/jueves con ventanas distintas vía env.
 //
-// Si el evento cambia de fecha en algún momento (poco probable a estas
-// alturas, pero posible), este es el único lugar que hay que tocar para
-// el rango — la duración es independiente de la fecha del evento.
+// Adler (14-ago, iteración): no basta con "cae en 7 u 8 de octubre" —
+// reservar_cita debe rechazar cualquier inicio que no sea un bloque
+// oficial (p.ej. cruce de medianoche 23:45→00:15, o 09:00 el miércoles).
+// Se reusa generarBloquesParaFecha de citas.service.js para no tener dos
+// listas de slots que puedan divergir.
 // ─────────────────────────────────────────────────────────────
-const DURACION_CITA_MINUTOS = 30;
-const FECHA_EVENTO_INICIO = '2026-10-07'; // primer día válido, inclusive
-const FECHA_EVENTO_FIN = '2026-10-08'; // último día válido, inclusive
+const DURACION_CITA_MINUTOS = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS || 30);
 
 /**
- * Valida que una cita cumpla la duración exacta de 30 minutos y que ambos
- * extremos caigan dentro del rango del evento (7-8 de octubre de 2026,
- * inclusive, en cualquier hora de esos días).
+ * Valida duración exacta, mismo día calendario, día en CITAS_FECHAS_EVENTO,
+ * y que `inicio` sea exactamente uno de los bloques generados por las env
+ * CITAS_HORA_INICIO_/FIN_<fecha> (misma grilla que /citas/disponibilidad).
  *
- * Lanza BookingError('INVALID_INPUT', ...) si algo no cumple — mismo código
- * que ya usan las demás validaciones de entrada en reservarCita(), para que
- * el controller lo mapee al mismo 400 sin necesitar un caso nuevo.
+ * Lanza BookingError('INVALID_INPUT', ...) → 400, o
+ * BookingError('HORARIO_NO_CONFIGURADO', ...) → 503 si faltan env.
  *
  * @param {string} inicio - ISO 8601
  * @param {string} fin - ISO 8601
@@ -72,35 +69,62 @@ function validarDuracionYFecha(inicio, fin) {
     throw new BookingError('INVALID_INPUT', '"inicio" o "fin" no son fechas ISO 8601 válidas.');
   }
 
+  const duracionEsperada = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS || DURACION_CITA_MINUTOS);
   const duracionMinutos = (fechaFin.getTime() - fechaInicio.getTime()) / 60000;
-  if (duracionMinutos !== DURACION_CITA_MINUTOS) {
+  if (duracionMinutos !== duracionEsperada) {
     throw new BookingError(
       'INVALID_INPUT',
-      `Las citas 1a1 duran exactamente ${DURACION_CITA_MINUTOS} minutos (confirmado por Laura). ` +
+      `Las citas 1a1 duran exactamente ${duracionEsperada} minutos (confirmado por Laura). ` +
         `Esta solicitud tiene una duración de ${duracionMinutos} minutos.`
     );
   }
 
-  // Rango de fechas: se compara solo la parte de fecha (no hora), en la
-  // zona horaria en que llega el ISO string — el "día" de un timestamp con
-  // offset ya viene resuelto por el propio formato ISO 8601, no hace falta
-  // reconvertir a America/Mexico_City aquí porque quien arma el request
-  // (el agente/frontend) ya debe mandar el offset correcto.
+  // El "día" viene del prefijo del ISO que manda el llamador (con offset
+  // ya resuelto, p.ej. -06:00). No se reconvierte a America/Mexico_City.
   const diaInicio = inicio.slice(0, 10); // 'YYYY-MM-DD'
   const diaFin = fin.slice(0, 10);
 
-  if (diaInicio < FECHA_EVENTO_INICIO || diaInicio > FECHA_EVENTO_FIN) {
+  if (diaInicio !== diaFin) {
     throw new BookingError(
       'INVALID_INPUT',
-      `Las citas 1a1 solo se pueden agendar entre el ${FECHA_EVENTO_INICIO} y el ${FECHA_EVENTO_FIN} ` +
-        `(los dos días del evento). La fecha de inicio solicitada (${diaInicio}) está fuera de ese rango.`
+      `Las citas 1a1 no pueden cruzar de un día a otro. Inicio (${diaInicio}) y fin (${diaFin}) ` +
+        `deben caer el mismo día del evento, dentro del horario operativo configurado.`
     );
   }
-  if (diaFin < FECHA_EVENTO_INICIO || diaFin > FECHA_EVENTO_FIN) {
+
+  if (!process.env.CITAS_FECHAS_EVENTO) {
+    throw new BookingError(
+      'HORARIO_NO_CONFIGURADO',
+      'Horario de citas 1-a-1 no configurado: falta CITAS_FECHAS_EVENTO. ' +
+        'No se puede validar una reserva sin la misma configuración que usa /citas/disponibilidad.'
+    );
+  }
+
+  const fechasValidas = citasService.obtenerFechasEvento();
+  if (!fechasValidas.includes(diaInicio)) {
     throw new BookingError(
       'INVALID_INPUT',
-      `Las citas 1a1 solo se pueden agendar entre el ${FECHA_EVENTO_INICIO} y el ${FECHA_EVENTO_FIN} ` +
-        `(los dos días del evento). La fecha de fin solicitada (${diaFin}) está fuera de ese rango.`
+      `Las citas 1a1 solo se pueden agendar en las fechas del evento (${fechasValidas.join(', ')}). ` +
+        `La fecha solicitada (${diaInicio}) está fuera de ese rango.`
+    );
+  }
+
+  try {
+    citasService.requireHorarioConfigurado(diaInicio);
+  } catch (err) {
+    if (err.status === 503) {
+      throw new BookingError('HORARIO_NO_CONFIGURADO', err.message);
+    }
+    throw err;
+  }
+
+  const bloques = citasService.generarBloquesParaFecha(diaInicio);
+  if (!bloques.includes(inicio)) {
+    throw new BookingError(
+      'INVALID_INPUT',
+      `El horario de inicio "${inicio}" no es un bloque válido de citas 1a1 para ${diaInicio}. ` +
+        `Solo se pueden agendar los bloques que expone GET /citas/disponibilidad ` +
+        `(mismo horario de entorno: primer bloque ${bloques[0]}, último ${bloques[bloques.length - 1]}).`
     );
   }
 }
@@ -151,10 +175,9 @@ async function reservarCita({
     throw new BookingError('INVALID_INPUT', '"inicio" y "fin" son requeridos en formato ISO 8601');
   }
 
-  // Duración exacta de 30 min + rango de fechas del evento — agregado
-  // 14-ago, punto 2.7 del pendiente. Se valida antes del chequeo de
-  // idempotencia a propósito: no tiene sentido gastar una consulta a
-  // Notion por una reserva que de entrada tiene fechas inválidas.
+  // Duración + día del evento + bloque operativo (mismas env que
+  // /citas/disponibilidad). Antes del chequeo de idempotencia: no gastar
+  // Notion en una reserva con horario inválido de entrada.
   validarDuracionYFecha(inicio, fin);
 
   // Chequeo de idempotencia fuera del lock: es solo lectura, no necesita

@@ -215,9 +215,28 @@ ok('Explicación Presencial (no VIP) + Consolidado: ambas frases, orden correcto
   assert.ok(iPres < iMad && iMad < iCuota, `orden mal: ${texto}`);
 });
 
-console.log('\n=== DIFF-13 booking — duración + rango fechas ===');
-ok('Caso feliz 30 min dentro de rango', () => {
+console.log('\n=== DIFF-13 booking — duración + bloques de env (igual que /disponibilidad) ===');
+// Misma config que Coolify / smoke de disponibilidad — sin esto la validación
+// nueva no puede generar la grilla oficial de slots.
+process.env.CITAS_FECHAS_EVENTO = '2026-10-07,2026-10-08';
+process.env.CITAS_DURACION_BLOQUE_MINUTOS = '30';
+process.env.CITAS_ZONA_HORARIA_OFFSET = '-06:00';
+process.env.CITAS_HORA_INICIO_2026_10_07 = '10:30';
+process.env.CITAS_HORA_FIN_2026_10_07 = '19:00';
+process.env.CITAS_HORA_INICIO_2026_10_08 = '09:00';
+process.env.CITAS_HORA_FIN_2026_10_08 = '18:00';
+
+ok('Caso feliz: primer bloque miércoles 10:30', () => {
   validarDuracionYFecha('2026-10-07T10:30:00-06:00', '2026-10-07T11:00:00-06:00');
+});
+ok('Caso feliz: último bloque miércoles 18:30', () => {
+  validarDuracionYFecha('2026-10-07T18:30:00-06:00', '2026-10-07T19:00:00-06:00');
+});
+ok('Caso feliz: primer bloque jueves 09:00', () => {
+  validarDuracionYFecha('2026-10-08T09:00:00-06:00', '2026-10-08T09:30:00-06:00');
+});
+ok('Caso feliz: último bloque jueves 17:30→18:00', () => {
+  validarDuracionYFecha('2026-10-08T17:30:00-06:00', '2026-10-08T18:00:00-06:00');
 });
 ok('Duración 45 min → INVALID_INPUT', () => {
   assert.throws(
@@ -231,26 +250,65 @@ ok('Duración 15 min → INVALID_INPUT', () => {
     (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /15 minutos/.test(e.message)
   );
 });
-ok('Fecha 6 oct → fuera de rango', () => {
+ok('Fecha 6 oct → fuera de CITAS_FECHAS_EVENTO', () => {
   assert.throws(
     () => validarDuracionYFecha('2026-10-06T10:30:00-06:00', '2026-10-06T11:00:00-06:00'),
-    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /fuera de ese rango/.test(e.message)
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /fechas del evento/.test(e.message)
   );
 });
-ok('Fecha 9 oct → fuera de rango', () => {
+ok('Fecha 9 oct → fuera de CITAS_FECHAS_EVENTO', () => {
   assert.throws(
     () => validarDuracionYFecha('2026-10-09T10:30:00-06:00', '2026-10-09T11:00:00-06:00'),
-    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /fuera de ese rango/.test(e.message)
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /fechas del evento/.test(e.message)
   );
 });
-ok('Cruce medianoche 7→8 oct → DEBE PASAR', () => {
-  validarDuracionYFecha('2026-10-07T23:45:00-06:00', '2026-10-08T00:15:00-06:00');
+ok('Cruce medianoche 7→8 oct → DEBE RECHAZARSE', () => {
+  assert.throws(
+    () => validarDuracionYFecha('2026-10-07T23:45:00-06:00', '2026-10-08T00:15:00-06:00'),
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /cruzar de un día/.test(e.message)
+  );
+});
+ok('Miércoles 09:00 (antes de 10:30) → rechazado', () => {
+  assert.throws(
+    () => validarDuracionYFecha('2026-10-07T09:00:00-06:00', '2026-10-07T09:30:00-06:00'),
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /no es un bloque válido/.test(e.message)
+  );
+});
+ok('Miércoles 19:00 como inicio → rechazado (fuera de grilla)', () => {
+  assert.throws(
+    () => validarDuracionYFecha('2026-10-07T19:00:00-06:00', '2026-10-07T19:30:00-06:00'),
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /no es un bloque válido/.test(e.message)
+  );
+});
+ok('Jueves 18:00 como inicio → rechazado (último bloque es 17:30)', () => {
+  assert.throws(
+    () => validarDuracionYFecha('2026-10-08T18:00:00-06:00', '2026-10-08T18:30:00-06:00'),
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /no es un bloque válido/.test(e.message)
+  );
+});
+ok('Offset distinto al de env → no matchea bloque literal', () => {
+  assert.throws(
+    () => validarDuracionYFecha('2026-10-07T10:30:00-05:00', '2026-10-07T11:00:00-05:00'),
+    (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /no es un bloque válido/.test(e.message)
+  );
 });
 ok('Fecha no parseable → INVALID_INPUT claro', () => {
   assert.throws(
     () => validarDuracionYFecha('no-es-fecha', '2026-10-07T11:00:00-06:00'),
     (e) => e instanceof BookingError && e.code === 'INVALID_INPUT' && /ISO 8601/.test(e.message)
   );
+});
+ok('Sin CITAS_HORA_INICIO del día → HORARIO_NO_CONFIGURADO (503)', () => {
+  const backup = process.env.CITAS_HORA_INICIO_2026_10_07;
+  delete process.env.CITAS_HORA_INICIO_2026_10_07;
+  try {
+    assert.throws(
+      () => validarDuracionYFecha('2026-10-07T10:30:00-06:00', '2026-10-07T11:00:00-06:00'),
+      (e) => e instanceof BookingError && e.code === 'HORARIO_NO_CONFIGURADO' && /CITAS_HORA_INICIO_2026_10_07/.test(e.message)
+    );
+  } finally {
+    process.env.CITAS_HORA_INICIO_2026_10_07 = backup;
+  }
 });
 
 console.log('\n=== Tipos boleto elegibles (DIFF-1 B.2) ===');

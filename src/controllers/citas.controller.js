@@ -5,6 +5,7 @@ const { obtenerDisponibilidadSponsor } = require('../services/citas.service');
 
 const STATUS_POR_CODIGO_NEGOCIO = {
   INVALID_INPUT: 400,
+  HORARIO_NO_CONFIGURADO: 503,
   SPONSOR_YA_OCUPADO: 409,
   CAPACIDAD_MESAS_LLENA: 409,
   CALENDAR_FALLO: 502,

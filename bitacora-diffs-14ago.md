@@ -73,11 +73,34 @@ Prioridades del prompt:
 | Subagente Matchmaking | `gZ4oJ84r1JT79zd9AEZg` | Prompt: rename identidad + dataset sin "demo" + notas Virtual/Presencial y Madurez Negocio; **nombre UI** → `Agente 1 — Subagente Matchmaking, Citas y Checklist` |
 | Enriquecimiento Exa | `vhmqfLCnNLKsBDh2HEd2` | **No tocado** (fuera de alcance) |
 
-## Pendiente todavía
+## Post-redeploy Coolify (Adler redeployó; verificación Cursor)
 
-1. **Redeploy manual Coolify** + confirmar `/health` = healthy
-2. Prueba MCP real post-redeploy: 2× `sugerir_matches_para_sponsor`, 2× `reservar_cita` (inválida + válida)
-3. Docs: Adler (DIFF-3…9, 12, 14)
+Base: `https://f8wwwgc0g88wccscww4cccco.appsplatica.site`
+
+| Prueba | Resultado | Evidencia |
+|---|---|---|
+| `GET /health` | **PASS** | `{"status":"ok","service":"fdt-notion-api",...}` |
+| `sugerir_matches` Blip (Cristal) | **PASS** | HTTP 200 — 24 eval / 8 top; todas con línea `presencial:` (+150 vivo) |
+| `sugerir_matches` Magali Parra | **PASS** | HTTP 200 — 7 eval / 2 top; `presencial:` presente; madurez 0 en top (campo vacío dominante) |
+| `reservar_cita` 45 min | **PASS** | HTTP **400** `INVALID_INPUT` — duración exacta 30 min |
+| `reservar_cita` 6 oct | **PASS** | HTTP **400** `INVALID_INPUT` — fuera de rango 7–8 oct |
+| `reservar_cita` válida 30 min 8-oct 10:00 | **PASS** | HTTP **201** Confirmada — `request_id` `defba09c-…`, Notion `3bc90fe2-7345-8106-9309-e683aa9cc625`, Calendar `ok51n1eiinn67gt2dag42gbmj4` |
+
+Cleanup de la Confirmada de prueba: Notion `Estatus` → `Cancelada` en `3bc90fe2-7345-8106-9309-e683aa9cc625`; `GET disponibilidad` Magali jueves vuelve a marcar `10:00` como libre.
+
+## Iteración — horario operativo también en `reservarCita` (mismo día)
+
+Pedido de Adler tras el redeploy: el cruce de medianoche no debía pasar; solo
+bloques de las env (igual que `/citas/disponibilidad`).
+
+**Cambio:** `validarDuracionYFecha` ahora exige mismo día, día ∈ `CITAS_FECHAS_EVENTO`,
+horario env presente (si no → `HORARIO_NO_CONFIGURADO` / 503), y `inicio` ∈
+`generarBloquesParaFecha(día)` (misma grilla). Controller mapea el código nuevo a 503.
+
+**Tests:** `tests/sesion-14ago-diffs.manual-test.js` — medianoche rechazada; 09:00 mié
+rechazado; 18:30 mié / 09:00 jue OK; fail-fast sin env. Smoke disponibilidad intacto.
+
+**Pendiente:** commit + push + redeploy Coolify para que producción lo tome.
 
 ## Desviaciones del plan
 
