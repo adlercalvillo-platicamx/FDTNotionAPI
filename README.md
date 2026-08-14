@@ -95,11 +95,11 @@ Ver `.env.example`. Resumen:
 - `GOOGLE_API_BASE_URL`, `GOOGLE_API_KEY`, `GOOGLE_API_CLIENTE_ID` — para llamar HACIA `platica-google-docs-api`. `GOOGLE_API_CLIENTE_ID` requiere que la cuenta de Google de los sponsors ya esté conectada por OAuth en ese servicio (Adler lo maneja directamente, no es parte de este repo).
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
   - `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`
-  - `CITAS_HORA_INICIO_2026-10-07` / `CITAS_HORA_FIN_2026-10-07` (mié: `10:30` / `19:00`)
-  - `CITAS_HORA_INICIO_2026-10-08` / `CITAS_HORA_FIN_2026-10-08` (jue: `09:00` / `18:00`)
+  - `CITAS_HORA_INICIO_2026_10_07` / `CITAS_HORA_FIN_2026_10_07` (mié: `10:30` / `19:00`)
+  - `CITAS_HORA_INICIO_2026_10_08` / `CITAS_HORA_FIN_2026_10_08` (jue: `09:00` / `18:00`)
   - `CITAS_DURACION_BLOQUE_MINUTOS=30`
   - `CITAS_ZONA_HORARIA_OFFSET=-06:00`
-  - ⚠️ Los nombres con guiones (`CITAS_HORA_INICIO_2026-10-07`) son intencionales: el código hace `process.env[\`CITAS_HORA_INICIO_${fecha}\`]`. Coolify y el código deben coincidir letra por letra o el endpoint responde `503`.
+  - ⚠️ Underscores en la fecha del Name (`2026_10_07`), no guiones. Coolify no inyecta env vars cuyo Name lleva `-` (confirmado 14-ago: la UI las mostraba pero el proceso respondía 503). El query param `fecha` del API sigue con guiones (`2026-10-07`).
 
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.

@@ -15,8 +15,8 @@ async function main() {
   let fallos = 0;
 
   // --- Caso 4b: 503 si falta horario para la fecha ---
-  delete process.env['CITAS_HORA_INICIO_2026-10-07'];
-  delete process.env['CITAS_HORA_FIN_2026-10-07'];
+  delete process.env.CITAS_HORA_INICIO_2026_10_07;
+  delete process.env.CITAS_HORA_FIN_2026_10_07;
   process.env.CITAS_FECHAS_EVENTO = '2026-10-07,2026-10-08';
   try {
     await citas.obtenerDisponibilidadSponsor({
@@ -26,7 +26,7 @@ async function main() {
     console.log('❌ 503 esperado cuando falta horario — no lanzó');
     fallos += 1;
   } catch (err) {
-    if (err.status === 503 && /CITAS_HORA_INICIO_2026-10-07/.test(err.message)) {
+    if (err.status === 503 && /CITAS_HORA_INICIO_2026_10_07/.test(err.message)) {
       console.log('✅ Caso 4b — 503 fail-fast sin horario');
     } else {
       console.log('❌ Caso 4b inesperado:', err.status, err.message);
@@ -35,8 +35,8 @@ async function main() {
   }
 
   // --- Caso 4: 400 fecha fuera del evento ---
-  process.env['CITAS_HORA_INICIO_2026-10-07'] = '10:30';
-  process.env['CITAS_HORA_FIN_2026-10-07'] = '19:00';
+  process.env.CITAS_HORA_INICIO_2026_10_07 = '10:30';
+  process.env.CITAS_HORA_FIN_2026_10_07 = '19:00';
   try {
     await citas.obtenerDisponibilidadSponsor({
       sponsorPageId: '00000000-0000-0000-0000-000000000000',
@@ -56,8 +56,8 @@ async function main() {
   // --- Caso 4c: bloques reales del service ---
   process.env.CITAS_DURACION_BLOQUE_MINUTOS = '30';
   process.env.CITAS_ZONA_HORARIA_OFFSET = '-06:00';
-  process.env['CITAS_HORA_INICIO_2026-10-08'] = '09:00';
-  process.env['CITAS_HORA_FIN_2026-10-08'] = '18:00';
+  process.env.CITAS_HORA_INICIO_2026_10_08 = '09:00';
+  process.env.CITAS_HORA_FIN_2026_10_08 = '18:00';
 
   try {
     const mie = citas.generarBloquesParaFecha('2026-10-07');

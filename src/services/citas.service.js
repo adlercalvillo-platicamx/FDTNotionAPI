@@ -427,8 +427,20 @@ function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePa
 // de mesas, actualizar ambos.
 const CAPACIDAD_MAXIMA_MESAS = 11;
 
+/**
+ * Coolify / Docker / shells POSIX no inyectan Names de env con guiones
+ * (confirmado 14-ago: CITAS_HORA_*_2026-10-07 aparecían en la UI de
+ * Coolify pero process.env las veía undefined; CITAS_FECHAS_EVENTO sí
+ * llegaba). El query param sigue siendo "2026-10-07"; la clave de env
+ * usa underscores: CITAS_HORA_INICIO_2026_10_07.
+ */
+function fechaEnvKey(fecha) {
+  return String(fecha).replace(/-/g, '_');
+}
+
 function requireHorarioConfigurado(fecha) {
-  const faltantes = ['CITAS_FECHAS_EVENTO', `CITAS_HORA_INICIO_${fecha}`, `CITAS_HORA_FIN_${fecha}`].filter(
+  const key = fechaEnvKey(fecha);
+  const faltantes = ['CITAS_FECHAS_EVENTO', `CITAS_HORA_INICIO_${key}`, `CITAS_HORA_FIN_${key}`].filter(
     (variable) => !process.env[variable]
   );
   if (faltantes.length > 0) {
@@ -445,16 +457,18 @@ function requireHorarioConfigurado(fecha) {
 
 /**
  * Genera los bloques de 30 min (o CITAS_DURACION_BLOQUE_MINUTOS) para una
- * fecha, a partir de CITAS_HORA_INICIO_<fecha> / CITAS_HORA_FIN_<fecha>.
- * Timestamps ISO exactos alineados — misma igualdad que espera
- * contarCitasEnBloque / sponsorOcupadoEnBloque / reservar_cita.
+ * fecha, a partir de CITAS_HORA_INICIO_<fecha_con_underscores> /
+ * CITAS_HORA_FIN_<fecha_con_underscores>. Timestamps ISO exactos
+ * alineados — misma igualdad que espera contarCitasEnBloque /
+ * sponsorOcupadoEnBloque / reservar_cita.
  */
 function generarBloquesParaFecha(fecha) {
   const zona = process.env.CITAS_ZONA_HORARIA_OFFSET || '-06:00';
   const duracionMin = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS || 30);
+  const key = fechaEnvKey(fecha);
 
-  const [horaInicioH, horaInicioM] = process.env[`CITAS_HORA_INICIO_${fecha}`].split(':').map(Number);
-  const [horaFinH, horaFinM] = process.env[`CITAS_HORA_FIN_${fecha}`].split(':').map(Number);
+  const [horaInicioH, horaInicioM] = process.env[`CITAS_HORA_INICIO_${key}`].split(':').map(Number);
+  const [horaFinH, horaFinM] = process.env[`CITAS_HORA_FIN_${key}`].split(':').map(Number);
 
   const minutosInicio = horaInicioH * 60 + horaInicioM;
   const minutosFin = horaFinH * 60 + horaFinM;
