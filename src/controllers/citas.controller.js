@@ -1,6 +1,7 @@
 // src/controllers/citas.controller.js
 
 const { reservarCita, BookingError } = require('../services/booking.service');
+const { obtenerDisponibilidadSponsor } = require('../services/citas.service');
 
 const STATUS_POR_CODIGO_NEGOCIO = {
   INVALID_INPUT: 400,
@@ -80,4 +81,63 @@ async function reservar(req, res) {
   }
 }
 
-module.exports = { reservar };
+// ─────────────────────────────────────────────────────────────
+// GET /citas/disponibilidad?sponsor_notion_id=...&fecha=2026-10-07
+//
+// Solo lectura — para que el formulario (WhatsApp Flow / mini web app)
+// sepa qué horarios ofrecerle al asistente antes de que intente
+// reservar. No es una garantía de que el horario siga libre al momento
+// de confirmar (ver nota en el service) — reservar_cita sigue siendo la
+// verificación final y autoritativa.
+// ─────────────────────────────────────────────────────────────
+async function disponibilidad(req, res) {
+  const { sponsor_notion_id, fecha } = req.query;
+
+  if (!sponsor_notion_id) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'El parámetro "sponsor_notion_id" es requerido.',
+    });
+  }
+  if (!fecha) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'El parámetro "fecha" es requerido (formato "2026-10-07" o "2026-10-08").',
+    });
+  }
+
+  try {
+    const bloques = await obtenerDisponibilidadSponsor({
+      sponsorPageId: sponsor_notion_id,
+      fecha,
+    });
+
+    return res.status(200).json({
+      sponsor_notion_id,
+      fecha,
+      bloques,
+    });
+  } catch (error) {
+    // Fecha fuera del evento → error controlado (400), es un dato inválido del cliente.
+    if (error.status === 400) {
+      return res.status(400).json({ error: 'Bad Request', message: error.message });
+    }
+
+    // Horario de citas todavía no configurado en variables de entorno para
+    // esa fecha (pendiente de negocio, no un bug) → 503 explícito, NUNCA
+    // debe caer en el 500 genérico de abajo. El formulario/Cursor tiene que
+    // poder distinguir "esto está mal construido" de "esto está bien
+    // construido pero la variable de entorno todavía no se puso".
+    if (error.status === 503) {
+      return res.status(503).json({ error: 'Service Unavailable', message: error.message });
+    }
+
+    console.error('[CitasController] Error en disponibilidad:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Error al consultar disponibilidad. Revisa los logs.',
+    });
+  }
+}
+
+module.exports = { reservar, disponibilidad };

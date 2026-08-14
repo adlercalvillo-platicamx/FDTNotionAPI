@@ -409,6 +409,114 @@ function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePa
   return paresActivos.has(`${sponsorPageId}|${asistentePageId}`);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// GET /citas/disponibilidad — solo lectura para el formulario de
+// horarios (WhatsApp Flow / botones / mini web app).
+//
+// Reusa sponsorOcupadoEnBloque y contarCitasEnBloque tal cual — no
+// reimplementa la regla de negocio. POST /citas/reservar sigue siendo
+// la única fuente de verdad al confirmar (esta es una foto del momento).
+//
+// Horario POR FECHA vía env (confirmado Laura 14-ago): miércoles y
+// jueves NO comparten el mismo rango. Sin esas variables → 503, nunca
+// inventar bloques de respaldo.
+// ═══════════════════════════════════════════════════════════════
+
+// Mismo valor que booking.service.js — duplicado a propósito para no
+// acoplar este service de lectura al de escritura. Si cambia el límite
+// de mesas, actualizar ambos.
+const CAPACIDAD_MAXIMA_MESAS = 11;
+
+function requireHorarioConfigurado(fecha) {
+  const faltantes = ['CITAS_FECHAS_EVENTO', `CITAS_HORA_INICIO_${fecha}`, `CITAS_HORA_FIN_${fecha}`].filter(
+    (variable) => !process.env[variable]
+  );
+  if (faltantes.length > 0) {
+    const err = new Error(
+      `Horario de citas 1-a-1 no configurado para "${fecha}". ` +
+        `Faltan las variables de entorno: ${faltantes.join(', ')}. ` +
+        `No se puede calcular disponibilidad sin esto — servir un horario de ejemplo daría ` +
+        `una respuesta falsa, no una respuesta incompleta.`
+    );
+    err.status = 503; // Service Unavailable: precondición de configuración, no 500 genérico
+    throw err;
+  }
+}
+
+/**
+ * Genera los bloques de 30 min (o CITAS_DURACION_BLOQUE_MINUTOS) para una
+ * fecha, a partir de CITAS_HORA_INICIO_<fecha> / CITAS_HORA_FIN_<fecha>.
+ * Timestamps ISO exactos alineados — misma igualdad que espera
+ * contarCitasEnBloque / sponsorOcupadoEnBloque / reservar_cita.
+ */
+function generarBloquesParaFecha(fecha) {
+  const zona = process.env.CITAS_ZONA_HORARIA_OFFSET || '-06:00';
+  const duracionMin = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS || 30);
+
+  const [horaInicioH, horaInicioM] = process.env[`CITAS_HORA_INICIO_${fecha}`].split(':').map(Number);
+  const [horaFinH, horaFinM] = process.env[`CITAS_HORA_FIN_${fecha}`].split(':').map(Number);
+
+  const minutosInicio = horaInicioH * 60 + horaInicioM;
+  const minutosFin = horaFinH * 60 + horaFinM;
+
+  const bloques = [];
+  for (let m = minutosInicio; m < minutosFin; m += duracionMin) {
+    const h = String(Math.floor(m / 60)).padStart(2, '0');
+    const min = String(m % 60).padStart(2, '0');
+    bloques.push(`${fecha}T${h}:${min}:00${zona}`);
+  }
+  return bloques;
+}
+
+function obtenerFechasEvento() {
+  return process.env.CITAS_FECHAS_EVENTO.split(',').map((f) => f.trim());
+}
+
+/**
+ * Lista de bloques con disponible/motivo para un sponsor y fecha.
+ *
+ * @param {object} params
+ * @param {string} params.sponsorPageId
+ * @param {string} params.fecha - "2026-10-07" o "2026-10-08"
+ * @returns {Promise<Array<{inicio: string, disponible: boolean, motivo: string|null}>>}
+ */
+async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
+  requireDataSourceId();
+
+  const fechasValidas = obtenerFechasEvento();
+  if (!fechasValidas.includes(fecha)) {
+    const err = new Error(`"${fecha}" no es una fecha del evento. Fechas válidas: ${fechasValidas.join(', ')}`);
+    err.status = 400;
+    throw err;
+  }
+
+  requireHorarioConfigurado(fecha);
+
+  const bloques = generarBloquesParaFecha(fecha);
+
+  // Una consulta a Notion por bloque, en paralelo — mismo patrón que
+  // booking.service.js. ~16 bloques/día; vigilar rate limit de Notion
+  // si el formulario consulta mucho en paralelo.
+  const resultados = await Promise.all(
+    bloques.map(async (inicio) => {
+      const [sponsorOcupado, citasEnBloque] = await Promise.all([
+        sponsorOcupadoEnBloque({ sponsorPageId, inicio }),
+        contarCitasEnBloque({ inicio }),
+      ]);
+
+      if (sponsorOcupado) {
+        return { inicio, disponible: false, motivo: 'SPONSOR_YA_OCUPADO' };
+      }
+      if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
+        return { inicio, disponible: false, motivo: 'CAPACIDAD_MESAS_LLENA' };
+      }
+      return { inicio, disponible: true, motivo: null };
+    })
+  );
+
+  return resultados;
+}
+
 module.exports = {
   contarCitasEnBloque,
   sponsorOcupadoEnBloque,
@@ -423,4 +531,7 @@ module.exports = {
   existeCitaActivaEntre,
   obtenerParesConCitaActiva,
   existeCitaActivaEntreEnCache,
+  obtenerDisponibilidadSponsor,
+  // exportado para smoke local de bloques (tests/disponibilidad.local-smoke.js)
+  generarBloquesParaFecha,
 };
