@@ -1,18 +1,59 @@
 // tests/disponibilidad.local-smoke.js
-// Smoke local SIN Notion / Coolify: Caso 4 (400), 4b (503), 4c (bloques).
+// Smoke local SIN Notion / Coolify: Caso 4 (400), 4b (503), 4c (bloques),
+// Caso 6 (UUID mal formado → 400 limpio en controller).
 // No sustituye los casos 1–3 / 5–7 de tests-disponibilidad.md (post-deploy).
 
 process.env.NOTION_CITAS_DATA_SOURCE_ID =
   process.env.NOTION_CITAS_DATA_SOURCE_ID || 'fake-for-local-smoke';
 
 const citas = require('../src/services/citas.service');
+const { disponibilidad, esUuidCanonico } = require('../src/controllers/citas.controller');
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+/** Mini mock Express para probar el controller sin levantar el server. */
+function mockRes() {
+  return {
+    statusCode: null,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
+}
+
 async function main() {
   let fallos = 0;
+
+  // --- Caso 6: UUID mal formado → 400 controlado (no llega a Notion) ---
+  try {
+    assert(esUuidCanonico('3b790fe2-7345-8164-bc7e-ec3c81a07486') === true, 'UUID Magali debe pasar');
+    assert(esUuidCanonico('not-a-uuid') === false, 'not-a-uuid debe fallar');
+    assert(esUuidCanonico('3b790fe273458164bc7eec3c81a07486') === false, 'sin guiones: rechazar (canónico exige guiones)');
+    assert(esUuidCanonico('3a790fe2-7345-8164-bc7e-ec3c81a0748') === false, 'UUID truncado debe fallar');
+
+    const resBad = mockRes();
+    await disponibilidad(
+      { query: { sponsor_notion_id: 'sponsor-inventado', fecha: '2026-10-07' } },
+      resBad
+    );
+    assert(resBad.statusCode === 400, `status=${resBad.statusCode}`);
+    assert(
+      resBad.body?.message === 'sponsor_notion_id debe ser un UUID válido',
+      `message=${resBad.body?.message}`
+    );
+    console.log('✅ Caso 6 — UUID mal formado → 400 limpio (sin Notion)');
+  } catch (e) {
+    console.log('❌ Caso 6:', e.message);
+    fallos += 1;
+  }
 
   // --- Caso 4b: 503 si falta horario para la fecha ---
   delete process.env.CITAS_HORA_INICIO_2026_10_07;
@@ -86,7 +127,7 @@ async function main() {
     console.error(`\n${fallos} fallo(s)`);
     process.exit(1);
   }
-  console.log('\n=== Smoke local OK (4 / 4b / 4c). Notion 1–3 y 5–7 → post-Coolify ===');
+  console.log('\n=== Smoke local OK (4 / 4b / 4c / 6). Notion 1–3 y 5–7 → post-Coolify ===');
 }
 
 main().catch((err) => {

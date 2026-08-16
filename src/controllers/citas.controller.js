@@ -12,6 +12,16 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   NOTION_FALLO: 502,
 };
 
+// UUID canónico con guiones (8-4-4-4-12). Caso 6 de disponibilidad (14-ago):
+// sin este chequeo, un id mal formado llega a Notion y el cliente recibe el
+// mensaje crudo de validación de Notion. Con él → 400 controlado.
+const UUID_CANONICO_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function esUuidCanonico(valor) {
+  return UUID_CANONICO_RE.test(String(valor || ''));
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /citas/reservar
 // ─────────────────────────────────────────────────────────────
@@ -100,6 +110,12 @@ async function disponibilidad(req, res) {
       message: 'El parámetro "sponsor_notion_id" es requerido.',
     });
   }
+  if (!esUuidCanonico(sponsor_notion_id)) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'sponsor_notion_id debe ser un UUID válido',
+    });
+  }
   if (!fecha) {
     return res.status(400).json({
       error: 'Bad Request',
@@ -141,4 +157,4 @@ async function disponibilidad(req, res) {
   }
 }
 
-module.exports = { reservar, disponibilidad };
+module.exports = { reservar, disponibilidad, esUuidCanonico };
