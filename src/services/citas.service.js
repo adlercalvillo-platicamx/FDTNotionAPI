@@ -39,7 +39,12 @@ async function contarCitasEnBloque({ inicio }) {
     body: JSON.stringify({
       filter: {
         and: [
-          { property: 'Estatus', select: { equals: 'Confirmada' } },
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Confirmada' } },
+              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+            ],
+          },
           { property: 'Fecha y Hora', date: { equals: inicio } },
         ],
       },
@@ -49,9 +54,10 @@ async function contarCitasEnBloque({ inicio }) {
 }
 
 /**
- * Verifica si un sponsor específico ya tiene una cita CONFIRMADA en ese
- * mismo horario (regla: 1 cita por sponsor por bloque, porque solo tiene
- * un agente comercial disponible). El sponsor vive en "Contacto Match".
+ * Verifica si un sponsor específico ya tiene una cita CONFIRMADA (o
+ * Confirmada sin notificar) en ese mismo horario (regla: 1 cita por
+ * sponsor por bloque, porque solo tiene un agente comercial disponible).
+ * El sponsor vive en "Contacto Match".
  */
 async function sponsorOcupadoEnBloque({ sponsorPageId, inicio }) {
   requireDataSourceId();
@@ -60,7 +66,12 @@ async function sponsorOcupadoEnBloque({ sponsorPageId, inicio }) {
     body: JSON.stringify({
       filter: {
         and: [
-          { property: 'Estatus', select: { equals: 'Confirmada' } },
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Confirmada' } },
+              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+            ],
+          },
           { property: 'Contacto Match', relation: { contains: sponsorPageId } },
           { property: 'Fecha y Hora', date: { equals: inicio } },
         ],
@@ -130,6 +141,90 @@ async function confirmarCita({ notionPageId, eventoId }) {
   });
 }
 
+/**
+ * Degrada una cita ya Confirmada (Calendar + Notion OK) a "Confirmada sin
+ * notificar" cuando el envío del correo/ICS al sponsor falló. La cita NUNCA
+ * se revierte aquí — Calendar y Notion ya son ciertos, lo único que falta
+ * es que el sponsor se entere. Reusa "Notas Envio Email" (separado de
+ * "Notas", que ya se usa para motivos de falla de booking y explicaciones
+ * de match — mezclarlos ensuciaría ambos usos).
+ *
+ * "Intentos Envio Email" se incrementa aquí, no se resetea — lo resetea
+ * únicamente confirmarNotificacionEnviada() cuando el reintento sí funciona.
+ */
+async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle, intentosPrevios }) {
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Estatus: { select: { name: 'Confirmada sin notificar' } },
+        'Notas Envio Email': {
+          rich_text: [
+            {
+              text: {
+                content: `[${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
+              },
+            },
+          ],
+        },
+        'Intentos Envio Email': { number: (intentosPrevios || 0) + 1 },
+      },
+    }),
+  });
+}
+
+/**
+ * Marca la notificación como enviada exitosamente — pasa de "Confirmada sin
+ * notificar" de vuelta a "Confirmada" y limpia "Notas Envio Email" (deja de
+ * ser relevante una vez resuelto; el historial de intentos fallidos no se
+ * conserva a propósito, para no confundir con el estatus actual real).
+ */
+async function confirmarNotificacionEnviada(notionPageId) {
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Estatus: { select: { name: 'Confirmada' } },
+        'Notas Envio Email': { rich_text: [] },
+        'Intentos Envio Email': { number: 0 },
+      },
+    }),
+  });
+}
+
+/**
+ * Busca todas las citas en "Confirmada sin notificar" con menos de
+ * maxIntentos ya registrados en "Intentos Envio Email" — usado por el cron
+ * de reintento automático. Las que ya llegaron al límite se excluyen aquí
+ * mismo (no las trae el cron, evita loop infinito de reintentos inútiles
+ * en correos que nunca van a funcionar solos, ej. dirección inválida).
+ *
+ * NOTA: filtro de "Intentos Envio Email" se hace en JS post-query, no en el
+ * filtro de Notion — mismo patrón ya establecido en el proyecto (post-filtro
+ * en JS para condiciones que agregarían un 3er nivel de anidamiento al
+ * filtro compuesto; aquí es solo por simplicidad, es un solo campo number
+ * pero el volumen esperado es bajo, no vale la pena la complejidad extra).
+ */
+async function buscarCitasSinNotificarParaReintentar(maxIntentos) {
+  requireDataSourceId();
+  const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+    }),
+  });
+  return data.results.filter((fila) => {
+    const intentos = fila.properties?.['Intentos Envio Email']?.number || 0;
+    return intentos < maxIntentos;
+  });
+}
+
+/** GET directo de una página de Citas por su notion_page_id. Usado por
+ * reintentarNotificacion() para leer el estado actual antes de decidir. */
+async function obtenerCitaPorId(notionPageId) {
+  return notionFetch(`/pages/${notionPageId}`, { method: 'GET' });
+}
+
 /** Marca la cita como fallida (para auditoría / reconciliación posterior). Reusa "Notas". */
 async function marcarCitaFallida({ notionPageId, motivo }) {
   return notionFetch(`/pages/${notionPageId}`, {
@@ -156,7 +251,12 @@ async function contarCitasConfirmadasPorSponsor(sponsorPageId) {
     body: JSON.stringify({
       filter: {
         and: [
-          { property: 'Estatus', select: { equals: 'Confirmada' } },
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Confirmada' } },
+              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+            ],
+          },
           { property: 'Contacto Match', relation: { contains: sponsorPageId } },
         ],
       },
@@ -282,6 +382,9 @@ async function marcarCitaAprobada(notionPageId) {
  * sugerir_matches_para_sponsor podría volver a sugerir (y crear una fila
  * duplicada para) un par que ya está esperando decisión o ya fue aprobado
  * pero aún no se convirtió en cita real.
+ * CORRECCIÓN (17 de agosto): también "Confirmada sin notificar" — cita real
+ * (Calendar + Notion) a la que solo le faltó el correo/ICS; sin esto el
+ * matchmaking individual volvería a sugerir el mismo par.
  */
 async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
   requireDataSourceId();
@@ -297,6 +400,7 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
               { property: 'Estatus', select: { equals: 'Sugerido' } },
               { property: 'Estatus', select: { equals: 'Aprobado' } },
               { property: 'Estatus', select: { equals: 'Confirmada' } },
+              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
               { property: 'Estatus', select: { equals: 'Pendiente Calendar' } },
             ],
           },
@@ -328,7 +432,7 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
 // prácticamente siempre 1 con el volumen actual del proyecto).
 // ═══════════════════════════════════════════════════════════════
 
-const ESTATUS_ACTIVOS = ['Sugerido', 'Aprobado', 'Confirmada', 'Pendiente Calendar'];
+const ESTATUS_ACTIVOS = ['Sugerido', 'Aprobado', 'Confirmada', 'Confirmada sin notificar', 'Pendiente Calendar'];
 
 /**
  * Trae TODAS las filas de Citas cuyo Estatus esté en ESTATUS_ACTIVOS, con
@@ -540,6 +644,10 @@ module.exports = {
   crearCitaPendiente,
   confirmarCita,
   marcarCitaFallida,
+  marcarCitaConfirmadaSinNotificar,
+  confirmarNotificacionEnviada,
+  buscarCitasSinNotificarParaReintentar,
+  obtenerCitaPorId,
   contarCitasConfirmadasPorSponsor,
   crearCitaSugerida,
   buscarSugerenciasPendientesPorSponsor,

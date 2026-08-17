@@ -1,13 +1,23 @@
 // src/controllers/citas.controller.js
 
-const { reservarCita, BookingError } = require('../services/booking.service');
+const {
+  reservarCita,
+  reintentarNotificacion,
+  BookingError,
+} = require('../services/booking.service');
 const { obtenerDisponibilidadSponsor } = require('../services/citas.service');
+const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 
 const STATUS_POR_CODIGO_NEGOCIO = {
   INVALID_INPUT: 400,
   HORARIO_NO_CONFIGURADO: 503,
   SPONSOR_YA_OCUPADO: 409,
   CAPACIDAD_MESAS_LLENA: 409,
+  CONTACTO_NO_RESUELTO: 409,
+  SIN_DESTINATARIOS: 400,
+  ESTADO_INVALIDO: 409,
+  LIMITE_INTENTOS_ALCANZADO: 409,
+  NOTIFICACION_FALLO: 502,
   CALENDAR_FALLO: 502,
   NOTION_FALLO: 502,
 };
@@ -157,4 +167,53 @@ async function disponibilidad(req, res) {
   }
 }
 
-module.exports = { reservar, disponibilidad, esUuidCanonico };
+// ─────────────────────────────────────────────────────────────
+// POST /citas/:id/reenviar-notificacion
+// ─────────────────────────────────────────────────────────────
+async function reenviarNotificacion(req, res) {
+  const { id } = req.params;
+  if (!esUuidCanonico(id)) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'El parámetro "id" debe ser un UUID válido de Notion.',
+    });
+  }
+  try {
+    const resultado = await reintentarNotificacion(id);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    if (error instanceof BookingError) {
+      return res.status(STATUS_POR_CODIGO_NEGOCIO[error.code] || 400).json({
+        error: error.code,
+        message: error.message,
+      });
+    }
+    console.error('[CitasController] Error en reenviarNotificacion:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Error al reintentar notificación. Revisa los logs.',
+    });
+  }
+}
+
+// Endpoint que dispara el Cron Job de Coolify cada 15 min.
+async function reintentarNotificacionesPendientes(req, res) {
+  try {
+    const resultado = await ejecutarReintentosPendientes();
+    return res.status(200).json(resultado);
+  } catch (error) {
+    console.error('[CitasController] Error en reintentarNotificacionesPendientes:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Error al ejecutar el barrido de reintentos. Revisa los logs.',
+    });
+  }
+}
+
+module.exports = {
+  reservar,
+  disponibilidad,
+  reenviarNotificacion,
+  reintentarNotificacionesPendientes,
+  esUuidCanonico,
+};

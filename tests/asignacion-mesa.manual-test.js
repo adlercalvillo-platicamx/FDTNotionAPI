@@ -119,11 +119,15 @@ function crearEstadoNotion() {
 
 const citasPath = path.resolve(__dirname, '../src/services/citas.service.js');
 const calendarPath = path.resolve(__dirname, '../src/services/calendar-client.service.js');
+const contactosPath = path.resolve(__dirname, '../src/services/contactos.service.js');
+const emailPath = path.resolve(__dirname, '../src/services/email.service.js');
 const bookingPath = path.resolve(__dirname, '../src/services/booking.service.js');
 
 // Limpiar si ya estaban cargados (p.ej. re-run en el mismo proceso).
 delete require.cache[citasPath];
 delete require.cache[calendarPath];
+delete require.cache[contactosPath];
+delete require.cache[emailPath];
 delete require.cache[bookingPath];
 
 // Helpers de grilla (obtenerFechasEvento / generarBloquesParaFecha / …)
@@ -142,6 +146,34 @@ require.cache[calendarPath] = {
     },
     async cancelEvent() {
       return { ok: true };
+    },
+  },
+};
+
+// Sin emails → se omite el correo (caso 5); este test solo verifica mesas.
+require.cache[contactosPath] = {
+  id: contactosPath,
+  filename: contactosPath,
+  loaded: true,
+  exports: {
+    async obtenerContacto(pageId) {
+      return { id: pageId, nombre: 'Mock', empresa: '', email: '', whatsapp: '', rolPuesto: '' };
+    },
+  },
+};
+require.cache[emailPath] = {
+  id: emailPath,
+  filename: emailPath,
+  loaded: true,
+  exports: {
+    async enviarConfirmacionCita() {
+      throw new Error('email no debería llamarse en test de mesa (Contactos sin email)');
+    },
+    EmailError: class EmailError extends Error {
+      constructor(categoria, message) {
+        super(message);
+        this.categoria = categoria;
+      }
     },
   },
 };

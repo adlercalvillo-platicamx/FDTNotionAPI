@@ -15,6 +15,9 @@
 //   4. Calendar se toca por HTTP contra el servicio ya desplegado de
 //      Plática (calendar-client.service.js) — este repo no duplica
 //      google.service.js.
+//   5. Tras confirmar en Notion, se envía correo/.ics al sponsor y
+//      asistente. Si el correo falla, la cita NO se revierte — solo
+//      pasa a "Confirmada sin notificar" (reintentable).
 //
 // ⚠️ REQUISITO DE DEPLOY QUE NO ES OPCIONAL:
 // Este mutex vive en la memoria de UN SOLO proceso. Si este servicio se
@@ -25,16 +28,20 @@
 //
 // ⚠️ SUPUESTO QUE TIENE QUE SEGUIR SIENDO CIERTO:
 // Esto solo protege contra colisiones si TODA escritura de citas
-// "Confirmada" en Notion pasa por este endpoint. Si en algún momento se
-// permite editar el Estatus de una cita a mano desde Notion (o desde otro
-// flujo del agente) sin pasar por aquí, el conteo de capacidad y el
-// chequeo de sponsor-ocupado dejan de ser confiables.
+// "Confirmada" / "Confirmada sin notificar" en Notion pasa por este
+// endpoint. Si en algún momento se permite editar el Estatus de una cita
+// a mano desde Notion (o desde otro flujo del agente) sin pasar por aquí,
+// el conteo de capacidad y el chequeo de sponsor-ocupado dejan de ser
+// confiables.
 
 const { Mutex } = require('async-mutex');
 const calendarClient = require('./calendar-client.service');
 const citasService = require('./citas.service');
+const contactosService = require('./contactos.service');
+const emailService = require('./email.service');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
+const MAX_INTENTOS_NOTIFICACION = Number(process.env.EMAIL_MAX_INTENTOS || 5);
 const bookingMutex = new Mutex();
 
 // ─────────────────────────────────────────────────────────────
@@ -138,6 +145,56 @@ class BookingError extends Error {
 }
 
 /**
+ * Resuelve destinatarios y descripción del correo de confirmación a partir
+ * de los page_id de sponsor y asistente en Contactos — nunca depende de
+ * que el llamador (agente vía Plática) haya llenado `descripcion` o
+ * `asistentes_email` a mano. Esto es intencional (confirmado Adler,
+ * 17-ago): Laura pidió desde la Segunda Sesión que el sponsor reciba el
+ * dato de contacto de la persona con la que tiene la cita "en automático"
+ * — no puede depender de que el agente lo arme bien cada vez.
+ *
+ * `emailsExtra` (de asistentes_email en el body, si vino) se agrega a los
+ * dos resueltos de Contactos — no los reemplaza. Deduplicado.
+ */
+async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emailsExtra }) {
+  if (!sponsorPageId || !asistentePageId) {
+    throw new BookingError(
+      'CONTACTO_NO_RESUELTO',
+      'No se pudo resolver el sponsor o el asistente de esta cita (falta Contacto Match o Contacto Principal) — no se puede construir la notificación.'
+    );
+  }
+
+  const [sponsor, asistente] = await Promise.all([
+    contactosService.obtenerContacto(sponsorPageId),
+    contactosService.obtenerContacto(asistentePageId),
+  ]);
+
+  const destinatarios = [
+    ...(emailsExtra || []),
+    sponsor.email,
+    asistente.email,
+  ].filter(Boolean);
+  const destinatariosUnicos = [...new Set(destinatarios)];
+
+  // Descripción construida SIEMPRE desde Contactos — ver nota de cabecera.
+  // No usa el "descripcion" que venga del body de reservar_cita; ese
+  // parámetro queda disponible por si el agente quiere agregar contexto
+  // extra en una iteración futura, pero HOY no es la fuente del dato de
+  // contacto — eso es automático.
+  const lineasAsistente = [
+    `Cita confirmada con: ${asistente.nombre || 'Asistente'}`,
+    asistente.empresa ? `Empresa: ${asistente.empresa}` : null,
+    asistente.rolPuesto ? `Puesto: ${asistente.rolPuesto}` : null,
+    asistente.email ? `Correo: ${asistente.email}` : null,
+    asistente.whatsapp ? `Teléfono: ${asistente.whatsapp}` : null,
+  ].filter(Boolean);
+
+  const descripcion = lineasAsistente.join('\n');
+
+  return { destinatarios: destinatariosUnicos, descripcion };
+}
+
+/**
  * Reserva una cita 1-a-1 entre un sponsor y un asistente.
  *
  * @param {object} params
@@ -150,8 +207,8 @@ class BookingError extends Error {
  * @param {string} params.request_id            - clave de idempotencia, generada por quien llama
  *                                                 (el mismo valor en un reintento debe ser el mismo string)
  * @param {string} [params.titulo]
- * @param {string} [params.descripcion]
- * @param {string[]} [params.asistentes_email]  - emails a invitar en el evento de Calendar
+ * @param {string} [params.descripcion]         - ya no alimenta Calendar/correo (descripción auto); se conserva en la firma por compatibilidad
+ * @param {string[]} [params.asistentes_email]  - emails extra (se suman a Contactos); Calendar solo usa este array del body (sin duplicar invitaciones Google)
  */
 async function reservarCita({
   sponsor_calendario_id,
@@ -162,7 +219,7 @@ async function reservarCita({
   zona_horaria,
   request_id,
   titulo,
-  descripcion,
+  descripcion, // eslint-disable-line no-unused-vars -- firma pública; descripción real = auto desde Contactos
   asistentes_email,
 }) {
   if (!request_id) {
@@ -240,15 +297,42 @@ async function reservarCita({
       mesa: numeroMesa,
     });
 
-    // Solo ahora tocamos Calendar (por HTTP, vía calendar-client.service.js).
-    // Si falla, la cita queda "Fallida" en Notion (no "Confirmada"), así que
-    // no cuenta para futuras verificaciones de capacidad.
+    // Resuelto ANTES de tocar Calendar: Calendar y el correo deben
+    // mostrar la misma descripción automática (confirmado Adler, 17-ago
+    // tarde) — nunca depende de que el body haya llenado "descripcion" a
+    // mano.
+    //
+    // crearCitaPendiente() YA escribió la fila como "Pendiente Calendar".
+    // Si resolverNotificacionCita() truena, este catch la marca Fallida
+    // (simétrico al catch de Calendar) — no queda huérfana.
+    let destinatarios;
+    let descripcionAuto;
+    try {
+      ({ destinatarios, descripcion: descripcionAuto } = await resolverNotificacionCita({
+        sponsorPageId: sponsor_notion_id,
+        asistentePageId: asistente_notion_id,
+        emailsExtra: asistentes_email,
+      }));
+    } catch (resolucionError) {
+      await citasService.marcarCitaFallida({
+        notionPageId: citaPendiente.id,
+        motivo: `No se pudo resolver sponsor/asistente para la notificación: ${resolucionError.message}`,
+      });
+      throw resolucionError instanceof BookingError
+        ? resolucionError
+        : new BookingError('CONTACTO_NO_RESUELTO', resolucionError.message);
+    }
+
+    // Calendar sigue invitando solo por asistentes_email del body
+    // (confirmado Adler, 17-ago: la invitación real de personas vive en
+    // el ICS/correo, no en Calendar — evita duplicar notificaciones si
+    // Google también manda invitación propia por invitado agregado).
     let evento;
     try {
       evento = await calendarClient.createEvent({
         calendario_id: sponsor_calendario_id,
         titulo: titulo || 'Cita 1 a 1 — Fashion Digital Talks',
-        descripcion,
+        descripcion: descripcionAuto,
         inicio,
         fin,
         zona_horaria: zona_horaria || 'America/Mexico_City',
@@ -275,6 +359,45 @@ async function reservarCita({
           notionPageId: citaPendiente.id,
           eventoId: evento.evento_id,
         });
+
+        // Cita real en Calendar + Notion. A partir de aquí, cualquier falla
+        // de correo NUNCA revierte la reserva — solo degrada el Estatus a
+        // "Confirmada sin notificar" para que quede visible que falta
+        // avisarle al sponsor.
+        // destinatarios y descripcionAuto ya resueltos arriba, antes de
+        // Calendar — se reusan aquí, no se vuelven a calcular.
+        if (destinatarios.length > 0) {
+          try {
+            await emailService.enviarConfirmacionCita({
+              notionPageId: citaPendiente.id,
+              destinatarios,
+              titulo: titulo || 'Cita 1 a 1 confirmada — Fashion Digital Talks',
+              descripcion: descripcionAuto,
+              inicio,
+              fin,
+              ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
+            });
+          } catch (emailError) {
+            await citasService.marcarCitaConfirmadaSinNotificar({
+              notionPageId: citaPendiente.id,
+              motivoCategoria: emailError.categoria || 'DESCONOCIDO',
+              motivoDetalle: emailError.message,
+              intentosPrevios: 0,
+            });
+            return {
+              ya_existia: false,
+              notion_page_id: citaPendiente.id,
+              evento_id: evento.evento_id,
+              estado: 'Confirmada sin notificar',
+              mesa: numeroMesa,
+              notificacion_error: {
+                categoria: emailError.categoria || 'DESCONOCIDO',
+                mensaje: emailError.message,
+              },
+            };
+          }
+        }
+
         return {
           ya_existia: false,
           notion_page_id: citaPendiente.id,
@@ -314,4 +437,88 @@ async function reservarCita({
   });
 }
 
-module.exports = { reservarCita, BookingError, validarDuracionYFecha };
+/**
+ * Reintenta enviar la notificación/.ics de una cita específica que quedó en
+ * "Confirmada sin notificar". Usada por:
+ *   - POST /citas/:id/reenviar-notificacion (manual)
+ *   - el cron de Coolify (ver src/jobs/reintentar-notificaciones.job.js)
+ *
+ * No valida capacidad ni ocupación — la cita ya existe, esto solo reintenta
+ * el paso de correo. Si la cita no está en "Confirmada sin notificar",
+ * lanza BookingError('ESTADO_INVALIDO').
+ *
+ * NO entra al mutex — reenviar un correo no toca capacidad de mesas.
+ */
+async function reintentarNotificacion(notionPageId) {
+  const cita = await citasService.obtenerCitaPorId(notionPageId);
+  const estatusActual = cita.properties?.Estatus?.select?.name;
+
+  if (estatusActual !== 'Confirmada sin notificar') {
+    throw new BookingError(
+      'ESTADO_INVALIDO',
+      `Esta cita está en estatus "${estatusActual}", no en "Confirmada sin notificar". No se reenvía.`
+    );
+  }
+
+  const intentosPrevios = cita.properties?.['Intentos Envio Email']?.number || 0;
+  if (intentosPrevios >= MAX_INTENTOS_NOTIFICACION) {
+    throw new BookingError(
+      'LIMITE_INTENTOS_ALCANZADO',
+      `Ya se alcanzó el límite de ${MAX_INTENTOS_NOTIFICACION} intentos. Revisa el correo del sponsor/asistente en Notion antes de forzar un reintento manual (fuera de este endpoint).`
+    );
+  }
+
+  const sponsorId = cita.properties?.['Contacto Match']?.relation?.[0]?.id;
+  const asistenteId = cita.properties?.['Contacto Principal']?.relation?.[0]?.id;
+  const { destinatarios, descripcion } = await resolverNotificacionCita({
+    sponsorPageId: sponsorId,
+    asistentePageId: asistenteId,
+    emailsExtra: [], // el reintento no tiene el body original de la reserva — solo Contactos
+  });
+  const fechaHora = cita.properties?.['Fecha y Hora']?.date;
+  const mesa = cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.plain_text
+    || cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.text?.content;
+
+  if (destinatarios.length === 0) {
+    throw new BookingError(
+      'SIN_DESTINATARIOS',
+      'Ni el sponsor ni el asistente tienen "Email" en Contactos — no hay a quién reenviar. Corrige el dato en Notion antes de reintentar.'
+    );
+  }
+
+  try {
+    await emailService.enviarConfirmacionCita({
+      notionPageId,
+      destinatarios,
+      titulo: cita.properties?.Nombre?.title?.[0]?.plain_text
+        || cita.properties?.Nombre?.title?.[0]?.text?.content
+        || 'Cita 1 a 1 confirmada',
+      descripcion,
+      inicio: fechaHora?.start,
+      fin: fechaHora?.end,
+      ubicacion: mesa,
+      secuencia: intentosPrevios + 1, // SEQUENCE del ICS sube en cada reintento
+    });
+    await citasService.confirmarNotificacionEnviada(notionPageId);
+    return { notion_page_id: notionPageId, estado: 'Confirmada' };
+  } catch (emailError) {
+    await citasService.marcarCitaConfirmadaSinNotificar({
+      notionPageId,
+      motivoCategoria: emailError.categoria || 'DESCONOCIDO',
+      motivoDetalle: emailError.message,
+      intentosPrevios,
+    });
+    throw new BookingError(
+      'NOTIFICACION_FALLO',
+      `Reintento falló (${emailError.categoria}): ${emailError.message}`
+    );
+  }
+}
+
+module.exports = {
+  reservarCita,
+  reintentarNotificacion,
+  resolverNotificacionCita,
+  BookingError,
+  validarDuracionYFecha,
+};
