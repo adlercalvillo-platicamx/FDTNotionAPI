@@ -222,6 +222,11 @@ async function reservarCita({
       );
     }
 
+    // La mesa que le toca a esta cita es la siguiente disponible en el bloque.
+    // Válido porque estamos dentro del mutex: nadie más puede colarse entre
+    // este cálculo y la escritura de crearCitaPendiente() de abajo.
+    const numeroMesa = citasEnBloque + 1;
+
     // Reservamos el lugar en Notion en estado intermedio ANTES de tocar
     // Calendar. Como estamos dentro del mutex, no hay forma de que otra
     // reserva se cuele entre este paso y la confirmación de abajo.
@@ -232,6 +237,7 @@ async function reservarCita({
       inicio,
       fin,
       titulo: titulo || `Cita — ${request_id}`,
+      mesa: numeroMesa,
     });
 
     // Solo ahora tocamos Calendar (por HTTP, vía calendar-client.service.js).
@@ -274,6 +280,7 @@ async function reservarCita({
           notion_page_id: citaPendiente.id,
           evento_id: evento.evento_id,
           estado: 'Confirmada',
+          mesa: numeroMesa,
         };
       } catch (notionError) {
         ultimoError = notionError;

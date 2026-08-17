@@ -97,7 +97,7 @@ async function buscarPorRequestId(requestId) {
  * "Contacto Principal" = asistente, "Contacto Match" = sponsor (confirmado
  * contra el registro de ejemplo Ana Sofía Torres × Carlos Medina).
  */
-async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, fin, titulo }) {
+async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, fin, titulo, mesa }) {
   requireDataSourceId();
   return notionFetch('/pages', {
     method: 'POST',
@@ -110,6 +110,8 @@ async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, i
         'Contacto Match': { relation: [{ id: sponsorPageId }] },
         'Contacto Principal': { relation: [{ id: asistentePageId }] },
         'Fecha y Hora': { date: { start: inicio, end: fin } },
+        // Mesa / Ubicacion es rich_text en el schema — se escribe "Mesa N", no número plano.
+        ...(mesa ? { 'Mesa / Ubicacion': { rich_text: [{ text: { content: `Mesa ${mesa}` } }] } } : {}),
       },
     }),
   });
