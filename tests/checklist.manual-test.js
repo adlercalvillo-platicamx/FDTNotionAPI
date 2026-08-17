@@ -7,7 +7,7 @@ const carlos = {
   etapaClienteBuscada: ['Escalamiento de e-commerce', 'Estrategia omnicanal avanzada'],
   puestosBuscados: ['Direccion General / Founder / CEO', 'Retail / Expansion de tiendas'],
   bio: 'Fundador de NovaTech, 10 años ayudando a marcas mexicanas de moda a vender en línea.',
-  fotoSpeaker: '', sitioWebEmpresa: '', logoEmpresaSpeaker: '', instagram: '', linkedIn: '',
+  fotoSpeaker: '', sitioWebEmpresa: '', logoEmpresaSpeaker: '', linkedinInstagram: '',
 };
 
 const laura = {

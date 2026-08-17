@@ -88,12 +88,17 @@ function parsearContacto(pagina) {
     fotoSpeaker: url(p['Foto Speaker']),
     sitioWebEmpresa: url(p['Sitio Web Empresa']),
     logoEmpresaSpeaker: url(p['Logo Empresa Speaker']),
-    // ⚠️ Instagram, LinkedIn y Web/Redes son RICH_TEXT, no URL — la gente a
+    // ⚠️ LinkedIn/Instagram y Web/Redes son RICH_TEXT, no URL — la gente a
     // veces solo da su usuario ("@boutiquemarea") o un dominio sin protocolo
     // ("textilesdelbajio.mx"), no siempre una URL completa. No asumas que
     // siempre vas a poder abrir esto directo como link sin normalizar primero.
-    instagram: texto(p['Instagram']),
-    linkedIn: texto(p['LinkedIn']),
+    //
+    // Campo unificado el 17 de agosto — antes "Instagram" y "LinkedIn" eran
+    // 2 columnas separadas en Notion. Se unificaron en una sola porque
+    // Ticketópolis ya captura ambas redes en un solo campo de su formulario.
+    // Si algo sigue esperando `instagram`/`linkedIn` por separado, hay que
+    // actualizarlo también (ver checklist.service.js).
+    linkedinInstagram: texto(p['LinkedIn/Instagram']),
     webRedes: texto(p['Web / Redes']),
     checklistCompletado: checkbox(p['Checklist Completado']),
     // Campos de enriquecimiento con Exa (ver contexto-luis-exa-enriquecimiento.md):

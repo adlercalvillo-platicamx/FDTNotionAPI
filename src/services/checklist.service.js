@@ -37,8 +37,9 @@ const CAMPOS_REQUERIDOS_SPEAKER = [
   { campo: 'logoEmpresaSpeaker', etiqueta: 'Logotipo de la empresa' },
   { campo: 'whatsapp', etiqueta: 'WhatsApp' },
   { campo: 'email', etiqueta: 'Correo electrónico empresarial' },
-  { campo: 'instagram', etiqueta: 'Instagram' },
-  { campo: 'linkedIn', etiqueta: 'LinkedIn' },
+  // Unificado el 17 de agosto — antes eran 2 requisitos separados, ahora
+  // Notion tiene un solo campo "LinkedIn/Instagram" que cubre cualquiera.
+  { campo: 'linkedinInstagram', etiqueta: 'LinkedIn o Instagram' },
 ];
 
 function campoVacio(valor, esArray) {
