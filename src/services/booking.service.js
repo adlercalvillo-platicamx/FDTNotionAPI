@@ -149,8 +149,12 @@ class BookingError extends Error {
  * Contactos en Notion (sponsor + asistente). Dos correos distintos:
  *   - Sponsor: texto cálido + datos de contacto del asistente (Laura,
  *     Segunda Sesión — el sponsor debe recibir el contacto "en automático").
- *   - Asistente: aviso de confirmación + nombre del sponsor + .ics.
+ *   - Asistente: aviso de confirmación + empresa del sponsor + .ics.
  *     SIN datos de contacto del sponsor (pedido Adler, 18-ago).
+ *
+ * En el párrafo de apertura se usan las empresas (campo Empresa), no los
+ * nombres de persona (pedido Adler, 18-ago). Si Empresa viene vacío, se
+ * cae al nombre de la persona para no dejar el texto incompleto.
  *
  * Calendar reusa `descripcion` (= descripcionSponsor: calendario del sponsor).
  *
@@ -177,12 +181,13 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     (e) => e !== emailSponsor && e !== emailAsistente
   );
 
+  const empresaAsistente = asistente.empresa || asistente.nombre || 'El asistente';
+  const empresaSponsor = sponsor.empresa || sponsor.nombre || 'el sponsor';
+
   const descripcionSponsor = [
     '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
     '',
-    `${asistente.nombre || 'El asistente'} agendó un espacio con ${
-      sponsor.nombre || 'el sponsor'
-    }. Nos dará mucho gusto recibirlos.`,
+    `${empresaAsistente} agendó un espacio con ${empresaSponsor}. Nos dará mucho gusto recibirlos.`,
     '',
     'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
     '',
@@ -201,11 +206,11 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     .filter((linea) => linea !== null)
     .join('\n');
 
-  // Solo nombre del sponsor — nada de empresa, correo, teléfono ni WhatsApp.
+  // Solo empresa del sponsor — nada de persona, correo, teléfono ni WhatsApp.
   const descripcionAsistente = [
     '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
     '',
-    `Agendaste un espacio con ${sponsor.nombre || 'el sponsor'}. Nos dará mucho gusto recibirte.`,
+    `Agendaste un espacio con ${empresaSponsor}. Nos dará mucho gusto recibirte.`,
     '',
     'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
     '',

@@ -282,22 +282,22 @@ function baseParams(overrides = {}) {
     assert.ok(mailSponsor, 'debe haber correo al sponsor');
     assert.ok(mailAsistente, 'debe haber correo al asistente');
 
-    // Sponsor: datos del asistente + tono cálido
-    assert.ok(mailSponsor.descripcion.includes('Nombre asistente-b'));
+    // Sponsor: apertura por empresas; abajo datos de la persona asistente
+    assert.ok(mailSponsor.descripcion.includes('Empresa asistente-b agendó un espacio con Empresa sponsor-a'));
     assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
-    assert.ok(mailSponsor.descripcion.includes('agendó un espacio con Nombre sponsor-a'));
+    assert.ok(mailSponsor.descripcion.includes('Nombre: Nombre asistente-b'));
     assert.ok(mailSponsor.descripcion.includes('Agregar al calendario'));
     assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
 
-    // Asistente: solo nombre del sponsor, SIN datos de contacto
-    assert.ok(mailAsistente.descripcion.includes('Agendaste un espacio con Nombre sponsor-a'));
+    // Asistente: solo empresa del sponsor, SIN datos de contacto
+    assert.ok(mailAsistente.descripcion.includes('Agendaste un espacio con Empresa sponsor-a'));
     assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
     assert.ok(!mailAsistente.descripcion.includes('Datos de contacto'));
-    assert.ok(!mailAsistente.descripcion.includes('Empresa sponsor-a'));
+    assert.ok(!mailAsistente.descripcion.includes('Nombre sponsor-a'));
     assert.ok(!mailAsistente.descripcion.includes('a@t.com'));
     assert.ok(!mailAsistente.descripcion.includes('Teléfono'));
 
-    assert.ok(h.calendarCreateCalls[0].descripcion.includes('Nombre asistente-b'));
+    assert.ok(h.calendarCreateCalls[0].descripcion.includes('Empresa asistente-b agendó'));
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
   });
 
@@ -361,7 +361,7 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.estado, 'Confirmada');
     assert.strictEqual(h.emailCalls.length, 1);
     assert.deepStrictEqual(h.emailCalls[0].destinatarios, ['solo-asistente@t.com']);
-    assert.ok(h.emailCalls[0].descripcion.includes('Agendaste un espacio con Nombre sponsor-a'));
+    assert.ok(h.emailCalls[0].descripcion.includes('Agendaste un espacio con Empresa sponsor-a'));
     assert.ok(!h.emailCalls[0].descripcion.includes('Datos de contacto'));
   });
 
