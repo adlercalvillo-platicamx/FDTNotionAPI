@@ -148,7 +148,7 @@ function clasificarErrorSmtp(err) {
  */
 async function enviarConfirmacionCita({
   notionPageId,
-  destinatarios, // array de emails: sponsor + asistente, mismo patrón "en automático" que ya usa Calendar
+  destinatarios, // array de emails para ESTE envío (uno al sponsor, otro al asistente)
   titulo,
   descripcion,
   inicio,

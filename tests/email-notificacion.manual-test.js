@@ -269,17 +269,34 @@ function baseParams(overrides = {}) {
 }
 
 (async () => {
-  console.log('\n=== Caso 1 — reserva + correo OK ===');
-  await ok('estado Confirmada, email llamado, Calendar con descripción auto', async () => {
+  console.log('\n=== Caso 1 — reserva + 2 correos (sponsor / asistente) ===');
+  await ok('estado Confirmada, 2 emails distintos, Calendar con descripción del sponsor', async () => {
     const h = crearHarness({ emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' } });
     const r = await h.booking.reservarCita(baseParams({ request_id: 'req-caso1' }));
     assert.strictEqual(r.estado, 'Confirmada');
     assert.strictEqual(r.mesa, 1);
-    assert.strictEqual(h.emailCalls.length, 1);
-    assert.ok(h.emailCalls[0].descripcion.includes('Nombre asistente-b'));
-    assert.ok(h.emailCalls[0].descripcion.includes('agendó un espacio con Nombre sponsor-a'));
-    assert.ok(h.emailCalls[0].descripcion.includes('Agregar al calendario'));
-    assert.ok(h.emailCalls[0].descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
+    assert.strictEqual(h.emailCalls.length, 2);
+
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    assert.ok(mailSponsor, 'debe haber correo al sponsor');
+    assert.ok(mailAsistente, 'debe haber correo al asistente');
+
+    // Sponsor: datos del asistente + tono cálido
+    assert.ok(mailSponsor.descripcion.includes('Nombre asistente-b'));
+    assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
+    assert.ok(mailSponsor.descripcion.includes('agendó un espacio con Nombre sponsor-a'));
+    assert.ok(mailSponsor.descripcion.includes('Agregar al calendario'));
+    assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
+
+    // Asistente: solo nombre del sponsor, SIN datos de contacto
+    assert.ok(mailAsistente.descripcion.includes('Agendaste un espacio con Nombre sponsor-a'));
+    assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
+    assert.ok(!mailAsistente.descripcion.includes('Datos de contacto'));
+    assert.ok(!mailAsistente.descripcion.includes('Empresa sponsor-a'));
+    assert.ok(!mailAsistente.descripcion.includes('a@t.com'));
+    assert.ok(!mailAsistente.descripcion.includes('Teléfono'));
+
     assert.ok(h.calendarCreateCalls[0].descripcion.includes('Nombre asistente-b'));
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
   });
@@ -319,8 +336,8 @@ function baseParams(overrides = {}) {
     assert.strictEqual(h.emailCalls.length, 0);
   });
 
-  console.log('\n=== Caso 5b — body vacío, Contactos sí tiene email ===');
-  await ok('correo SÍ se envía desde Contactos', async () => {
+  console.log('\n=== Caso 5b — body vacío, Contactos sí tiene email (solo sponsor) ===');
+  await ok('correo SÍ se envía desde Contactos (1 envío al sponsor)', async () => {
     const h = crearHarness({
       emailsPorId: { 'sponsor-a': 'solo-contactos@t.com', 'asistente-b': '' },
     });
@@ -330,6 +347,22 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.estado, 'Confirmada');
     assert.strictEqual(h.emailCalls.length, 1);
     assert.deepStrictEqual(h.emailCalls[0].destinatarios, ['solo-contactos@t.com']);
+    assert.ok(h.emailCalls[0].descripcion.includes('Datos de contacto del asistente'));
+  });
+
+  console.log('\n=== Caso 5c — solo asistente tiene email ===');
+  await ok('1 envío corto al asistente, sin datos del sponsor', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': '', 'asistente-b': 'solo-asistente@t.com' },
+    });
+    const r = await h.booking.reservarCita(
+      baseParams({ request_id: 'req-caso5c', asistentes_email: [] })
+    );
+    assert.strictEqual(r.estado, 'Confirmada');
+    assert.strictEqual(h.emailCalls.length, 1);
+    assert.deepStrictEqual(h.emailCalls[0].destinatarios, ['solo-asistente@t.com']);
+    assert.ok(h.emailCalls[0].descripcion.includes('Agendaste un espacio con Nombre sponsor-a'));
+    assert.ok(!h.emailCalls[0].descripcion.includes('Datos de contacto'));
   });
 
   console.log('\n=== Caso 6 — doble-booking: Confirmada sin notificar cuenta ===');
@@ -530,7 +563,7 @@ function baseParams(overrides = {}) {
   });
 
   console.log('\n=== Reintento exitoso resetea intentos ===');
-  await ok('reintentarNotificacion OK → Confirmada + intentos 0', async () => {
+  await ok('reintentarNotificacion OK → Confirmada + intentos 0 + 2 correos', async () => {
     const h = crearHarness({
       emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
     });
@@ -549,7 +582,8 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.estado, 'Confirmada');
     assert.strictEqual(h.porId.get('cita-retry').estatus, 'Confirmada');
     assert.strictEqual(h.porId.get('cita-retry').intentos, 0);
-    assert.strictEqual(h.emailCalls[0].secuencia, 3);
+    assert.strictEqual(h.emailCalls.length, 2);
+    assert.ok(h.emailCalls.every((c) => c.secuencia === 3));
   });
 
   console.log('\n=== clasificarErrorSmtp (email.service real) ===');

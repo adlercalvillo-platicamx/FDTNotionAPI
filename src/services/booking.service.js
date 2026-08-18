@@ -145,16 +145,18 @@ class BookingError extends Error {
 }
 
 /**
- * Resuelve destinatarios y descripción del correo de confirmación a partir
- * de los page_id de sponsor y asistente en Contactos — nunca depende de
- * que el llamador (agente vía Plática) haya llenado `descripcion` o
- * `asistentes_email` a mano. Esto es intencional (confirmado Adler,
- * 17-ago): Laura pidió desde la Segunda Sesión que el sponsor reciba el
- * dato de contacto de la persona con la que tiene la cita "en automático"
- * — no puede depender de que el agente lo arme bien cada vez.
+ * Resuelve destinatarios y textos del correo de confirmación a partir de
+ * Contactos en Notion (sponsor + asistente). Dos correos distintos:
+ *   - Sponsor: texto cálido + datos de contacto del asistente (Laura,
+ *     Segunda Sesión — el sponsor debe recibir el contacto "en automático").
+ *   - Asistente: aviso de confirmación + nombre del sponsor + .ics.
+ *     SIN datos de contacto del sponsor (pedido Adler, 18-ago).
  *
- * `emailsExtra` (de asistentes_email en el body, si vino) se agrega a los
- * dos resueltos de Contactos — no los reemplaza. Deduplicado.
+ * Calendar reusa `descripcion` (= descripcionSponsor: calendario del sponsor).
+ *
+ * `emailsExtra` (de asistentes_email en el body) se suma al correo del
+ * asistente — mismo tono corto, sin datos de contacto. No reemplaza a
+ * Contactos. Deduplicado contra el email del sponsor/asistente.
  */
 async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emailsExtra }) {
   if (!sponsorPageId || !asistentePageId) {
@@ -169,19 +171,13 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     contactosService.obtenerContacto(asistentePageId),
   ]);
 
-  const destinatarios = [
-    ...(emailsExtra || []),
-    sponsor.email,
-    asistente.email,
-  ].filter(Boolean);
-  const destinatariosUnicos = [...new Set(destinatarios)];
+  const emailSponsor = sponsor.email || null;
+  const emailAsistente = asistente.email || null;
+  const extrasUnicos = [...new Set((emailsExtra || []).filter(Boolean))].filter(
+    (e) => e !== emailSponsor && e !== emailAsistente
+  );
 
-  // Descripción construida SIEMPRE desde Contactos — ver nota de cabecera.
-  // No usa el "descripcion" que venga del body de reservar_cita; ese
-  // parámetro queda disponible por si el agente quiere agregar contexto
-  // extra en una iteración futura, pero HOY no es la fuente del dato de
-  // contacto — eso es automático.
-  const lineasAsistente = [
+  const descripcionSponsor = [
     '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
     '',
     `${asistente.nombre || 'El asistente'} agendó un espacio con ${
@@ -201,11 +197,82 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     '',
     '¡Te esperamos en Fashion Digital Talks 2026!',
     'Equipo Fashion Digital Talks',
-  ].filter((linea) => linea !== null);
+  ]
+    .filter((linea) => linea !== null)
+    .join('\n');
 
-  const descripcion = lineasAsistente.join('\n');
+  // Solo nombre del sponsor — nada de empresa, correo, teléfono ni WhatsApp.
+  const descripcionAsistente = [
+    '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
+    '',
+    `Agendaste un espacio con ${sponsor.nombre || 'el sponsor'}. Nos dará mucho gusto recibirte.`,
+    '',
+    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
+    '',
+    '¡Te esperamos en Fashion Digital Talks 2026!',
+    'Equipo Fashion Digital Talks',
+  ].join('\n');
 
-  return { destinatarios: destinatariosUnicos, descripcion };
+  return {
+    emailSponsor,
+    emailAsistente,
+    emailsExtra: extrasUnicos,
+    descripcionSponsor,
+    descripcionAsistente,
+    // Alias para Calendar (calendario del sponsor → contacto del asistente).
+    descripcion: descripcionSponsor,
+  };
+}
+
+/**
+ * Envía hasta 2 correos de confirmación (sponsor y/o asistente) con el
+ * mismo .ics (mismo UID = notionPageId). Si alguno falla, propaga el
+ * EmailError — el llamador marca "Confirmada sin notificar".
+ */
+async function enviarCorreosConfirmacion({
+  notionPageId,
+  notificacion,
+  titulo,
+  inicio,
+  fin,
+  ubicacion,
+  secuencia,
+}) {
+  const envios = [];
+
+  if (notificacion.emailSponsor) {
+    envios.push({
+      destinatarios: [notificacion.emailSponsor],
+      descripcion: notificacion.descripcionSponsor,
+    });
+  }
+
+  const destinatariosAsistente = [
+    notificacion.emailAsistente,
+    ...(notificacion.emailsExtra || []),
+  ].filter(Boolean);
+  const destinatariosAsistenteUnicos = [...new Set(destinatariosAsistente)];
+  if (destinatariosAsistenteUnicos.length > 0) {
+    envios.push({
+      destinatarios: destinatariosAsistenteUnicos,
+      descripcion: notificacion.descripcionAsistente,
+    });
+  }
+
+  for (const envio of envios) {
+    await emailService.enviarConfirmacionCita({
+      notionPageId,
+      destinatarios: envio.destinatarios,
+      titulo,
+      descripcion: envio.descripcion,
+      inicio,
+      fin,
+      ubicacion,
+      secuencia,
+    });
+  }
+
+  return envios.length;
 }
 
 /**
@@ -311,22 +378,22 @@ async function reservarCita({
       mesa: numeroMesa,
     });
 
-    // Resuelto ANTES de tocar Calendar: Calendar y el correo deben
-    // mostrar la misma descripción automática (confirmado Adler, 17-ago
-    // tarde) — nunca depende de que el body haya llenado "descripcion" a
-    // mano.
+    // Resuelto ANTES de tocar Calendar: Calendar y el correo del sponsor
+    // deben mostrar la misma descripción automática (confirmado Adler,
+    // 17-ago tarde) — nunca depende de que el body haya llenado
+    // "descripcion" a mano. El correo del asistente usa otro texto
+    // (solo nombre del sponsor, sin datos de contacto).
     //
     // crearCitaPendiente() YA escribió la fila como "Pendiente Calendar".
     // Si resolverNotificacionCita() truena, este catch la marca Fallida
     // (simétrico al catch de Calendar) — no queda huérfana.
-    let destinatarios;
-    let descripcionAuto;
+    let notificacion;
     try {
-      ({ destinatarios, descripcion: descripcionAuto } = await resolverNotificacionCita({
+      notificacion = await resolverNotificacionCita({
         sponsorPageId: sponsor_notion_id,
         asistentePageId: asistente_notion_id,
         emailsExtra: asistentes_email,
-      }));
+      });
     } catch (resolucionError) {
       await citasService.marcarCitaFallida({
         notionPageId: citaPendiente.id,
@@ -346,7 +413,7 @@ async function reservarCita({
       evento = await calendarClient.createEvent({
         calendario_id: sponsor_calendario_id,
         titulo: titulo || 'Cita 1 a 1 — Fashion Digital Talks',
-        descripcion: descripcionAuto,
+        descripcion: notificacion.descripcionSponsor,
         inicio,
         fin,
         zona_horaria: zona_horaria || 'America/Mexico_City',
@@ -377,16 +444,17 @@ async function reservarCita({
         // Cita real en Calendar + Notion. A partir de aquí, cualquier falla
         // de correo NUNCA revierte la reserva — solo degrada el Estatus a
         // "Confirmada sin notificar" para que quede visible que falta
-        // avisarle al sponsor.
-        // destinatarios y descripcionAuto ya resueltos arriba, antes de
-        // Calendar — se reusan aquí, no se vuelven a calcular.
-        if (destinatarios.length > 0) {
+        // avisar. notificacion ya resuelta arriba, antes de Calendar.
+        const hayDestinatarios =
+          Boolean(notificacion.emailSponsor) ||
+          Boolean(notificacion.emailAsistente) ||
+          (notificacion.emailsExtra && notificacion.emailsExtra.length > 0);
+        if (hayDestinatarios) {
           try {
-            await emailService.enviarConfirmacionCita({
+            await enviarCorreosConfirmacion({
               notionPageId: citaPendiente.id,
-              destinatarios,
+              notificacion,
               titulo: titulo || 'Cita 1 a 1 confirmada — Fashion Digital Talks',
-              descripcion: descripcionAuto,
               inicio,
               fin,
               ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
@@ -484,7 +552,7 @@ async function reintentarNotificacion(notionPageId) {
 
   const sponsorId = cita.properties?.['Contacto Match']?.relation?.[0]?.id;
   const asistenteId = cita.properties?.['Contacto Principal']?.relation?.[0]?.id;
-  const { destinatarios, descripcion } = await resolverNotificacionCita({
+  const notificacion = await resolverNotificacionCita({
     sponsorPageId: sponsorId,
     asistentePageId: asistenteId,
     emailsExtra: [], // el reintento no tiene el body original de la reserva — solo Contactos
@@ -493,7 +561,11 @@ async function reintentarNotificacion(notionPageId) {
   const mesa = cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.plain_text
     || cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.text?.content;
 
-  if (destinatarios.length === 0) {
+  const hayDestinatarios =
+    Boolean(notificacion.emailSponsor) ||
+    Boolean(notificacion.emailAsistente) ||
+    (notificacion.emailsExtra && notificacion.emailsExtra.length > 0);
+  if (!hayDestinatarios) {
     throw new BookingError(
       'SIN_DESTINATARIOS',
       'Ni el sponsor ni el asistente tienen "Email" en Contactos — no hay a quién reenviar. Corrige el dato en Notion antes de reintentar.'
@@ -501,13 +573,12 @@ async function reintentarNotificacion(notionPageId) {
   }
 
   try {
-    await emailService.enviarConfirmacionCita({
+    await enviarCorreosConfirmacion({
       notionPageId,
-      destinatarios,
+      notificacion,
       titulo: cita.properties?.Nombre?.title?.[0]?.plain_text
         || cita.properties?.Nombre?.title?.[0]?.text?.content
         || 'Cita 1 a 1 confirmada',
-      descripcion,
       inicio: fechaHora?.start,
       fin: fechaHora?.end,
       ubicacion: mesa,
