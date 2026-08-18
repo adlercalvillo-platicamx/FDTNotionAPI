@@ -5,13 +5,15 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (9 ago 2026): 5 herramientas — consultar_checklist (lectura),
+// Estado (18 ago 2026): 6 herramientas — consultar_checklist (lectura),
 // revisar_checklists_pendientes (lectura + actualiza estado),
 // sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
 // crean filas en Citas con Estatus "Sugerido", dry-run por default en
-// ambas), aprobar_match (marca una fila de Citas como "Aprobado"). El
-// campo "Match Sugerido" del sponsor quedó en desuso el 9 de agosto — ver
-// 03-reglas-negocio-y-matchmaking.md y 10-backend-como-mcp.md §9.
+// ambas), aprobar_match (marca una fila de Citas como "Aprobado"),
+// reintentar_notificaciones_pendientes (reenvía correos/.ics de citas en
+// "Confirmada sin notificar"). El campo "Match Sugerido" del sponsor quedó
+// en desuso el 9 de agosto — ver 03-reglas-negocio-y-matchmaking.md y
+// 10-backend-como-mcp.md §9.
 // reservar_cita sigue sin exponerse aquí — ver nota abajo.
 //
 // reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
@@ -24,6 +26,7 @@ const { z } = require('zod');
 
 const checklistService = require('../services/checklist.service');
 const matchmakingService = require('../services/matchmaking.service');
+const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 
 function crearServidorMcp() {
   const server = new McpServer({ name: 'fdt-notion-api', version: '1.0.0' });
@@ -147,6 +150,32 @@ function crearServidorMcp() {
     async ({ sponsorPageId, asistentePageId }) => {
       try {
         const resultado = await matchmakingService.aprobarMatch(sponsorPageId, asistentePageId);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // reintentar_notificaciones_pendientes (18 de agosto)
+  //
+  // A demanda — NO es un cron y NO tiene tope de llamadas. Tras corregir
+  // un email en Contactos o un problema de SMTP, el agente dispara este
+  // barrido. Si alguna falla, el detalle trae categoria + mensaje.
+  // ═══════════════════════════════════════════════════════════════
+  server.tool(
+    'reintentar_notificaciones_pendientes',
+    'Reenvía el correo de confirmación (.ics) de todas las citas 1a1 de Fashion Digital Talks 2026 que quedaron en estatus "Confirmada sin notificar". Usar cuando ya se corrigió un dato (email en Contactos, credenciales SMTP, etc.) o cuando el usuario pide explícitamente reenviar los avisos pendientes. No crea ni cancela citas — solo reenvía notificaciones. Sin tope de llamadas. Si alguna falla, el resultado incluye el motivo (categoria y mensaje) por cita.',
+    {},
+    async () => {
+      try {
+        const resultado = await ejecutarReintentosPendientes();
         return {
           content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
         };

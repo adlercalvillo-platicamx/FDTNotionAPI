@@ -143,16 +143,15 @@ async function confirmarCita({ notionPageId, eventoId }) {
 
 /**
  * Degrada una cita ya Confirmada (Calendar + Notion OK) a "Confirmada sin
- * notificar" cuando el envío del correo/ICS al sponsor falló. La cita NUNCA
- * se revierte aquí — Calendar y Notion ya son ciertos, lo único que falta
- * es que el sponsor se entere. Reusa "Notas Envio Email" (separado de
- * "Notas", que ya se usa para motivos de falla de booking y explicaciones
- * de match — mezclarlos ensuciaría ambos usos).
+ * notificar" cuando el envío del correo/ICS falló tras los 3 reintentos
+ * inmediatos de SMTP (o tras un reenvío a demanda que también falló).
+ * La cita NUNCA se revierte — Calendar y Notion ya son ciertos.
  *
- * "Intentos Envio Email" se incrementa aquí, no se resetea — lo resetea
- * únicamente confirmarNotificacionEnviada() cuando el reintento sí funciona.
+ * Escribe el motivo en "Notas Envio Email" (separado de "Notas", que ya
+ * se usa para fallas de booking / match). No hay contador de intentos:
+ * el reenvío es a demanda vía endpoint/MCP (Adler, 18-ago).
  */
-async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle, intentosPrevios }) {
+async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle }) {
   return notionFetch(`/pages/${notionPageId}`, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -167,7 +166,6 @@ async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria,
             },
           ],
         },
-        'Intentos Envio Email': { number: (intentosPrevios || 0) + 1 },
       },
     }),
   });
@@ -175,9 +173,7 @@ async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria,
 
 /**
  * Marca la notificación como enviada exitosamente — pasa de "Confirmada sin
- * notificar" de vuelta a "Confirmada" y limpia "Notas Envio Email" (deja de
- * ser relevante una vez resuelto; el historial de intentos fallidos no se
- * conserva a propósito, para no confundir con el estatus actual real).
+ * notificar" de vuelta a "Confirmada" y limpia "Notas Envio Email".
  */
 async function confirmarNotificacionEnviada(notionPageId) {
   return notionFetch(`/pages/${notionPageId}`, {
@@ -193,19 +189,11 @@ async function confirmarNotificacionEnviada(notionPageId) {
 }
 
 /**
- * Busca todas las citas en "Confirmada sin notificar" con menos de
- * maxIntentos ya registrados en "Intentos Envio Email" — usado por el cron
- * de reintento automático. Las que ya llegaron al límite se excluyen aquí
- * mismo (no las trae el cron, evita loop infinito de reintentos inútiles
- * en correos que nunca van a funcionar solos, ej. dirección inválida).
- *
- * NOTA: filtro de "Intentos Envio Email" se hace en JS post-query, no en el
- * filtro de Notion — mismo patrón ya establecido en el proyecto (post-filtro
- * en JS para condiciones que agregarían un 3er nivel de anidamiento al
- * filtro compuesto; aquí es solo por simplicidad, es un solo campo number
- * pero el volumen esperado es bajo, no vale la pena la complejidad extra).
+ * Todas las citas en "Confirmada sin notificar" — usado por
+ * POST /citas/reintentar-notificaciones-pendientes (MCP a demanda).
+ * Sin filtro por intentos: el reenvío no tiene tope.
  */
-async function buscarCitasSinNotificarParaReintentar(maxIntentos) {
+async function buscarCitasSinNotificarParaReintentar() {
   requireDataSourceId();
   const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
@@ -213,10 +201,7 @@ async function buscarCitasSinNotificarParaReintentar(maxIntentos) {
       filter: { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
     }),
   });
-  return data.results.filter((fila) => {
-    const intentos = fila.properties?.['Intentos Envio Email']?.number || 0;
-    return intentos < maxIntentos;
-  });
+  return data.results;
 }
 
 /** GET directo de una página de Citas por su notion_page_id. Usado por

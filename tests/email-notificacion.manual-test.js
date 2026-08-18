@@ -17,7 +17,6 @@ process.env.CITAS_HORA_INICIO_2026_10_08 = '09:00';
 process.env.CITAS_HORA_FIN_2026_10_08 = '18:00';
 process.env.NOTION_CITAS_DATA_SOURCE_ID =
   process.env.NOTION_CITAS_DATA_SOURCE_ID || 'fake-for-email-test';
-process.env.EMAIL_MAX_INTENTOS = '5';
 
 const INICIO = '2026-10-07T12:00:00-06:00';
 const FIN = '2026-10-07T12:30:00-06:00';
@@ -46,6 +45,7 @@ class EmailError extends Error {
 function crearHarness({
   emailsPorId = {},
   emailFailCategoria = null,
+  emailFailTimes = null, // si number: falla N veces y luego OK; si null + categoria: siempre falla
   calendarCreateCalls = [],
   emailCalls = [],
 } = {}) {
@@ -57,6 +57,7 @@ function crearHarness({
   /** @type {Map<string, string>} */
   const porRequestId = new Map();
   let seq = 0;
+  let emailFailsRestantes = emailFailTimes;
 
   const mockCitas = {
     async buscarPorRequestId(requestId) {
@@ -118,11 +119,10 @@ function crearHarness({
         page.motivoFallida = motivo;
       }
     },
-    async marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle, intentosPrevios }) {
+    async marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle }) {
       const page = porId.get(notionPageId);
       page.estatus = 'Confirmada sin notificar';
       page.notasEnvio = `[${motivoCategoria}] ${motivoDetalle}`;
-      page.intentos = (intentosPrevios || 0) + 1;
       return { id: notionPageId };
     },
     async confirmarNotificacionEnviada(notionPageId) {
@@ -137,9 +137,9 @@ function crearHarness({
       if (!page) throw new Error(`cita no existe: ${notionPageId}`);
       return toPage(page);
     },
-    async buscarCitasSinNotificarParaReintentar(maxIntentos) {
+    async buscarCitasSinNotificarParaReintentar() {
       return [...porId.values()]
-        .filter((p) => p.estatus === 'Confirmada sin notificar' && (p.intentos || 0) < maxIntentos)
+        .filter((p) => p.estatus === 'Confirmada sin notificar')
         .map((p) => toPage(p));
     },
     async existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
@@ -231,6 +231,16 @@ function crearHarness({
       },
       async enviarConfirmacionCita(args) {
         emailCalls.push(args);
+        if (emailFailTimes != null) {
+          if (emailFailsRestantes > 0) {
+            emailFailsRestantes -= 1;
+            throw new EmailError(
+              emailFailCategoria || 'SMTP_NO_DISPONIBLE',
+              `mock fail remaining=${emailFailsRestantes}`
+            );
+          }
+          return { ok: true };
+        }
         if (emailFailCategoria) {
           throw new EmailError(emailFailCategoria, `mock fail ${emailFailCategoria}`);
         }
@@ -301,13 +311,13 @@ function baseParams(overrides = {}) {
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
   });
 
-  console.log('\n=== Casos 2–4 — correo falla, cita NO se revierte ===');
+  console.log('\n=== Casos 2–4 — correo falla tras 3 inmediatos ===');
   for (const { cat, label } of [
     { cat: 'CORREO_INVALIDO', label: '550 / CORREO_INVALIDO' },
     { cat: 'SMTP_NO_DISPONIBLE', label: 'ETIMEDOUT / SMTP_NO_DISPONIBLE' },
     { cat: 'AUTH_INVALIDA', label: '535 / AUTH_INVALIDA' },
   ]) {
-    await ok(`${label} → Confirmada sin notificar + evento Calendar intacto`, async () => {
+    await ok(`${label} → Confirmada sin notificar + motivo en notas`, async () => {
       const h = crearHarness({
         emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
         emailFailCategoria: cat,
@@ -318,11 +328,27 @@ function baseParams(overrides = {}) {
       const page = h.porId.get(r.notion_page_id);
       assert.strictEqual(page.estatus, 'Confirmada sin notificar');
       assert.ok(page.notasEnvio.includes(cat));
-      assert.strictEqual(page.intentos, 1);
       assert.ok(page.eventoId, 'debe conservar evento de Calendar');
       assert.strictEqual(h.calendarCreateCalls.length, 1);
+      // Solo el correo del sponsor llega a intentarse (falla 3 veces y corta
+      // antes del asistente)
+      assert.strictEqual(h.emailCalls.length, 3);
+      assert.ok(h.emailCalls.every((c) => c.destinatarios.includes('a@t.com')));
     });
   }
+
+  console.log('\n=== Caso 2b — falla 2 veces y sale en el 3er inmediato ===');
+  await ok('Confirmada + 3 llamadas SMTP (2 fail + 1 ok) por correo', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      emailFailTimes: 2, // las primeras 2 llamadas fallan; luego OK
+      emailFailCategoria: 'SMTP_NO_DISPONIBLE',
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-retry-inmediato-ok' }));
+    assert.strictEqual(r.estado, 'Confirmada');
+    // sponsor: 2 fail + 1 ok = 3; asistente: 1 ok = 1 → total 4
+    assert.strictEqual(h.emailCalls.length, 4);
+  });
 
   console.log('\n=== Caso 5 — sin emails en Contactos ni body ===');
   await ok('omite correo, queda Confirmada', async () => {
@@ -420,30 +446,56 @@ function baseParams(overrides = {}) {
     );
   });
 
-  console.log('\n=== Caso 8 — límite de intentos ===');
-  await ok('LIMITE_INTENTOS_ALCANZADO sin llamar Nodemailer', async () => {
-    const h = crearHarness({
+  console.log('\n=== Endpoint reenvío: falla con mensaje / éxito limpia ===');
+  await ok('endpoint falla → NOTIFICACION_FALLO con mensaje; éxito → Confirmada', async () => {
+    const hFail = crearHarness({
       emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      emailFailCategoria: 'SMTP_NO_DISPONIBLE',
     });
-    h.porId.set('cita-limite', {
-      id: 'cita-limite',
+    hFail.porId.set('cita-endpoint', {
+      id: 'cita-endpoint',
       sponsor: 'sponsor-a',
       asistente: 'asistente-b',
       inicio: INICIO,
       fin: FIN,
       estatus: 'Confirmada sin notificar',
       mesa: 1,
-      intentos: 5,
-      requestId: 'limite',
+      intentos: 0,
+      requestId: 'endpoint-fail',
     });
     await assert.rejects(
-      () => h.booking.reintentarNotificacion('cita-limite'),
-      (e) => e instanceof h.booking.BookingError && e.code === 'LIMITE_INTENTOS_ALCANZADO'
+      () => hFail.booking.reintentarNotificacion('cita-endpoint'),
+      (e) =>
+        e instanceof hFail.booking.BookingError &&
+        e.code === 'NOTIFICACION_FALLO' &&
+        /SMTP_NO_DISPONIBLE/.test(e.message)
     );
-    assert.strictEqual(h.emailCalls.length, 0);
+    assert.strictEqual(hFail.porId.get('cita-endpoint').estatus, 'Confirmada sin notificar');
+    assert.ok(hFail.porId.get('cita-endpoint').notasEnvio.includes('SMTP_NO_DISPONIBLE'));
+    assert.strictEqual(hFail.emailCalls.length, 3);
+
+    const hOk = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+    });
+    hOk.porId.set('cita-endpoint-ok', {
+      id: 'cita-endpoint-ok',
+      sponsor: 'sponsor-a',
+      asistente: 'asistente-b',
+      inicio: INICIO,
+      fin: FIN,
+      estatus: 'Confirmada sin notificar',
+      mesa: 1,
+      intentos: 99, // el tope ya no bloquea
+      requestId: 'endpoint-ok',
+    });
+    const r = await hOk.booking.reintentarNotificacion('cita-endpoint-ok');
+    assert.strictEqual(r.estado, 'Confirmada');
+    assert.strictEqual(hOk.porId.get('cita-endpoint-ok').estatus, 'Confirmada');
+    assert.strictEqual(hOk.emailCalls.length, 2);
+    assert.ok(hOk.emailCalls.every((c) => typeof c.secuencia === 'number' && c.secuencia > 0));
   });
 
-  console.log('\n=== SIN_DESTINATARIOS en reintento ===');
+  console.log('\n=== SIN_DESTINATARIOS en reenvío ===');
   await ok('relations OK pero sin Email → SIN_DESTINATARIOS', async () => {
     const h = crearHarness({
       emailsPorId: { 'sponsor-a': '', 'asistente-b': '' },
@@ -560,30 +612,6 @@ function baseParams(overrides = {}) {
     const page = [...porId.values()][0];
     assert.strictEqual(page.estatus, 'Fallida');
     assert.strictEqual(calendarCalls.length, 0);
-  });
-
-  console.log('\n=== Reintento exitoso resetea intentos ===');
-  await ok('reintentarNotificacion OK → Confirmada + intentos 0 + 2 correos', async () => {
-    const h = crearHarness({
-      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
-    });
-    h.porId.set('cita-retry', {
-      id: 'cita-retry',
-      sponsor: 'sponsor-a',
-      asistente: 'asistente-b',
-      inicio: INICIO,
-      fin: FIN,
-      estatus: 'Confirmada sin notificar',
-      mesa: 3,
-      intentos: 2,
-      requestId: 'retry',
-    });
-    const r = await h.booking.reintentarNotificacion('cita-retry');
-    assert.strictEqual(r.estado, 'Confirmada');
-    assert.strictEqual(h.porId.get('cita-retry').estatus, 'Confirmada');
-    assert.strictEqual(h.porId.get('cita-retry').intentos, 0);
-    assert.strictEqual(h.emailCalls.length, 2);
-    assert.ok(h.emailCalls.every((c) => c.secuencia === 3));
   });
 
   console.log('\n=== clasificarErrorSmtp (email.service real) ===');

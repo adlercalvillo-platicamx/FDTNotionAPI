@@ -16,7 +16,7 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   CONTACTO_NO_RESUELTO: 409,
   SIN_DESTINATARIOS: 400,
   ESTADO_INVALIDO: 409,
-  LIMITE_INTENTOS_ALCANZADO: 409,
+  LIMITE_INTENTOS_ALCANZADO: 409, // legado — ya no se lanza; se deja por si llega un cliente viejo
   NOTIFICACION_FALLO: 502,
   CALENDAR_FALLO: 502,
   NOTION_FALLO: 502,
@@ -196,16 +196,26 @@ async function reenviarNotificacion(req, res) {
   }
 }
 
-// Endpoint que dispara el Cron Job de Coolify cada 15 min.
+// POST /citas/reintentar-notificaciones-pendientes — a demanda (MCP), no cron.
 async function reintentarNotificacionesPendientes(req, res) {
   try {
     const resultado = await ejecutarReintentosPendientes();
+    // 200 aunque haya fallidos parciales: el detalle trae el motivo de cada uno.
+    // 502 solo si TODAS fallaron y había candidatas.
+    if (resultado.total > 0 && resultado.exitosos === 0) {
+      return res.status(502).json({
+        ...resultado,
+        error: 'NOTIFICACION_FALLO',
+        message:
+          'Ninguna de las notificaciones pendientes se pudo reenviar. Revisa el detalle de cada cita (categoria y mensaje).',
+      });
+    }
     return res.status(200).json(resultado);
   } catch (error) {
     console.error('[CitasController] Error en reintentarNotificacionesPendientes:', error);
     return res.status(500).json({
       error: 'Internal Server Error',
-      message: 'Error al ejecutar el barrido de reintentos. Revisa los logs.',
+      message: 'Error al ejecutar el barrido de reenvíos. Revisa los logs.',
     });
   }
 }

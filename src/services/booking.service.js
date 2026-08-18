@@ -16,8 +16,10 @@
 //      Plática (calendar-client.service.js) — este repo no duplica
 //      google.service.js.
 //   5. Tras confirmar en Notion, se envía correo/.ics al sponsor y
-//      asistente. Si el correo falla, la cita NO se revierte — solo
-//      pasa a "Confirmada sin notificar" (reintentable).
+//      asistente. Cada envío se reintenta hasta 3 veces de inmediato
+//      (timeouts/SMTP). Si tras eso sigue fallando, la cita NO se
+//      revierte — pasa a "Confirmada sin notificar" con el motivo
+//      en Notas Envio Email. El reenvío es a demanda (endpoint/MCP).
 //
 // ⚠️ REQUISITO DE DEPLOY QUE NO ES OPCIONAL:
 // Este mutex vive en la memoria de UN SOLO proceso. Si este servicio se
@@ -41,7 +43,10 @@ const contactosService = require('./contactos.service');
 const emailService = require('./email.service');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
-const MAX_INTENTOS_NOTIFICACION = Number(process.env.EMAIL_MAX_INTENTOS || 5);
+// Cada envío SMTP se reintenta hasta 3 veces de inmediato (timeouts).
+// No hay tope de reintentos del endpoint: se dispara a demanda (MCP/API)
+// cuantas veces haga falta tras corregir el dato (Adler, 18-ago).
+const REINTENTOS_INMEDIATOS_SMTP = 3;
 const bookingMutex = new Mutex();
 
 // ─────────────────────────────────────────────────────────────
@@ -230,9 +235,31 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
 }
 
 /**
+ * Un envío SMTP con hasta REINTENTOS_INMEDIATOS_SMTP intentos seguidos.
+ * No toca Notion — es solo resiliencia a timeouts/red. Si los 3 fallan,
+ * propaga el último EmailError.
+ */
+async function enviarUnCorreoConReintentosInmediatos(args) {
+  let ultimoError;
+  for (let intento = 1; intento <= REINTENTOS_INMEDIATOS_SMTP; intento++) {
+    try {
+      await emailService.enviarConfirmacionCita(args);
+      return;
+    } catch (err) {
+      ultimoError = err;
+      if (intento < REINTENTOS_INMEDIATOS_SMTP) {
+        await new Promise((r) => setTimeout(r, 300 * intento));
+      }
+    }
+  }
+  throw ultimoError;
+}
+
+/**
  * Envía hasta 2 correos de confirmación (sponsor y/o asistente) con el
- * mismo .ics (mismo UID = notionPageId). Si alguno falla, propaga el
- * EmailError — el llamador marca "Confirmada sin notificar".
+ * mismo .ics (mismo UID = notionPageId). Cada correo se reintenta hasta
+ * 3 veces de inmediato. Si alguno agota esos 3, propaga el EmailError —
+ * el llamador decide si cuenta como intento Notion o no.
  */
 async function enviarCorreosConfirmacion({
   notionPageId,
@@ -265,7 +292,7 @@ async function enviarCorreosConfirmacion({
   }
 
   for (const envio of envios) {
-    await emailService.enviarConfirmacionCita({
+    await enviarUnCorreoConReintentosInmediatos({
       notionPageId,
       destinatarios: envio.destinatarios,
       titulo,
@@ -465,11 +492,12 @@ async function reservarCita({
               ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
             });
           } catch (emailError) {
+            // Tras 3 reintentos inmediatos SMTP: queda pendiente. Alguien
+            // corrige el dato y dispara el endpoint/MCP a demanda.
             await citasService.marcarCitaConfirmadaSinNotificar({
               notionPageId: citaPendiente.id,
               motivoCategoria: emailError.categoria || 'DESCONOCIDO',
               motivoDetalle: emailError.message,
-              intentosPrevios: 0,
             });
             return {
               ya_existia: false,
@@ -525,16 +553,16 @@ async function reservarCita({
 }
 
 /**
- * Reintenta enviar la notificación/.ics de una cita específica que quedó en
- * "Confirmada sin notificar". Usada por:
- *   - POST /citas/:id/reenviar-notificacion (manual)
- *   - el cron de Coolify (ver src/jobs/reintentar-notificaciones.job.js)
+ * Reenvía la notificación/.ics de una cita en "Confirmada sin notificar".
+ * Usada por:
+ *   - POST /citas/:id/reenviar-notificacion (una cita)
+ *   - POST /citas/reintentar-notificaciones-pendientes (batch, vía MCP)
  *
- * No valida capacidad ni ocupación — la cita ya existe, esto solo reintenta
- * el paso de correo. Si la cita no está en "Confirmada sin notificar",
- * lanza BookingError('ESTADO_INVALIDO').
+ * A demanda, sin tope de llamadas. Si falla, deja la cita en el mismo
+ * estatus, escribe el motivo en "Notas Envio Email" y lanza BookingError
+ * con el mensaje explicativo (categoria SMTP + detalle).
  *
- * NO entra al mutex — reenviar un correo no toca capacidad de mesas.
+ * No valida capacidad ni ocupación. NO entra al mutex.
  */
 async function reintentarNotificacion(notionPageId) {
   const cita = await citasService.obtenerCitaPorId(notionPageId);
@@ -544,14 +572,6 @@ async function reintentarNotificacion(notionPageId) {
     throw new BookingError(
       'ESTADO_INVALIDO',
       `Esta cita está en estatus "${estatusActual}", no en "Confirmada sin notificar". No se reenvía.`
-    );
-  }
-
-  const intentosPrevios = cita.properties?.['Intentos Envio Email']?.number || 0;
-  if (intentosPrevios >= MAX_INTENTOS_NOTIFICACION) {
-    throw new BookingError(
-      'LIMITE_INTENTOS_ALCANZADO',
-      `Ya se alcanzó el límite de ${MAX_INTENTOS_NOTIFICACION} intentos. Revisa el correo del sponsor/asistente en Notion antes de forzar un reintento manual (fuera de este endpoint).`
     );
   }
 
@@ -577,6 +597,10 @@ async function reintentarNotificacion(notionPageId) {
     );
   }
 
+  // SEQUENCE del ICS: timestamp para que cada reenvío actualice el evento
+  // en el calendario del destinatario (mismo UID = notionPageId).
+  const secuencia = Math.floor(Date.now() / 1000);
+
   try {
     await enviarCorreosConfirmacion({
       notionPageId,
@@ -587,20 +611,21 @@ async function reintentarNotificacion(notionPageId) {
       inicio: fechaHora?.start,
       fin: fechaHora?.end,
       ubicacion: mesa,
-      secuencia: intentosPrevios + 1, // SEQUENCE del ICS sube en cada reintento
+      secuencia,
     });
     await citasService.confirmarNotificacionEnviada(notionPageId);
     return { notion_page_id: notionPageId, estado: 'Confirmada' };
   } catch (emailError) {
+    const categoria = emailError.categoria || 'DESCONOCIDO';
+    const mensaje = emailError.message || 'Error desconocido al enviar el correo';
     await citasService.marcarCitaConfirmadaSinNotificar({
       notionPageId,
-      motivoCategoria: emailError.categoria || 'DESCONOCIDO',
-      motivoDetalle: emailError.message,
-      intentosPrevios,
+      motivoCategoria: categoria,
+      motivoDetalle: mensaje,
     });
     throw new BookingError(
       'NOTIFICACION_FALLO',
-      `Reintento falló (${emailError.categoria}): ${emailError.message}`
+      `No se pudo enviar el correo de confirmación (${categoria}): ${mensaje}`
     );
   }
 }
