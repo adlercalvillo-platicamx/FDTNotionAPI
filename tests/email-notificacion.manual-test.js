@@ -277,6 +277,9 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.mesa, 1);
     assert.strictEqual(h.emailCalls.length, 1);
     assert.ok(h.emailCalls[0].descripcion.includes('Nombre asistente-b'));
+    assert.ok(h.emailCalls[0].descripcion.includes('agendó un espacio con Nombre sponsor-a'));
+    assert.ok(h.emailCalls[0].descripcion.includes('Agregar al calendario'));
+    assert.ok(h.emailCalls[0].descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
     assert.ok(h.calendarCreateCalls[0].descripcion.includes('Nombre asistente-b'));
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
   });

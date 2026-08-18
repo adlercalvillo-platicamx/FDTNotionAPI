@@ -182,12 +182,26 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
   // extra en una iteración futura, pero HOY no es la fuente del dato de
   // contacto — eso es automático.
   const lineasAsistente = [
-    `Cita confirmada con: ${asistente.nombre || 'Asistente'}`,
+    '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
+    '',
+    `${asistente.nombre || 'El asistente'} agendó un espacio con ${
+      sponsor.nombre || 'el sponsor'
+    }. Nos dará mucho gusto recibirlos.`,
+    '',
+    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
+    '',
+    'Datos de contacto del asistente:',
+    `Nombre: ${asistente.nombre || 'Asistente'}`,
     asistente.empresa ? `Empresa: ${asistente.empresa}` : null,
     asistente.rolPuesto ? `Puesto: ${asistente.rolPuesto}` : null,
     asistente.email ? `Correo: ${asistente.email}` : null,
     asistente.whatsapp ? `Teléfono: ${asistente.whatsapp}` : null,
-  ].filter(Boolean);
+    '',
+    'Te recomendamos conservar estos datos para facilitar el encuentro.',
+    '',
+    '¡Te esperamos en Fashion Digital Talks 2026!',
+    'Equipo Fashion Digital Talks',
+  ].filter((linea) => linea !== null);
 
   const descripcion = lineasAsistente.join('\n');
 
