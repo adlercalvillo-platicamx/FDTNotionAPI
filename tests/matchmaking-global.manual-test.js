@@ -121,6 +121,23 @@ async function main() {
   console.log(`Sponsors evaluados: ${resultado.totalSponsorsEvaluados}`);
   console.log(`Sponsors omitidos: ${resultado.totalSponsorsOmitidos}`);
   console.log(`Solapamientos detectados: ${resultado.totalSolapamientosDetectados}`);
+  if (resultado.resultadosPorSponsor.length !== 2) {
+    throw new Error('La corrida global debe devolver el detalle de ambos sponsors');
+  }
+  for (const item of resultado.resultadosPorSponsor) {
+    for (const sugerencia of item.sugerencias) {
+      if (!sugerencia.explicacion) {
+        throw new Error(`Falta explicación para ${item.sponsor.nombre} × ${sugerencia.nombre}`);
+      }
+    }
+  }
+  for (const solapamiento of resultado.solapamientos) {
+    for (const aparicion of solapamiento.ordenDePrioridad) {
+      if (!aparicion.explicacion) {
+        throw new Error(`Falta explicación en solapamiento ${solapamiento.asistenteNombre}`);
+      }
+    }
+  }
   console.log(JSON.stringify(resultado.solapamientos, null, 2));
 }
 

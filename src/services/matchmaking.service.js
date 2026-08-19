@@ -455,6 +455,53 @@ async function sugerirMatchesParaSponsor(
 }
 
 /**
+ * Guarda UNA sola sugerencia elegida de un resultado previo (individual o
+ * global). Recalcula el matchmaking para no confiar en score/explicación
+ * enviados por el agente, valida que el par siga siendo elegible y crea
+ * únicamente esa fila en Citas con Estatus="Sugerido".
+ *
+ * La explicación siempre la genera el backend a partir de señales reales.
+ */
+async function guardarSugerenciaIndividual(sponsorPageId, asistentePageId) {
+  if (!sponsorPageId || !asistentePageId) {
+    throw new Error('sponsorPageId y asistentePageId son requeridos para guardar una sugerencia individual.');
+  }
+
+  // Traer todos los candidatos válidos del sponsor permite seleccionar uno
+  // mostrado previamente por sugerir_matches_global aunque no estuviera en
+  // el topN default de la corrida individual.
+  const resultado = await sugerirMatchesParaSponsor(sponsorPageId, {
+    topN: Number.MAX_SAFE_INTEGER,
+    escribirEnNotion: false,
+  });
+  const sugerencia = resultado.sugerencias.find((s) => s.id === asistentePageId);
+
+  if (!sugerencia) {
+    throw new Error(
+      `El asistente ${asistentePageId} no es una sugerencia válida actual para "${resultado.sponsor.nombre}". ` +
+        'Puede haber dejado de ser elegible, ser cliente actual, o ya existir una cita/sugerencia activa para ese par.'
+    );
+  }
+
+  const pagina = await notionCitas.crearCitaSugerida({
+    sponsorPageId,
+    asistentePageId,
+    sponsorNombre: resultado.sponsor.nombre,
+    asistenteNombre: sugerencia.nombre,
+    score: sugerencia.score,
+    explicacion: sugerencia.explicacion,
+  });
+
+  return {
+    guardada: true,
+    notionPageId: pagina?.id || null,
+    sponsor: resultado.sponsor,
+    sugerencia,
+    mensaje: `Sugerencia guardada: ${sugerencia.nombre} (${sugerencia.empresa}) × ${resultado.sponsor.nombre}.`,
+  };
+}
+
+/**
  * Compara dos niveles de patrocinio para el desempate.
  * Un nivel desconocido cae al fondo (-1) en vez de tronar.
  */
@@ -545,6 +592,8 @@ async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVir
         sponsorNombre: sponsor.nombre,
         nivelPatrocinio: sponsor.nivelPatrocinio,
         score: sug.score,
+        explicacion: sug.explicacion,
+        detalle: sug.detalle,
       });
     }
   }
@@ -570,6 +619,20 @@ async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVir
     totalSponsorsEvaluados: sponsors.length,
     totalSponsorsOmitidos: omitidos.length,
     omitidos,
+    // Se devuelve el ranking completo por sponsor (con explicacion/detalle)
+    // para que el agente siempre pueda explicar por qué propuso cada match
+    // y para que luego pueda guardar solo uno con
+    // guardar_sugerencia_individual.
+    resultadosPorSponsor: resultadosPorSponsor.map(({ sponsor, resultado }) => ({
+      sponsor: {
+        id: sponsor.id,
+        nombre: sponsor.nombre,
+        empresa: sponsor.empresa,
+        nivelPatrocinio: sponsor.nivelPatrocinio,
+      },
+      cuotaPendiente: resultado.cuotaPendiente,
+      sugerencias: resultado.sugerencias,
+    })),
     totalSolapamientosDetectados: solapamientos.length,
     solapamientos,
   };
@@ -649,6 +712,7 @@ async function aprobarMatch(sponsorPageId, asistentePageId) {
 
 module.exports = {
   sugerirMatchesParaSponsor,
+  guardarSugerenciaIndividual,
   sugerirMatchesGlobal,
   aprobarMatch,
   compararPrioridadSponsor,

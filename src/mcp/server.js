@@ -5,11 +5,12 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (18 ago 2026): 6 herramientas — consultar_checklist (lectura),
+// Estado (19 ago 2026): 7 herramientas MCP — consultar_checklist (lectura),
 // revisar_checklists_pendientes (lectura + actualiza estado),
 // sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
 // crean filas en Citas con Estatus "Sugerido", dry-run por default en
-// ambas), aprobar_match (marca una fila de Citas como "Aprobado"),
+// ambas), guardar_sugerencia_individual (crea solo el par elegido),
+// aprobar_match (marca una fila de Citas como "Aprobado"),
 // reintentar_notificaciones_pendientes (reenvía correos/.ics de citas en
 // "Confirmada sin notificar"). El campo "Match Sugerido" del sponsor quedó
 // en desuso el 9 de agosto — ver 03-reglas-negocio-y-matchmaking.md y
@@ -87,6 +88,33 @@ function crearServidorMcp() {
       } catch (err) {
         // Errores esperados del servicio (categoría incorrecta, nivel sin citas
         // 1a1, etc.) se regresan como mensaje, no como excepción sin contexto.
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Guarda solo el par elegido de un dry-run previo. La tool recalcula y
+  // valida el match; el agente nunca manda score ni explicación inventados.
+  server.tool(
+    'guardar_sugerencia_individual',
+    'Guarda en Notion UNA sola sugerencia de matchmaking previamente mostrada, creando únicamente la fila de Citas de ese par con Estatus "Sugerido". Recalcula y valida que el par siga siendo elegible, y devuelve siempre la explicación del match generada por el backend. Usar cuando el usuario elija una sugerencia específica de un resultado individual o global y pida guardar solo esa; no vuelve a guardar el bloque completo.',
+    {
+      sponsorPageId: z.string().describe('page_id exacto del sponsor en Notion'),
+      asistentePageId: z.string().describe('page_id exacto del asistente elegido en Notion'),
+    },
+    async ({ sponsorPageId, asistentePageId }) => {
+      try {
+        const resultado = await matchmakingService.guardarSugerenciaIndividual(
+          sponsorPageId,
+          asistentePageId
+        );
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
         return {
           content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
           isError: true,

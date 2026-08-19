@@ -31,7 +31,7 @@ src/
 │   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 │   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api
 ├── mcp/
-│   ├── server.js                     # Define las 5 herramientas MCP — capa delgada sobre services/, no reimplementa lógica
+│   ├── server.js                     # Define herramientas MCP — capa delgada sobre services/, no reimplementa lógica
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
 └── utils/
     └── notion-client.js              # Cliente REST de Notion compartido
@@ -79,8 +79,10 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
-| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos. Mismo patrón dry-run que la anterior. **Corregido el 10-ago** — antes fallaba por timeout con datos reales (ver sección Bugs), ahora carga la lista de citas activas una sola vez en vez de consultar Notion por cada candidato |
+| `guardar_sugerencia_individual` | Escritura acotada | Guarda únicamente el par sponsor-asistente elegido de un resultado previo individual/global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`, nunca el bloque completo |
+| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match. Mismo patrón dry-run que la anterior. **Corregido el 10-ago** — antes fallaba por timeout con datos reales (ver sección Bugs), ahora carga la lista de citas activas una sola vez en vez de consultar Notion por cada candidato |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
+| `reintentar_notificaciones_pendientes` | Escritura acotada, masiva | Reenvía a demanda correo/ICS para todas las citas `Confirmada sin notificar`; sin parámetros y sin tope de llamadas |
 
 **Rediseño del 12 de agosto — `Quiere Citas 1a1` y filtro de Giro:** el campo `Quiere Citas 1a1` pasó de checkbox a `select` (`Sí` / `No` / vacío) porque un checkbox no puede distinguir "nunca contestó" de "contestó que no". Decisión de Laura (demo 11-ago): se excluye solo `'No'` explícito; vacío histórico entra. Además, `buscarAsistentesCandidatos` filtra por Giro/Industria — solo Marca de moda, Retailer/tienda multimarca y Manufactura (aplica también a VIP). Mismo día se agregó `Calendario Google ID` por sponsor (multi-calendario) y se cargaron 29 asistentes reales que faltaban de la importación original de Ticketópolis.
 
@@ -112,6 +114,7 @@ No hay suite automatizada con Jest todavía — son scripts que se corren a mano
 ```bash
 node tests/matchmaking.manual-test.js
 node tests/matchmaking-global.manual-test.js
+node tests/guardar-sugerencia-individual.manual-test.js
 node tests/checklist.manual-test.js
 node tests/aprobar-match.manual-test.js
 node tests/global-cache-citas.manual-test.js
