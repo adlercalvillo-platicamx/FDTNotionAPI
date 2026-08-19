@@ -27,6 +27,7 @@ const { z } = require('zod');
 
 const checklistService = require('../services/checklist.service');
 const matchmakingService = require('../services/matchmaking.service');
+const citasService = require('../services/citas.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 
 function crearServidorMcp() {
@@ -210,6 +211,51 @@ function crearServidorMcp() {
       } catch (err) {
         return {
           content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    'consultar_sugeridas_para_asistente',
+    'Lista las citas 1a1 ya persistidas en Notion como Sugerido o Aprobado para un asistente (no recalcula matchmaking). El identificador principal es el WhatsApp de la conversación. Incluye page_id del sponsor, nombre y calendarioGoogleId. No escribe nada.',
+    {
+      whatsapp: z
+        .string()
+        .optional()
+        .describe('Teléfono WhatsApp del asistente (identificador principal). Con o sin +52.'),
+      asistentePageId: z
+        .string()
+        .optional()
+        .describe('page_id del asistente en Notion. Solo si no hay teléfono.'),
+    },
+    async ({ whatsapp, asistentePageId }) => {
+      if (!whatsapp && !asistentePageId) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: 'INVALID_INPUT',
+                message: 'Pasa whatsapp (preferido) o asistentePageId.',
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+      try {
+        const resultado = await citasService.consultarSugeridasPorIdentificador({
+          whatsapp,
+          asistentePageId: whatsapp ? undefined : asistentePageId,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.code }, null, 2) }],
           isError: true,
         };
       }

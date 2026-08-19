@@ -393,6 +393,74 @@ async function listarSponsorsActivos() {
   return data.results.map(parsearContacto);
 }
 
+function variantesTelefono(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return [];
+  const set = new Set([digits]);
+  if (digits.startsWith('521') && digits.length >= 13) {
+    set.add(digits.slice(1));
+    set.add(digits.slice(3));
+  }
+  if (digits.startsWith('52') && digits.length >= 12) {
+    set.add(digits.slice(2));
+  }
+  if (digits.length === 10) {
+    set.add(`52${digits}`);
+    set.add(`521${digits}`);
+  }
+  return [...set];
+}
+
+/**
+ * Asistente (Categoria=Asistente, no dado de baja) cuyo WhatsApp coincide
+ * con alguna variante E.164 / 52 / 10 dígitos.
+ */
+async function buscarAsistentePorWhatsApp(telefonoEntrada) {
+  requireDataSourceId();
+  const variantes = variantesTelefono(telefonoEntrada);
+  if (variantes.length === 0) return null;
+
+  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: {
+        and: [
+          { property: 'Categoria', select: { equals: 'Asistente' } },
+          { property: 'Dado de Baja', checkbox: { equals: false } },
+          {
+            or: variantes.map((v) => ({ property: 'WhatsApp', phone_number: { equals: v } })),
+          },
+        ],
+      },
+      page_size: 10,
+    }),
+  });
+
+  const candidatos = (data.results || []).map(parsearContacto);
+  if (candidatos.length === 0) {
+    // Notion a veces guarda el número con +; reconsultar sin filtro de teléfono
+    // sería caro. Segundo intento: equals con "+" prefix.
+    const dataPlus = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify({
+        filter: {
+          and: [
+            { property: 'Categoria', select: { equals: 'Asistente' } },
+            { property: 'Dado de Baja', checkbox: { equals: false } },
+            {
+              or: variantes.map((v) => ({ property: 'WhatsApp', phone_number: { equals: `+${v}` } })),
+            },
+          ],
+        },
+        page_size: 10,
+      }),
+    });
+    const extra = (dataPlus.results || []).map(parsearContacto);
+    return extra[0] || null;
+  }
+  return candidatos[0];
+}
+
 module.exports = {
   parsearContacto,
   obtenerContacto,
@@ -400,6 +468,8 @@ module.exports = {
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
   buscarContactoPorNombre,
+  buscarAsistentePorWhatsApp,
+  variantesTelefono,
   listarSponsorsYSpeakersActivos,
   actualizarChecklist,
   listarSponsorsActivos,

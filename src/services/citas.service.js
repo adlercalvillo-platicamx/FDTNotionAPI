@@ -313,23 +313,147 @@ async function crearCitaSugerida({ sponsorPageId, asistentePageId, sponsorNombre
  */
 async function buscarSugerenciasPendientesPorSponsor(sponsorPageId) {
   requireDataSourceId();
-  const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
-    method: 'POST',
-    body: JSON.stringify({
-      filter: {
-        and: [
-          { property: 'Contacto Match', relation: { contains: sponsorPageId } },
-          {
-            or: [
-              { property: 'Estatus', select: { equals: 'Sugerido' } },
-              { property: 'Estatus', select: { equals: 'Aprobado' } },
-            ],
-          },
+  return queryCitasPaginado({
+    and: [
+      { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+      {
+        or: [
+          { property: 'Estatus', select: { equals: 'Sugerido' } },
+          { property: 'Estatus', select: { equals: 'Aprobado' } },
         ],
       },
+    ],
+  });
+}
+
+const RANGO_SUGERIDA = { Aprobado: 2, Sugerido: 1 };
+
+/**
+ * Filas Sugerido/Aprobado del asistente (Contacto Principal), hidratadas
+ * con nombre y calendario del sponsor. Dedup por sponsor (Aprobado gana).
+ */
+async function listarSugeridasPorAsistente(asistentePageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      {
+        or: [
+          { property: 'Estatus', select: { equals: 'Sugerido' } },
+          { property: 'Estatus', select: { equals: 'Aprobado' } },
+        ],
+      },
+    ],
+  });
+
+  const contactos = require('./contactos.service');
+  const porSponsor = new Map();
+
+  for (const fila of filas) {
+    const estatus = fila.properties?.Estatus?.select?.name || null;
+    const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id;
+    if (!sponsorId) continue;
+    const previa = porSponsor.get(sponsorId);
+    if (previa && (RANGO_SUGERIDA[previa.estatus] || 0) >= (RANGO_SUGERIDA[estatus] || 0)) {
+      continue;
+    }
+    porSponsor.set(sponsorId, { cita_page_id: fila.id, estatus, sponsor_notion_id: sponsorId });
+  }
+
+  const sugeridas = [];
+  for (const item of porSponsor.values()) {
+    let sponsor;
+    try {
+      sponsor = await contactos.obtenerContacto(item.sponsor_notion_id);
+    } catch (err) {
+      console.warn(`[Citas] No se pudo hidratar sponsor ${item.sponsor_notion_id}:`, err.message);
+      sugeridas.push({
+        ...item,
+        sponsor_nombre: null,
+        sponsor_calendario_id: null,
+        nivel_patrocinio: null,
+      });
+      continue;
+    }
+    sugeridas.push({
+      ...item,
+      sponsor_nombre: sponsor.nombre || null,
+      sponsor_calendario_id: sponsor.calendarioGoogleId || null,
+      nivel_patrocinio: sponsor.nivelPatrocinio || null,
+    });
+  }
+
+  return sugeridas;
+}
+
+/**
+ * Consulta sugeridas por WhatsApp (identificador del agente) o page_id.
+ * Si hay teléfono, Notion se resuelve aquí; el cliente no necesita el UUID.
+ */
+async function consultarSugeridasPorIdentificador({ whatsapp, asistentePageId } = {}) {
+  const phone = String(whatsapp || '').trim();
+  let id = String(asistentePageId || '').trim();
+  let asistente = null;
+  const contactos = require('./contactos.service');
+
+  if (phone) {
+    asistente = await contactos.buscarAsistentePorWhatsApp(phone);
+    if (!asistente) {
+      const err = new Error('No hay un asistente activo con ese número de WhatsApp.');
+      err.code = 'CONTACTO_NO_RESUELTO';
+      err.status = 404;
+      throw err;
+    }
+    id = asistente.id;
+  }
+
+  if (!id) {
+    const err = new Error('Se requiere whatsapp (teléfono) o asistente_notion_id.');
+    err.code = 'INVALID_INPUT';
+    err.status = 400;
+    throw err;
+  }
+
+  const sugeridas = await listarSugeridasPorAsistente(id);
+  return {
+    asistente_notion_id: id,
+    asistente_nombre: asistente?.nombre || null,
+    whatsapp: asistente?.whatsapp || phone || null,
+    sugeridas,
+  };
+}
+
+async function queryCitasPaginado(filter) {
+  const resultados = [];
+  let cursor = undefined;
+  let paginasLeidas = 0;
+  const MAX_PAGINAS = 50;
+
+  do {
+    const body = { filter, page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    resultados.push(...(data.results || []));
+    cursor = data.has_more ? data.next_cursor : undefined;
+    paginasLeidas += 1;
+    if (paginasLeidas >= MAX_PAGINAS) {
+      throw new Error(`queryCitasPaginado: límite de ${MAX_PAGINAS} páginas`);
+    }
+  } while (cursor);
+
+  return resultados;
+}
+
+async function reabrirCitaParaReintento(notionPageId) {
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: { Estatus: { select: { name: 'Pendiente Calendar' } } },
     }),
   });
-  return data.results;
 }
 
 /**
@@ -573,6 +697,50 @@ function generarBloquesParaFecha(fecha) {
   return bloques;
 }
 
+function finDeBloque(inicioIso) {
+  const duracionMin = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS || 30);
+  const zona = process.env.CITAS_ZONA_HORARIA_OFFSET || '-06:00';
+  const m = String(inicioIso).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) {
+    throw new Error(`inicio ISO no parseable: ${inicioIso}`);
+  }
+  const fecha = m[1];
+  const minutos = Number(m[2]) * 60 + Number(m[3]) + duracionMin;
+  const h = String(Math.floor(minutos / 60)).padStart(2, '0');
+  const min = String(minutos % 60).padStart(2, '0');
+  return `${fecha}T${h}:${min}:00${zona}`;
+}
+
+function armarBloqueDisponibilidad({ inicio, sponsorOcupado, citasEnBloque }) {
+  const mesas_ocupadas = citasEnBloque;
+  const mesas_libres = Math.max(0, CAPACIDAD_MAXIMA_MESAS - citasEnBloque);
+  const fin = finDeBloque(inicio);
+  if (sponsorOcupado) {
+    return { inicio, fin, disponible: false, motivo: 'SPONSOR_YA_OCUPADO', mesas_ocupadas, mesas_libres };
+  }
+  if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
+    return { inicio, fin, disponible: false, motivo: 'CAPACIDAD_MESAS_LLENA', mesas_ocupadas, mesas_libres };
+  }
+  return { inicio, fin, disponible: true, motivo: null, mesas_ocupadas, mesas_libres };
+}
+
+async function listarCitasConfirmadasEnFecha(fecha) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    or: [
+      { property: 'Estatus', select: { equals: 'Confirmada' } },
+      { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+    ],
+  });
+  return filas
+    .map((fila) => {
+      const inicio = fila.properties?.['Fecha y Hora']?.date?.start || '';
+      const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id || null;
+      return { inicio, sponsorId };
+    })
+    .filter((r) => r.inicio.startsWith(fecha));
+}
+
 function obtenerFechasEvento() {
   return process.env.CITAS_FECHAS_EVENTO.split(',').map((f) => f.trim());
 }
@@ -598,28 +766,16 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
   requireHorarioConfigurado(fecha);
 
   const bloques = generarBloquesParaFecha(fecha);
+  const confirmadas = await listarCitasConfirmadasEnFecha(fecha);
 
-  // Una consulta a Notion por bloque, en paralelo — mismo patrón que
-  // booking.service.js. ~16 bloques/día; vigilar rate limit de Notion
-  // si el formulario consulta mucho en paralelo.
-  const resultados = await Promise.all(
-    bloques.map(async (inicio) => {
-      const [sponsorOcupado, citasEnBloque] = await Promise.all([
-        sponsorOcupadoEnBloque({ sponsorPageId, inicio }),
-        contarCitasEnBloque({ inicio }),
-      ]);
-
-      if (sponsorOcupado) {
-        return { inicio, disponible: false, motivo: 'SPONSOR_YA_OCUPADO' };
-      }
-      if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
-        return { inicio, disponible: false, motivo: 'CAPACIDAD_MESAS_LLENA' };
-      }
-      return { inicio, disponible: true, motivo: null };
-    })
-  );
-
-  return resultados;
+  return bloques.map((inicio) => {
+    const enBloque = confirmadas.filter((c) => c.inicio === inicio);
+    return armarBloqueDisponibilidad({
+      inicio,
+      sponsorOcupado: enBloque.some((c) => c.sponsorId === sponsorPageId),
+      citasEnBloque: enBloque.length,
+    });
+  });
 }
 
 module.exports = {
@@ -641,8 +797,13 @@ module.exports = {
   obtenerParesConCitaActiva,
   existeCitaActivaEntreEnCache,
   obtenerDisponibilidadSponsor,
-  // exportados para smoke local y para que booking.service.js valide
-  // contra exactamente los mismos slots / fail-fast de horario (14-ago).
+  listarSugeridasPorAsistente,
+  consultarSugeridasPorIdentificador,
+  reabrirCitaParaReintento,
+  listarCitasConfirmadasEnFecha,
+  finDeBloque,
+  armarBloqueDisponibilidad,
+  CAPACIDAD_MAXIMA_MESAS,
   generarBloquesParaFecha,
   requireHorarioConfigurado,
   obtenerFechasEvento,

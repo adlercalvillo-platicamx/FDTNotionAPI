@@ -5,7 +5,8 @@ const {
   reintentarNotificacion,
   BookingError,
 } = require('../services/booking.service');
-const { obtenerDisponibilidadSponsor } = require('../services/citas.service');
+const { obtenerDisponibilidadSponsor, consultarSugeridasPorIdentificador } = require('../services/citas.service');
+const { variantesTelefono } = require('../services/contactos.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 
 const STATUS_POR_CODIGO_NEGOCIO = {
@@ -51,24 +52,24 @@ async function reservar(req, res) {
 
   if (!request_id) {
     return res.status(400).json({
-      error: 'Bad Request',
+      error: 'INVALID_INPUT',
       message: 'El campo "request_id" es requerido (clave de idempotencia — el mismo valor en un reintento).',
     });
   }
   if (!sponsor_calendario_id || !sponsor_notion_id || !asistente_notion_id) {
     return res.status(400).json({
-      error: 'Bad Request',
+      error: 'INVALID_INPUT',
       message: 'Los campos "sponsor_calendario_id", "sponsor_notion_id" y "asistente_notion_id" son requeridos.',
     });
   }
   if (!inicio || !fin) {
     return res.status(400).json({
-      error: 'Bad Request',
+      error: 'INVALID_INPUT',
       message: 'Los campos "inicio" y "fin" son requeridos en formato ISO 8601 (ej. "2026-10-07T10:30:00-06:00").',
     });
   }
   if (asistentes_email !== undefined && !Array.isArray(asistentes_email)) {
-    return res.status(400).json({ error: 'Bad Request', message: '"asistentes_email" debe ser un arreglo de emails' });
+    return res.status(400).json({ error: 'INVALID_INPUT', message: '"asistentes_email" debe ser un arreglo de emails' });
   }
 
   try {
@@ -167,6 +168,50 @@ async function disponibilidad(req, res) {
   }
 }
 
+async function sugeridas(req, res) {
+  const whatsapp = String(req.query.whatsapp || req.query.telefono || '').trim();
+  const asistente_notion_id = String(req.query.asistente_notion_id || '').trim();
+
+  if (!whatsapp && !asistente_notion_id) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'Se requiere whatsapp (teléfono del asistente) o asistente_notion_id.',
+    });
+  }
+  if (whatsapp && variantesTelefono(whatsapp).length === 0) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'whatsapp debe ser un número de teléfono (dígitos, con o sin +52).',
+    });
+  }
+  if (!whatsapp && !esUuidCanonico(asistente_notion_id)) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'asistente_notion_id debe ser un UUID válido',
+    });
+  }
+
+  try {
+    const resultado = await consultarSugeridasPorIdentificador({
+      whatsapp: whatsapp || undefined,
+      asistentePageId: whatsapp ? undefined : asistente_notion_id,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    if (error.status === 404 || error.code === 'CONTACTO_NO_RESUELTO') {
+      return res.status(404).json({ error: 'CONTACTO_NO_RESUELTO', message: error.message });
+    }
+    if (error.status === 400 || error.code === 'INVALID_INPUT') {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: error.message });
+    }
+    console.error('[CitasController] Error en sugeridas:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Error al consultar sugeridas. Revisa los logs.',
+    });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /citas/:id/reenviar-notificacion
 // ─────────────────────────────────────────────────────────────
@@ -223,6 +268,7 @@ async function reintentarNotificacionesPendientes(req, res) {
 module.exports = {
   reservar,
   disponibilidad,
+  sugeridas,
   reenviarNotificacion,
   reintentarNotificacionesPendientes,
   esUuidCanonico,

@@ -64,7 +64,9 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
 | POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
+| GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
+| POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
 | POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
@@ -87,6 +89,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
+| `consultar_sugeridas_para_asistente` | Lectura | Filas Citas `Sugerido`/`Aprobado`. Identificador principal: `whatsapp`. |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
 | `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
@@ -133,9 +136,12 @@ node tests/guardar-sugerencia-individual.manual-test.js
 node tests/checklist.manual-test.js
 node tests/aprobar-match.manual-test.js
 node tests/global-cache-citas.manual-test.js
-node tests/disponibilidad.local-smoke.js   # Casos 4/4b/4c sin Notion
+node tests/disponibilidad.local-smoke.js   # Casos 4/4b/4c sin Notion; el resto de tests-disponibilidad.md va post-Coolify
 node tests/asignacion-mesa.manual-test.js
 node tests/email-notificacion.manual-test.js
+node tests/sugeridas.manual-test.js
+node tests/sugeridas-whatsapp.manual-test.js
+node tests/flow-reserva.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
 node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 ```

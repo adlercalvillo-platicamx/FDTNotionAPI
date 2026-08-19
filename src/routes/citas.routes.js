@@ -5,6 +5,7 @@ const citasController = require('../controllers/citas.controller');
 
 router.post('/reservar', citasController.reservar);
 router.get('/disponibilidad', citasController.disponibilidad);
+router.get('/sugeridas', citasController.sugeridas);
 // Ruta estática ANTES de /:id/... para que Express no la matchee contra :id
 router.post('/reintentar-notificaciones-pendientes', citasController.reintentarNotificacionesPendientes);
 router.post('/:id/reenviar-notificacion', citasController.reenviarNotificacion);

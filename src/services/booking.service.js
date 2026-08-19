@@ -149,6 +149,21 @@ class BookingError extends Error {
   }
 }
 
+function interpretarFilaIdempotente(existente) {
+  const estado = existente.properties?.Estatus?.select?.name || null;
+  if (estado === 'Fallida' || estado === 'Pendiente Calendar') {
+    return { reanudar: true, estado, page: existente };
+  }
+  return {
+    reanudar: false,
+    resultado: {
+      ya_existia: true,
+      notion_page_id: existente.id,
+      estado,
+    },
+  };
+}
+
 /**
  * Resuelve destinatarios y textos del correo de confirmación a partir de
  * Contactos en Notion (sponsor + asistente). Dos correos distintos:
@@ -350,31 +365,25 @@ async function reservarCita({
   // Notion en una reserva con horario inválido de entrada.
   validarDuracionYFecha(inicio, fin);
 
-  // Chequeo de idempotencia fuera del lock: es solo lectura, no necesita
-  // serializarse. Si ya existe, regresamos el resultado anterior tal cual.
-  const existente = await citasService.buscarPorRequestId(request_id);
-  if (existente) {
-    return {
-      ya_existia: true,
-      notion_page_id: existente.id,
-      estado: existente.properties?.Estatus?.select?.name || null,
-    };
+  const existenteFuera = await citasService.buscarPorRequestId(request_id);
+  if (existenteFuera) {
+    const interp = interpretarFilaIdempotente(existenteFuera);
+    if (!interp.reanudar) return interp.resultado;
   }
 
   // A partir de aquí, todo corre serializado. Es la sección crítica completa:
   // verificar + reservar-en-Notion + crear-en-Calendar + confirmar — sin
   // que ninguna otra reserva pueda intercalarse en medio.
   return bookingMutex.runExclusive(async () => {
-    // Re-chequeo dentro del lock: por si dos requests con el mismo
-    // request_id llegaron a la vez y ambas pasaron el chequeo de arriba
-    // antes de que cualquiera entrara al mutex.
     const existenteEnLock = await citasService.buscarPorRequestId(request_id);
+    let citaPendiente = null;
     if (existenteEnLock) {
-      return {
-        ya_existia: true,
-        notion_page_id: existenteEnLock.id,
-        estado: existenteEnLock.properties?.Estatus?.select?.name || null,
-      };
+      const interp = interpretarFilaIdempotente(existenteEnLock);
+      if (!interp.reanudar) {
+        return interp.resultado;
+      }
+      await citasService.reabrirCitaParaReintento(existenteEnLock.id);
+      citaPendiente = existenteEnLock;
     }
 
     const [sponsorOcupado, citasEnBloque] = await Promise.all([
@@ -392,23 +401,19 @@ async function reservarCita({
       );
     }
 
-    // La mesa que le toca a esta cita es la siguiente disponible en el bloque.
-    // Válido porque estamos dentro del mutex: nadie más puede colarse entre
-    // este cálculo y la escritura de crearCitaPendiente() de abajo.
     const numeroMesa = citasEnBloque + 1;
 
-    // Reservamos el lugar en Notion en estado intermedio ANTES de tocar
-    // Calendar. Como estamos dentro del mutex, no hay forma de que otra
-    // reserva se cuele entre este paso y la confirmación de abajo.
-    const citaPendiente = await citasService.crearCitaPendiente({
-      requestId: request_id,
-      sponsorPageId: sponsor_notion_id,
-      asistentePageId: asistente_notion_id,
-      inicio,
-      fin,
-      titulo: titulo || `Cita — ${request_id}`,
-      mesa: numeroMesa,
-    });
+    if (!citaPendiente) {
+      citaPendiente = await citasService.crearCitaPendiente({
+        requestId: request_id,
+        sponsorPageId: sponsor_notion_id,
+        asistentePageId: asistente_notion_id,
+        inicio,
+        fin,
+        titulo: titulo || `Cita — ${request_id}`,
+        mesa: numeroMesa,
+      });
+    }
 
     // Resuelto ANTES de tocar Calendar: Calendar y el correo del sponsor
     // deben mostrar la misma descripción automática (confirmado Adler,

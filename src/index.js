@@ -6,12 +6,19 @@ const citasRoutes = require('./routes/citas.routes');
 const matchmakingRoutes = require('./routes/matchmaking.routes');
 const checklistRoutes = require('./routes/checklist.routes');
 const { montarMcp } = require('./mcp/mount');
+const flowsRoutes = require('./routes/flows.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ── Middlewares globales ────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, _res, next) => {
@@ -23,6 +30,8 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'fdt-notion-api', timestamp: new Date().toISOString() });
 });
+
+app.use('/webhooks', flowsRoutes);
 
 // ── Todo lo que sigue requiere X-API-Key ────────────────────
 app.use(authMiddleware);

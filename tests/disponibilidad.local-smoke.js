@@ -106,6 +106,10 @@ async function main() {
     assert(mie[mie.length - 1] === '2026-10-07T18:30:00-06:00', `último mié = ${mie[mie.length - 1]}`);
     assert(!mie.includes('2026-10-07T19:00:00-06:00'), '19:00 no debe aparecer');
     assert(mie.length === 17, `mié count ${mie.length} (esperado 17)`);
+    assert(
+      citas.finDeBloque('2026-10-07T10:30:00-06:00') === '2026-10-07T11:00:00-06:00',
+      'fin de 10:30 = 11:00'
+    );
     console.log('✅ Caso 4c — miércoles 10:30→18:30 (17 slots)');
   } catch (e) {
     console.log('❌ Caso 4c miércoles:', e.message);

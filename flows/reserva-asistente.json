@@ -1,0 +1,246 @@
+{
+  "version": "7.1",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SPONSOR": ["FECHA"],
+    "FECHA": ["HORARIO"],
+    "HORARIO": ["RESUMEN"],
+    "RESUMEN": ["RESULTADO_PENDIENTE"],
+    "RESULTADO_PENDIENTE": []
+  },
+  "screens": [
+    {
+      "id": "SPONSOR",
+      "title": "Elige sponsor",
+      "data": {
+        "sponsors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "sponsor_demo", "title": "Sponsor demo" }]
+        },
+        "asistente_notion_id": { "type": "string", "__example__": "asistente_123" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "¿Con quién quieres la cita?" },
+          { "type": "TextBody", "text": "${data.error_message}" },
+          {
+            "type": "Form",
+            "name": "form_sponsor",
+            "children": [
+              {
+                "type": "Dropdown",
+                "name": "sponsor_id",
+                "label": "Sponsor",
+                "required": true,
+                "data-source": "${data.sponsors}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "sponsor_id": "${form.sponsor_id}",
+                    "asistente_notion_id": "${data.asistente_notion_id}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FECHA",
+      "title": "Elige día",
+      "data": {
+        "fechas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "2026-10-07", "title": "Miércoles 7 oct" }]
+        },
+        "sponsor_id": { "type": "string", "__example__": "sponsor_demo" },
+        "asistente_notion_id": { "type": "string", "__example__": "asistente_123" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "¿Qué día?" },
+          { "type": "TextBody", "text": "${data.error_message}" },
+          {
+            "type": "Form",
+            "name": "form_fecha",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "fecha",
+                "label": "Fecha",
+                "required": true,
+                "data-source": "${data.fechas}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "sponsor_id": "${data.sponsor_id}",
+                    "asistente_notion_id": "${data.asistente_notion_id}",
+                    "fecha": "${form.fecha}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "HORARIO",
+      "title": "Elige hora",
+      "data": {
+        "horarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "2026-10-07T10:30:00-06:00", "title": "10:30" }]
+        },
+        "sponsor_id": { "type": "string", "__example__": "sponsor_demo" },
+        "asistente_notion_id": { "type": "string", "__example__": "asistente_123" },
+        "fecha": { "type": "string", "__example__": "2026-10-07" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "Horarios libres" },
+          { "type": "TextBody", "text": "${data.error_message}" },
+          {
+            "type": "Form",
+            "name": "form_horario",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "inicio",
+                "label": "Hora",
+                "required": true,
+                "data-source": "${data.horarios}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "sponsor_id": "${data.sponsor_id}",
+                    "asistente_notion_id": "${data.asistente_notion_id}",
+                    "fecha": "${data.fecha}",
+                    "inicio": "${form.inicio}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RESUMEN",
+      "title": "Confirmar",
+      "data": {
+        "resumen_texto": {
+          "type": "string",
+          "__example__": "Cita con Sponsor demo el miércoles 7 oct a las 10:30."
+        },
+        "sponsor_id": { "type": "string", "__example__": "sponsor_demo" },
+        "asistente_notion_id": { "type": "string", "__example__": "asistente_123" },
+        "fecha": { "type": "string", "__example__": "2026-10-07" },
+        "inicio": { "type": "string", "__example__": "2026-10-07T10:30:00-06:00" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "Revisa tu cita" },
+          { "type": "TextBody", "text": "${data.resumen_texto}" },
+          { "type": "TextBody", "text": "${data.error_message}" },
+          {
+            "type": "Form",
+            "name": "form_resumen",
+            "children": [
+              {
+                "type": "Footer",
+                "label": "Confirmar",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "sponsor_id": "${data.sponsor_id}",
+                    "asistente_notion_id": "${data.asistente_notion_id}",
+                    "fecha": "${data.fecha}",
+                    "inicio": "${data.inicio}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RESULTADO_PENDIENTE",
+      "title": "Agendando",
+      "terminal": true,
+      "data": {
+        "mensaje_pendiente": {
+          "type": "string",
+          "__example__": "Estamos agendando tu cita. Te escribimos por WhatsApp para confirmar."
+        },
+        "sponsor_id": { "type": "string", "__example__": "sponsor_demo" },
+        "asistente_notion_id": { "type": "string", "__example__": "asistente_123" },
+        "fecha": { "type": "string", "__example__": "2026-10-07" },
+        "inicio": { "type": "string", "__example__": "2026-10-07T10:30:00-06:00" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "Estamos agendando" },
+          { "type": "TextBody", "text": "${data.mensaje_pendiente}" },
+          {
+            "type": "Footer",
+            "label": "Finalizar",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "sponsor_id": "${data.sponsor_id}",
+                "asistente_notion_id": "${data.asistente_notion_id}",
+                "fecha": "${data.fecha}",
+                "inicio": "${data.inicio}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
