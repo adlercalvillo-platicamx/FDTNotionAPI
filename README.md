@@ -23,31 +23,37 @@ src/
 │   ├── citas.controller.js
 │   ├── matchmaking.controller.js
 │   └── checklist.controller.js
+├── jobs/
+│   └── reintentar-notificaciones.job.js  # Barrido a demanda de "Confirmada sin notificar" (no es cron)
 ├── services/
-│   ├── citas.service.js              # Queries/escrituras sobre `Citas` — flujo Sugerido→Aprobado (9-ago); caché de pares con cita activa (10-ago); GET disponibilidad reusa sponsorOcupado/contarCitas (14-ago)
-│   ├── contactos.service.js          # Queries/escrituras sobre `Contactos` — filtro Giro/Industria + fix Quiere Citas 1a1 (select Sí/No/vacío) + calendarioGoogleId (12-ago)
-│   ├── booking.service.js            # Orquesta la reserva (mutex + patrón de rollback)
-│   ├── matchmaking.service.js        # Capa 1 (filtros duros) + Capa 2 (ranking) — sugerirMatchesGlobal usa caché de citas activas desde el 10-ago, ver sección Bugs
+│   ├── citas.service.js              # Queries/escrituras sobre `Citas` — ciclo Sugerido→Aprobado→Confirmada / Confirmada sin notificar (9–18 ago); mesa; caché de pares activos (10-ago)
+│   ├── contactos.service.js          # Queries/escrituras sobre `Contactos` — Giro/Industria + Quiere Citas 1a1 (select) + calendarioGoogleId (12-ago)
+│   ├── booking.service.js            # Reserva: mutex + mesa 1–11 + Calendar + correo/.ics (1 sola réplica Coolify)
+│   ├── email.service.js              # ICS + SMTP (nodemailer); 3 reintentos inmediatos por envío
+│   ├── matchmaking.service.js        # Capa 1 + Capa 2; guardarSugerenciaIndividual (19-ago); global con explicación
 │   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
-│   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api
+│   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api — NUNCA duplicar google.service.js aquí
 ├── mcp/
-│   ├── server.js                     # Define herramientas MCP — capa delgada sobre services/, no reimplementa lógica
+│   ├── server.js                     # 8 herramientas MCP — capa delgada sobre services/
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
 └── utils/
-    └── notion-client.js              # Cliente REST de Notion compartido
+    └── notion-client.js              # Cliente REST de Notion (nunca MCP para escrituras)
 
 tests/
-├── matchmaking.manual-test.js        # Corre contra datos reales con mocks inyectados
-├── matchmaking-global.manual-test.js # Escenario de solapamiento (Diamante vs Oro)
+├── matchmaking.manual-test.js
+├── matchmaking-global.manual-test.js
+├── guardar-sugerencia-individual.manual-test.js  # Una fila Sugerido, explicación del backend (19-ago)
 ├── checklist.manual-test.js
-├── aprobar-match.manual-test.js      # Caso feliz + límite de aprobarMatch (9-ago)
-├── global-cache-citas.manual-test.js # Fix timeout de sugerirMatchesGlobal (10-ago)
-├── disponibilidad.local-smoke.js     # Smoke local 4/4b/4c de GET /citas/disponibilidad (sin Notion)
-└── mocks/                            # Mocks usados por los scripts de prueba manual
+├── aprobar-match.manual-test.js
+├── global-cache-citas.manual-test.js
+├── disponibilidad.local-smoke.js
+├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
+├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
+└── mocks/
 
-scripts/one-shots/                    # Scripts one-shot ya ejecutados — no volver a correr sin revisar
-├── cargar-29-asistentes-faltantes.js # Cargó 29 asistentes reales faltantes (12-ago)
-└── verificar-casos-quiere-citas-giro.js # Los 5 casos del fix Quiere Citas 1a1 + Giro (12-ago)
+scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
+├── cargar-29-asistentes-faltantes.js
+└── verificar-casos-quiere-citas-giro.js
 ```
 
 ## Endpoints
@@ -57,12 +63,16 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
-| POST | `/citas/reservar` | Reserva una cita 1a1 con protección de concurrencia (mutex + Notion como árbitro). |
-| GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
-| POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. Con escritura activa, crea una fila `Sugerido` en `Citas` por candidato (ya NO escribe en `Match Sugerido`, en desuso desde el 9 de agosto — ver sección MCP). |
-| POST | `/matchmaking/sugerir-todos` | Corre matchmaking para todos los sponsors activos, detecta solapamientos (mismo asistente sugerido para más de uno). |
+| POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
+| GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
+| POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
+| POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
+| POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
+| POST | `/matchmaking/sugerir-todos` | Corre matchmaking para todos los sponsors activos, detecta solapamientos y (desde 19-ago) devuelve ranking por sponsor con `explicacion`/`detalle` en cada match. |
 | GET | `/checklist/consultar?nombre=...` | Consulta bajo demanda — "cómo va fulano". |
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
+
+**Reserva — mesa y correo (18 ago):** `CAPACIDAD_MAXIMA_MESAS = 11`. Mesa = citas ya ocupando ese bloque + 1. Cancelar/fallar no reordena mesas de las demás. Correos: apertura por **empresa** (`DINUS agendó un espacio con Infracommerce`). Destinatarios se resuelven desde Contactos. El UID del `.ics` es el page_id de Notion; `SEQUENCE` en reenvíos es un timestamp para que el calendario actualice, no duplique.
 
 **Nota sobre los GET de solo lectura:** el resto del repo de Google usa solo POST/PATCH/DELETE por convención (no por limitación técnica). Aquí se dejaron como GET porque son consultas de solo lectura y son más simples de probar/cachear — si quieres uniformidad total con el otro repo, se pueden cambiar a POST sin problema.
 
@@ -72,15 +82,15 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 
 Además de los endpoints REST de arriba, este servicio expone un servidor **MCP** (Model Context Protocol) en `POST /mcp` — mismo `X-API-Key` que el resto de rutas, mismo `authMiddleware`. Transporte Streamable HTTP, modo stateless (`sessionIdGenerator: undefined`).
 
-Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt.
+Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **8** tools MCP (+ `reservar_cita` como API REST en Plática, no en este servidor MCP).
 
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
-| `guardar_sugerencia_individual` | Escritura acotada | Guarda únicamente el par sponsor-asistente elegido de un resultado previo individual/global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`, nunca el bloque completo |
-| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match. Mismo patrón dry-run que la anterior. **Corregido el 10-ago** — antes fallaba por timeout con datos reales (ver sección Bugs), ahora carga la lista de citas activas una sola vez en vez de consultar Notion por cada candidato |
+| `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
+| `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match (19-ago: antes los solapamientos perdían la explicación). Mismo patrón dry-run. **Corregido el 10-ago** — timeout por ~130 llamadas Notion; ahora carga pares activos una sola vez (ver Bugs) |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
 | `reintentar_notificaciones_pendientes` | Escritura acotada, masiva | Reenvía a demanda correo/ICS para todas las citas `Confirmada sin notificar`; sin parámetros y sin tope de llamadas |
 
@@ -102,6 +112,11 @@ Ver `.env.example`. Resumen:
   - `CITAS_DURACION_BLOQUE_MINUTOS=30`
   - `CITAS_ZONA_HORARIA_OFFSET=-06:00`
   - ⚠️ Underscores en la fecha del Name (`2026_10_07`), no guiones. Coolify no inyecta env vars cuyo Name lleva `-` (confirmado 14-ago: la UI las mostraba pero el proceso respondía 503). El query param `fecha` del API sigue con guiones (`2026-10-07`).
+- **SMTP / correo de confirmación** (18-ago) — mismos valores en local y Coolify:
+  - `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` (Gmail: `smtp.gmail.com` / `587`)
+  - `EMAIL_SMTP_USER`, `EMAIL_SMTP_APP_PASSWORD` (App Password; se puede pegar con espacios cada 4 letras)
+  - `EMAIL_FROM_NAME` (default `Fashion Digital Talks`)
+  - No hay `EMAIL_MAX_INTENTOS`: 3 SMTP inmediatos por envío (no cuentan en Notion); el reenvío a demanda no tiene tope.
 
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.
@@ -118,10 +133,14 @@ node tests/guardar-sugerencia-individual.manual-test.js
 node tests/checklist.manual-test.js
 node tests/aprobar-match.manual-test.js
 node tests/global-cache-citas.manual-test.js
-node tests/disponibilidad.local-smoke.js   # Casos 4/4b/4c sin Notion; el resto de tests-disponibilidad.md va post-Coolify
+node tests/disponibilidad.local-smoke.js   # Casos 4/4b/4c sin Notion
+node tests/asignacion-mesa.manual-test.js
+node tests/email-notificacion.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
 node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 ```
+
+Pruebas SMTP reales contra Coolify: destinatarios **solo** en allowlist de prueba (`adler.calvillo@platica.mx`, `0257691@up.edu.mx`, `adlerero666@gmail.com`). Si `obtenerContacto` trae un correo externo → abortar. Nunca sponsor × sponsor para demos de cita 1a1.
 
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
 - Cron de reconciliación para citas que quedan en "Pendiente Calendar" por un crash a media ejecución.
@@ -129,7 +148,8 @@ node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 - ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — **verificado el 22 de julio con una reserva real de punta a punta** (mutex → Notion → Calendar → Notion confirmado), contra el calendario "Prueba FDT" y el cliente_id `adler-calvillo`. `evento_id` sí viene donde se esperaba.
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
 - Confirmar con Laura: ¿última cita del miércoles puede ser `18:30–19:00` (toca el cierre del horario de citas) o hay que cortar antes? Mismo análisis jueves (`17:30–18:00`). Ver Caso 4c de `tests-disponibilidad`.
-- Tests manuales Notion de `GET /citas/disponibilidad` (casos 1–3, 5–7) — correr después de cargar env en Coolify + redeploy.
+- Restaurar emails reales de sponsors/asistentes en Notion (backups en `tests/_emails-*-backup-*.json`) cuando terminen las pruebas de SMTP.
+- Allowlist de destinatarios SMTP como regla en `.cursor/rules/architecture.mdc` (aún no escrita; la práctica ya es abortar si hay correo externo).
 
 ## Bugs reales encontrados y corregidos
 
@@ -142,3 +162,4 @@ Documentados aquí porque afectaban tanto a rutas REST como a las herramientas M
 - **`calendarioGoogleId` no salía en los returns de las tools** (13 de agosto): el campo ya se leía de Notion en `parseContacto` (multi-calendario del 12-ago) pero `consultarChecklist` y `sugerirMatchesParaSponsor` no lo exponían — el agente pedía `sponsor_calendario_id` al usuario al reservar (Caso 5, `bitacora-verificacion-12ago.md`). Corregido agregándolo a ambos returns; no hizo falta ajustar prompt. `sugerirMatchesGlobal` no se tocó (su reporte de solapamientos no es el camino de `reservar_cita`).
 - **Anidamiento de filtros de Notion en `buscarAsistentesCandidatos`** (`contactos.service.js`): el filtro tenía 3 niveles de anidamiento (`and`→`or`→`and`); Notion solo soporta 2. Bloqueaba matchmaking para *cualquier* sponsor, no un caso aislado. Corregido moviendo una condición a post-filtrado en JavaScript.
 - **`escribirEnNotion` con default divergente/ausente** entre `sugerirMatchesParaSponsor` (default `true` en el service vs. `false` ya usado en MCP) y `sugerirMatchesGlobal` (hardcodeado en `true`, sin opción de dry-run en absoluto). Ambos homologados a default `false`; los endpoints REST correspondientes se ajustaron para pasar `true` explícito y preservar su comportamiento ya probado.
+- **Guardar sugerencias era todo-o-nada** (19 de agosto): `escribirEnNotion=true` escribe el topN completo; el agente no tenía forma de persistir un par. Además `sugerirMatchesGlobal` armaba solapamientos sin `explicacion`/`detalle` y no devolvía el ranking por sponsor, así que el “por qué” del match aparecía a veces sí y a veces no. Corregido con `guardarSugerenciaIndividual` (recalcula y valida el par; una fila `Sugerido`) y haciendo viajar explicación/detalle en ranking + solapamientos. Verificado en conversación real post-redeploy.
