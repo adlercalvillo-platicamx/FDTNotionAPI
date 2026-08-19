@@ -50,6 +50,7 @@ tests/
 ├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
 ├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
 ├── titulos-empresa.manual-test.js     # Empresa×Empresa + texto multipart sin truncar (19-ago)
+├── sugeridas-empresas.manual-test.js  # Empresas hidratadas + solo Sugerido/Aprobado (19-ago)
 └── mocks/
 
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
@@ -92,7 +93,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
-| `consultar_sugeridas_para_asistente` | Lectura | Filas Citas `Sugerido`/`Aprobado`. Identificador principal: `whatsapp`. |
+| `consultar_sugeridas_para_asistente` | Lectura | Filas Citas `Sugerido`/`Aprobado`. Identificador principal: `whatsapp`. Devuelve empresa y nombre del asistente y del sponsor para presentar `Empresa asistente × Empresa sponsor`. |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
 | `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
@@ -144,6 +145,7 @@ node tests/asignacion-mesa.manual-test.js
 node tests/email-notificacion.manual-test.js
 node tests/sugeridas.manual-test.js
 node tests/sugeridas-whatsapp.manual-test.js
+node tests/sugeridas-empresas.manual-test.js
 node tests/flow-reserva.manual-test.js
 node tests/titulos-empresa.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):

@@ -5,12 +5,13 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (19 ago 2026): 7 herramientas MCP — consultar_checklist (lectura),
+// Estado (19 ago 2026): 8 herramientas MCP — consultar_checklist (lectura),
 // revisar_checklists_pendientes (lectura + actualiza estado),
 // sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
 // crean filas en Citas con Estatus "Sugerido", dry-run por default en
 // ambas), guardar_sugerencia_individual (crea solo el par elegido),
 // aprobar_match (marca una fila de Citas como "Aprobado"),
+// consultar_sugeridas_para_asistente (lectura por WhatsApp o page_id),
 // reintentar_notificaciones_pendientes (reenvía correos/.ics de citas en
 // "Confirmada sin notificar"). El campo "Match Sugerido" del sponsor quedó
 // en desuso el 9 de agosto — ver 03-reglas-negocio-y-matchmaking.md y
@@ -219,7 +220,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 ya persistidas en Notion como Sugerido o Aprobado para un asistente (no recalcula matchmaking). El identificador principal es el WhatsApp de la conversación. Incluye page_id del sponsor, nombre y calendarioGoogleId. No escribe nada.',
+    'Lista las citas 1a1 ya persistidas en Notion como Sugerido o Aprobado para un asistente (no recalcula matchmaking). El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente, y por cada sugerencia page_id, empresa, nombre y calendarioGoogleId del sponsor, para presentar Empresa asistente × Empresa sponsor. No escribe nada.',
     {
       whatsapp: z
         .string()
