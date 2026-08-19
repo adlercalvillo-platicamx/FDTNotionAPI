@@ -246,6 +246,9 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     descripcionAsistente,
     // Alias para Calendar (calendario del sponsor → contacto del asistente).
     descripcion: descripcionSponsor,
+    // Título único para Notion, Calendar y correos. Empresa primero; el
+    // nombre de persona solo es fallback para registros sin Empresa.
+    tituloCita: `Cita — ${empresaAsistente} - ${empresaSponsor}`,
   };
 }
 
@@ -415,6 +418,37 @@ async function reservarCita({
       });
     }
 
+    // Si reutilizamos Sugerido/Aprobado, un fallo de Calendar no debe
+    // pasar esa fila a Fallida (se perdería la aprobación). Si la fila
+    // es nueva, Fallida queda para auditoría como siempre.
+    const compensarReservaFallida = async (motivo) => {
+      if (citaPendiente.reutilizoSugerencia) {
+        await citasService.revertirCitaPendienteAMatch({
+          notionPageId: citaPendiente.id,
+          estatusPrevio: citaPendiente.estatusPrevio,
+          nombrePrevio: citaPendiente.nombrePrevio,
+        });
+        return;
+      }
+      await citasService.marcarCitaFallida({
+        notionPageId: citaPendiente.id,
+        motivo,
+      });
+    };
+
+    const archivarSugerenciasHermanas = async () => {
+      try {
+        await citasService.archivarSugerenciasDelPar({
+          sponsorPageId: sponsor_notion_id,
+          asistentePageId: asistente_notion_id,
+          exceptPageId: citaPendiente.id,
+        });
+      } catch (_) {
+        // La cita ya es real (Calendar + Confirmada). No revertir ni
+        // bloquear el correo si el archivo de una fila hermana falla.
+      }
+    };
+
     // Resuelto ANTES de tocar Calendar: Calendar y el correo del sponsor
     // deben mostrar la misma descripción automática (confirmado Adler,
     // 17-ago tarde) — nunca depende de que el body haya llenado
@@ -422,8 +456,8 @@ async function reservarCita({
     // (solo nombre del sponsor, sin datos de contacto).
     //
     // crearCitaPendiente() YA escribió la fila como "Pendiente Calendar".
-    // Si resolverNotificacionCita() truena, este catch la marca Fallida
-    // (simétrico al catch de Calendar) — no queda huérfana.
+    // Si resolverNotificacionCita() truena, compensarReservaFallida
+    // (Fallida o revertir a Aprobado/Sugerido) — no queda huérfana.
     let notificacion;
     try {
       notificacion = await resolverNotificacionCita({
@@ -432,13 +466,25 @@ async function reservarCita({
         emailsExtra: asistentes_email,
       });
     } catch (resolucionError) {
-      await citasService.marcarCitaFallida({
-        notionPageId: citaPendiente.id,
-        motivo: `No se pudo resolver sponsor/asistente para la notificación: ${resolucionError.message}`,
-      });
+      await compensarReservaFallida(
+        `No se pudo resolver sponsor/asistente para la notificación: ${resolucionError.message}`
+      );
       throw resolucionError instanceof BookingError
         ? resolucionError
         : new BookingError('CONTACTO_NO_RESUELTO', resolucionError.message);
+    }
+
+    try {
+      await citasService.actualizarTituloCita({
+        notionPageId: citaPendiente.id,
+        titulo: notificacion.tituloCita,
+      });
+    } catch (tituloError) {
+      await compensarReservaFallida(`No se pudo escribir el título de la cita: ${tituloError.message}`);
+      throw new BookingError(
+        'NOTION_FALLO',
+        'No se pudo guardar el título de la cita en Notion. No se creó ningún evento de Calendar.'
+      );
     }
 
     // Calendar sigue invitando solo por asistentes_email del body
@@ -449,7 +495,7 @@ async function reservarCita({
     try {
       evento = await calendarClient.createEvent({
         calendario_id: sponsor_calendario_id,
-        titulo: titulo || 'Cita 1 a 1 — Fashion Digital Talks',
+        titulo: notificacion.tituloCita,
         descripcion: notificacion.descripcionSponsor,
         inicio,
         fin,
@@ -461,10 +507,7 @@ async function reservarCita({
         ],
       });
     } catch (calendarError) {
-      await citasService.marcarCitaFallida({
-        notionPageId: citaPendiente.id,
-        motivo: `Error al crear evento en Calendar: ${calendarError.message}`,
-      });
+      await compensarReservaFallida(`Error al crear evento en Calendar: ${calendarError.message}`);
       throw new BookingError('CALENDAR_FALLO', 'No se pudo registrar la cita en Google Calendar. Intenta de nuevo.');
     }
 
@@ -477,6 +520,7 @@ async function reservarCita({
           notionPageId: citaPendiente.id,
           eventoId: evento.evento_id,
         });
+        await archivarSugerenciasHermanas();
 
         // Cita real en Calendar + Notion. A partir de aquí, cualquier falla
         // de correo NUNCA revierte la reserva — solo degrada el Estatus a
@@ -491,7 +535,7 @@ async function reservarCita({
             await enviarCorreosConfirmacion({
               notionPageId: citaPendiente.id,
               notificacion,
-              titulo: titulo || 'Cita 1 a 1 confirmada — Fashion Digital Talks',
+              titulo: notificacion.tituloCita,
               inicio,
               fin,
               ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
@@ -510,6 +554,7 @@ async function reservarCita({
               evento_id: evento.evento_id,
               estado: 'Confirmada sin notificar',
               mesa: numeroMesa,
+              titulo: notificacion.tituloCita,
               notificacion_error: {
                 categoria: emailError.categoria || 'DESCONOCIDO',
                 mensaje: emailError.message,
@@ -524,6 +569,7 @@ async function reservarCita({
           evento_id: evento.evento_id,
           estado: 'Confirmada',
           mesa: numeroMesa,
+          titulo: notificacion.tituloCita,
         };
       } catch (notionError) {
         ultimoError = notionError;
@@ -545,10 +591,9 @@ async function reservarCita({
       // para que el cron de reconciliación lo detecte y alerte.
     }
 
-    await citasService.marcarCitaFallida({
-      notionPageId: citaPendiente.id,
-      motivo: `Calendar OK (evento ${evento.evento_id}) pero Notion no confirmó tras ${REINTENTOS} intentos: ${ultimoError?.message}`,
-    });
+    await compensarReservaFallida(
+      `Calendar OK (evento ${evento.evento_id}) pero Notion no confirmó tras ${REINTENTOS} intentos: ${ultimoError?.message}`
+    );
 
     throw new BookingError(
       'NOTION_FALLO',

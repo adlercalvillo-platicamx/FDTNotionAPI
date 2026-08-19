@@ -49,6 +49,7 @@ tests/
 ├── disponibilidad.local-smoke.js
 ├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
 ├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
+├── titulos-empresa.manual-test.js     # Empresa×Empresa + texto multipart sin truncar (19-ago)
 └── mocks/
 
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
@@ -63,7 +64,7 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
-| POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
+| POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
@@ -75,6 +76,8 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
 
 **Reserva — mesa y correo (18 ago):** `CAPACIDAD_MAXIMA_MESAS = 11`. Mesa = citas ya ocupando ese bloque + 1. Cancelar/fallar no reordena mesas de las demás. Correos: apertura por **empresa** (`DINUS agendó un espacio con Infracommerce`). Destinatarios se resuelven desde Contactos. El UID del `.ics` es el page_id de Notion; `SEQUENCE` en reenvíos es un timestamp para que el calendario actualice, no duplique.
+
+**Títulos y presentación por empresa (19 ago):** las sugerencias se guardan como `Sugerido: Empresa asistente × Empresa sponsor`; una reserva confirmada usa `Cita — Empresa asistente - Empresa sponsor` en Notion, Calendar y correo. Si `Empresa` está vacía, el nombre de la persona es únicamente el fallback. El parser concatena todos los fragmentos `title`/`rich_text` de Notion para no truncar nombres o empresas multipart.
 
 **Nota sobre los GET de solo lectura:** el resto del repo de Google usa solo POST/PATCH/DELETE por convención (no por limitación técnica). Aquí se dejaron como GET porque son consultas de solo lectura y son más simples de probar/cachear — si quieres uniformidad total con el otro repo, se pueden cambiar a POST sin problema.
 
@@ -142,6 +145,7 @@ node tests/email-notificacion.manual-test.js
 node tests/sugeridas.manual-test.js
 node tests/sugeridas-whatsapp.manual-test.js
 node tests/flow-reserva.manual-test.js
+node tests/titulos-empresa.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
 node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 ```

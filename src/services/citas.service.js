@@ -98,6 +98,60 @@ async function buscarPorRequestId(requestId) {
   return data.results[0] || null;
 }
 
+function tituloDePaginaCita(pagina) {
+  return (
+    pagina?.properties?.Nombre?.title?.[0]?.plain_text ||
+    pagina?.properties?.Nombre?.title?.[0]?.text?.content ||
+    null
+  );
+}
+
+function empresaOTituloFallback(empresa, nombre, fallback) {
+  return String(empresa || nombre || fallback).trim();
+}
+
+function propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }) {
+  return {
+    Nombre: { title: [{ text: { content: titulo || `Cita — ${requestId}` } }] },
+    'Idempotency Key': { rich_text: [{ text: { content: requestId } }] },
+    Estatus: { select: { name: 'Pendiente Calendar' } },
+    'Fecha y Hora': { date: { start: inicio, end: fin } },
+    ...(mesa ? { 'Mesa / Ubicacion': { rich_text: [{ text: { content: `Mesa ${mesa}` } }] } } : {}),
+  };
+}
+
+/**
+ * Filas Sugerido/Aprobado del par (sponsor, asistente). Preferimos
+ * Aprobado si hay ambas — es la que ya pasó decisión humana.
+ */
+async function buscarSugerenciasDelPar({ sponsorPageId, asistentePageId }) {
+  requireDataSourceId();
+  const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: {
+        and: [
+          { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+          { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Sugerido' } },
+              { property: 'Estatus', select: { equals: 'Aprobado' } },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+  return data.results || [];
+}
+
+function elegirSugerenciaAPromover(filas) {
+  if (!filas || filas.length === 0) return null;
+  const aprobada = filas.find((f) => f.properties?.Estatus?.select?.name === 'Aprobado');
+  return aprobada || filas[0];
+}
+
 /**
  * Crea el registro de cita en estado intermedio, ANTES de tocar Calendar.
  * Este registro es el que efectivamente "reserva el lugar" dentro del
@@ -107,25 +161,102 @@ async function buscarPorRequestId(requestId) {
  *
  * "Contacto Principal" = asistente, "Contacto Match" = sponsor (confirmado
  * contra el registro de ejemplo Ana Sofía Torres × Carlos Medina).
+ *
+ * Si ya existe una fila Sugerido/Aprobado para el mismo par, la PROMUEVE
+ * a Pendiente Calendar en vez de crear una segunda fila. Si no, el agente
+ * sigue viendo "Aprobados sin agendar" y vuelve a ofrecer el mismo match
+ * aunque la cita real ya esté Confirmada (bug visto 19-ago).
  */
 async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, fin, titulo, mesa }) {
   requireDataSourceId();
-  return notionFetch('/pages', {
+  const sugerencias = await buscarSugerenciasDelPar({ sponsorPageId, asistentePageId });
+  const aPromover = elegirSugerenciaAPromover(sugerencias);
+
+  if (aPromover) {
+    const estatusPrevio = aPromover.properties?.Estatus?.select?.name || 'Aprobado';
+    const nombrePrevio = tituloDePaginaCita(aPromover);
+    const pagina = await notionFetch(`/pages/${aPromover.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        properties: propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }),
+      }),
+    });
+    return {
+      ...pagina,
+      reutilizoSugerencia: true,
+      estatusPrevio,
+      nombrePrevio,
+    };
+  }
+
+  const pagina = await notionFetch('/pages', {
     method: 'POST',
     body: JSON.stringify({
       parent: { type: 'data_source_id', data_source_id: CITAS_DATA_SOURCE_ID },
       properties: {
-        Nombre: { title: [{ text: { content: titulo || `Cita — ${requestId}` } }] },
-        'Idempotency Key': { rich_text: [{ text: { content: requestId } }] },
-        Estatus: { select: { name: 'Pendiente Calendar' } },
+        ...propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }),
         'Contacto Match': { relation: [{ id: sponsorPageId }] },
         'Contacto Principal': { relation: [{ id: asistentePageId }] },
-        'Fecha y Hora': { date: { start: inicio, end: fin } },
-        // Mesa / Ubicacion es rich_text en el schema — se escribe "Mesa N", no número plano.
-        ...(mesa ? { 'Mesa / Ubicacion': { rich_text: [{ text: { content: `Mesa ${mesa}` } }] } } : {}),
       },
     }),
   });
+  return { ...pagina, reutilizoSugerencia: false };
+}
+
+/** Actualiza el título determinístico una vez resueltas ambas empresas. */
+async function actualizarTituloCita({ notionPageId, titulo }) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Nombre: { title: [{ text: { content: titulo } }] },
+      },
+    }),
+  });
+}
+
+/**
+ * Si Calendar o la resolución de contactos fallan DESPUÉS de promover una
+ * fila Sugerido/Aprobado, no la marcamos Fallida: volvería a sugerirse el
+ * par (Fallida no está en ESTATUS_ACTIVOS) y se pierde la aprobación humana.
+ * Se restaura el match y se limpia horario / request_id para que un reintento
+ * con el mismo request_id no se corte en buscarPorRequestId.
+ */
+async function revertirCitaPendienteAMatch({ notionPageId, estatusPrevio, nombrePrevio }) {
+  requireDataSourceId();
+  const estatus = estatusPrevio === 'Sugerido' ? 'Sugerido' : 'Aprobado';
+  const properties = {
+    Estatus: { select: { name: estatus } },
+    'Idempotency Key': { rich_text: [] },
+    'Fecha y Hora': { date: null },
+    'Mesa / Ubicacion': { rich_text: [] },
+  };
+  if (nombrePrevio) {
+    properties.Nombre = { title: [{ text: { content: nombrePrevio } }] };
+  }
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
+/**
+ * Archiva filas Sugerido/Aprobado que hayan quedado huérfanas para el mismo
+ * par (duplicados de matchmaking, o el caso viejo de reserva que creaba una
+ * fila nueva y no tocaba la aprobada). No toca `exceptPageId` — esa es la
+ * cita que se acaba de confirmar.
+ */
+async function archivarSugerenciasDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
+  const filas = await buscarSugerenciasDelPar({ sponsorPageId, asistentePageId });
+  const aArchivar = filas.filter((f) => f.id !== exceptPageId);
+  for (const fila of aArchivar) {
+    await notionFetch(`/pages/${fila.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ archived: true }),
+    });
+  }
+  return { archivadas: aArchivar.length, ids: aArchivar.map((f) => f.id) };
 }
 
 /** Marca la cita como Confirmada una vez que Calendar ya devolvió el evento creado. */
@@ -279,18 +410,29 @@ async function contarCitasConfirmadasPorSponsor(sponsorPageId) {
  * candidato, no una relación de varios en el sponsor.
  *
  * A diferencia de crearCitaPendiente (que ya tiene inicio/fin porque viene
- * de reservar_cita con un horario elegido), esta fila todavía no tiene
- * horario — el horario se decide después, en el flujo de reservar_cita.
+ * de reservar_cita con un horario elegido, y reutiliza esta fila si existe),
+ * esta fila todavía no tiene horario — el horario se decide después.
  * "Fecha y Hora" se deja sin escribir a propósito.
  */
-async function crearCitaSugerida({ sponsorPageId, asistentePageId, sponsorNombre, asistenteNombre, score, explicacion }) {
+async function crearCitaSugerida({
+  sponsorPageId,
+  asistentePageId,
+  sponsorNombre,
+  asistenteNombre,
+  sponsorEmpresa,
+  asistenteEmpresa,
+  score,
+  explicacion,
+}) {
   requireDataSourceId();
+  const empresaSponsor = empresaOTituloFallback(sponsorEmpresa, sponsorNombre, 'Sponsor sin empresa');
+  const empresaAsistente = empresaOTituloFallback(asistenteEmpresa, asistenteNombre, 'Asistente sin empresa');
   return notionFetch('/pages', {
     method: 'POST',
     body: JSON.stringify({
       parent: { type: 'data_source_id', data_source_id: CITAS_DATA_SOURCE_ID },
       properties: {
-        Nombre: { title: [{ text: { content: `Sugerido: ${asistenteNombre} × ${sponsorNombre}` } }] },
+        Nombre: { title: [{ text: { content: `Sugerido: ${empresaAsistente} × ${empresaSponsor}` } }] },
         Estatus: { select: { name: 'Sugerido' } },
         'Contacto Match': { relation: [{ id: sponsorPageId }] },
         'Contacto Principal': { relation: [{ id: asistentePageId }] },
@@ -783,6 +925,10 @@ module.exports = {
   sponsorOcupadoEnBloque,
   buscarPorRequestId,
   crearCitaPendiente,
+  actualizarTituloCita,
+  revertirCitaPendienteAMatch,
+  archivarSugerenciasDelPar,
+  buscarSugerenciasDelPar,
   confirmarCita,
   marcarCitaFallida,
   marcarCitaConfirmadaSinNotificar,

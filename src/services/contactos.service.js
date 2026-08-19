@@ -18,7 +18,13 @@ function requireDataSourceId() {
 // Helpers de parseo — la API de Notion regresa cada propiedad envuelta en su
 // tipo (rich_text[0].plain_text, select.name, multi_select[].name, etc.).
 // Estos helpers lo aplanan a un objeto simple para trabajar cómodo.
-const texto = (prop) => prop?.rich_text?.[0]?.plain_text || prop?.title?.[0]?.plain_text || '';
+// Notion puede devolver un title/rich_text repartido en varios fragmentos.
+// Leer solo [0] truncaba silenciosamente nombres o empresas importados con
+// más de una anotación. Se concatenan todos los fragmentos, en orden.
+const texto = (prop) => {
+  const fragmentos = prop?.rich_text || prop?.title || [];
+  return fragmentos.map((fragmento) => fragmento?.plain_text || fragmento?.text?.content || '').join('');
+};
 const select = (prop) => prop?.select?.name || null;
 const multiSelect = (prop) => (prop?.multi_select || []).map((o) => o.name);
 const numero = (prop) => (typeof prop?.number === 'number' ? prop.number : null);

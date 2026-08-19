@@ -98,6 +98,11 @@ function crearEstadoNotion() {
         porRequestId.set(requestId, id);
         return { id };
       },
+      async actualizarTituloCita({ notionPageId, titulo }) {
+        const page = porId.get(notionPageId);
+        if (page) page.titulo = titulo;
+        return { id: notionPageId };
+      },
       async confirmarCita({ notionPageId, eventoId }) {
         const page = porId.get(notionPageId);
         assert.ok(page, `confirmarCita: no existe ${notionPageId}`);
@@ -108,6 +113,13 @@ function crearEstadoNotion() {
       async marcarCitaFallida({ notionPageId }) {
         const page = porId.get(notionPageId);
         if (page) page.estatus = 'Fallida';
+      },
+      async archivarSugerenciasDelPar() {
+        return { archivadas: 0, ids: [] };
+      },
+      async revertirCitaPendienteAMatch({ notionPageId, estatusPrevio }) {
+        const page = porId.get(notionPageId);
+        if (page) page.estatus = estatusPrevio || 'Aprobado';
       },
       // No usados por reservarCita en este flujo, pero el service real exporta más.
       async crearCitaSugerida() {

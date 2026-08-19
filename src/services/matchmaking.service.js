@@ -281,6 +281,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 // ─────────────────────────────────────────────────────────────
 function generarExplicacionNatural(candidato, senales) {
   const frases = [];
+  const empresaCandidato = candidato.empresa || candidato.nombre || 'la empresa candidata';
 
   if (senales.oroMolido) {
     frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
@@ -300,12 +301,12 @@ function generarExplicacionNatural(candidato, senales) {
 
   let texto;
   if (frases.length === 0) {
-    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque su etapa de negocio es la que el sponsor busca, aunque sin más coincidencias específicas.`;
+    texto = `Se sugiere a ${empresaCandidato} porque su etapa de negocio es la que el sponsor busca, aunque sin más coincidencias específicas.`;
   } else if (frases.length === 1) {
-    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases[0]}.`;
+    texto = `Se sugiere a ${empresaCandidato} porque ${frases[0]}.`;
   } else {
     const ultima = frases.pop();
-    texto = `Se sugiere a ${candidato.nombre} (${candidato.empresa}) porque ${frases.join(', ')}, y además ${ultima}.`;
+    texto = `Se sugiere a ${empresaCandidato} porque ${frases.join(', ')}, y además ${ultima}.`;
   }
 
   if (senales.esVip) {
@@ -420,6 +421,8 @@ async function sugerirMatchesParaSponsor(
         asistentePageId: r.candidato.id,
         sponsorNombre: sponsor.nombre,
         asistenteNombre: r.candidato.nombre,
+        sponsorEmpresa: sponsor.empresa,
+        asistenteEmpresa: r.candidato.empresa,
         score: r.score,
         explicacion: generarExplicacionNatural(r.candidato, r.senales),
       });
@@ -435,6 +438,7 @@ async function sugerirMatchesParaSponsor(
     sponsor: {
       id: sponsor.id,
       nombre: sponsor.nombre,
+      empresa: sponsor.empresa,
       nivelPatrocinio: sponsor.nivelPatrocinio,
       calendarioGoogleId: sponsor.calendarioGoogleId || null,
     },
@@ -446,6 +450,7 @@ async function sugerirMatchesParaSponsor(
       id: r.candidato.id,
       nombre: r.candidato.nombre,
       empresa: r.candidato.empresa,
+      etiqueta: r.candidato.empresa || r.candidato.nombre,
       ticketTipo: r.candidato.ticketTipo,
       score: r.score,
       detalle: r.detalle,
@@ -488,6 +493,8 @@ async function guardarSugerenciaIndividual(sponsorPageId, asistentePageId) {
     asistentePageId,
     sponsorNombre: resultado.sponsor.nombre,
     asistenteNombre: sugerencia.nombre,
+    sponsorEmpresa: resultado.sponsor.empresa,
+    asistenteEmpresa: sugerencia.empresa,
     score: sugerencia.score,
     explicacion: sugerencia.explicacion,
   });
@@ -497,7 +504,7 @@ async function guardarSugerenciaIndividual(sponsorPageId, asistentePageId) {
     notionPageId: pagina?.id || null,
     sponsor: resultado.sponsor,
     sugerencia,
-    mensaje: `Sugerencia guardada: ${sugerencia.nombre} (${sugerencia.empresa}) × ${resultado.sponsor.nombre}.`,
+    mensaje: `Sugerencia guardada: ${sugerencia.empresa || sugerencia.nombre} × ${resultado.sponsor.empresa || resultado.sponsor.nombre}.`,
   };
 }
 

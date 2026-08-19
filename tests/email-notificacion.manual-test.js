@@ -106,6 +106,11 @@ function crearHarness({
       porRequestId.set(requestId, id);
       return { id };
     },
+    async actualizarTituloCita({ notionPageId, titulo }) {
+      const page = porId.get(notionPageId);
+      page.titulo = titulo;
+      return { id: notionPageId };
+    },
     async confirmarCita({ notionPageId, eventoId }) {
       const page = porId.get(notionPageId);
       page.estatus = 'Confirmada';
@@ -149,12 +154,37 @@ function crearHarness({
           page.asistente === asistentePageId &&
           ['Sugerido', 'Aprobado', 'Confirmada', 'Confirmada sin notificar', 'Pendiente Calendar'].includes(
             page.estatus
-          )
+          ) &&
+          !page.archivada
         ) {
           return true;
         }
       }
       return false;
+    },
+    async archivarSugerenciasDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
+      const ids = [];
+      for (const page of porId.values()) {
+        if (
+          page.id !== exceptPageId &&
+          page.sponsor === sponsorPageId &&
+          page.asistente === asistentePageId &&
+          ['Sugerido', 'Aprobado'].includes(page.estatus)
+        ) {
+          page.archivada = true;
+          ids.push(page.id);
+        }
+      }
+      return { archivadas: ids.length, ids };
+    },
+    async revertirCitaPendienteAMatch({ notionPageId, estatusPrevio }) {
+      const page = porId.get(notionPageId);
+      if (page) {
+        page.estatus = estatusPrevio === 'Sugerido' ? 'Sugerido' : 'Aprobado';
+        page.requestId = null;
+        page.inicio = null;
+        page.mesa = null;
+      }
     },
   };
 
@@ -173,7 +203,14 @@ function crearHarness({
         'Mesa / Ubicacion': page.mesa
           ? { rich_text: [{ plain_text: `Mesa ${page.mesa}`, text: { content: `Mesa ${page.mesa}` } }] }
           : { rich_text: [] },
-        Nombre: { title: [{ plain_text: `Cita ${page.id}`, text: { content: `Cita ${page.id}` } }] },
+        Nombre: {
+          title: [
+            {
+              plain_text: page.titulo || `Cita ${page.id}`,
+              text: { content: page.titulo || `Cita ${page.id}` },
+            },
+          ],
+        },
         'Idempotency Key': {
           rich_text: [{ plain_text: page.requestId || '', text: { content: page.requestId || '' } }],
         },
@@ -308,7 +345,44 @@ function baseParams(overrides = {}) {
     assert.ok(!mailAsistente.descripcion.includes('Teléfono'));
 
     assert.ok(h.calendarCreateCalls[0].descripcion.includes('Empresa asistente-b agendó'));
+    assert.strictEqual(h.calendarCreateCalls[0].titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
+    assert.strictEqual(h.porId.get(r.notion_page_id).titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
+    assert.strictEqual(r.titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
+  });
+
+  console.log('\n=== Match Aprobado no queda huérfano al confirmar ===');
+  await ok('tras Confirmada, la fila Aprobado del mismo par se archiva', async () => {
+    const h = crearHarness({ emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' } });
+    h.porId.set('match-aprobado', {
+      id: 'match-aprobado',
+      sponsor: 'sponsor-a',
+      asistente: 'asistente-b',
+      estatus: 'Aprobado',
+      mesa: null,
+      requestId: null,
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-archiva-aprobado' }));
+    assert.strictEqual(r.estado, 'Confirmada');
+    assert.notStrictEqual(r.notion_page_id, 'match-aprobado');
+    assert.strictEqual(h.porId.get('match-aprobado').archivada, true);
+    assert.strictEqual(h.porId.get(r.notion_page_id).archivada, undefined);
+  });
+
+  await ok('Confirmada sin notificar también archiva la Aprobado (la cita ya es real)', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      emailFailCategoria: 'SMTP_NO_DISPONIBLE',
+    });
+    h.porId.set('match-aprobado-email', {
+      id: 'match-aprobado-email',
+      sponsor: 'sponsor-a',
+      asistente: 'asistente-b',
+      estatus: 'Aprobado',
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-archiva-sin-notif' }));
+    assert.strictEqual(r.estado, 'Confirmada sin notificar');
+    assert.strictEqual(h.porId.get('match-aprobado-email').archivada, true);
   });
 
   console.log('\n=== Casos 2–4 — correo falla tras 3 inmediatos ===');
@@ -564,6 +638,10 @@ function baseParams(overrides = {}) {
         porId.get(notionPageId).estatus = 'Fallida';
         porId.get(notionPageId).motivo = motivo;
       },
+      async archivarSugerenciasDelPar() {
+        return { archivadas: 0, ids: [] };
+      },
+      async revertirCitaPendienteAMatch() {},
     });
     const calendarCalls = [];
     require.cache[calendarPath] = {
@@ -612,6 +690,54 @@ function baseParams(overrides = {}) {
     const page = [...porId.values()][0];
     assert.strictEqual(page.estatus, 'Fallida');
     assert.strictEqual(calendarCalls.length, 0);
+  });
+
+  console.log('\n=== crearCitaPendiente reutiliza Aprobado (sin fila nueva) ===');
+  await ok('PATCH a la fila Aprobado, no POST /pages', async () => {
+    const notionPath = path.resolve(__dirname, '../src/utils/notion-client.js');
+    limpiarCache();
+    delete require.cache[notionPath];
+    const calls = [];
+    require.cache[notionPath] = {
+      id: notionPath,
+      filename: notionPath,
+      loaded: true,
+      exports: {
+        async notionFetch(url, options = {}) {
+          calls.push({ url, method: options.method, body: options.body });
+          if (url.includes('/query')) {
+            return {
+              results: [
+                {
+                  id: 'fila-aprobada',
+                  properties: {
+                    Estatus: { select: { name: 'Aprobado' } },
+                    Nombre: { title: [{ plain_text: 'Sugerido: Ana × Sponsor' }] },
+                  },
+                },
+              ],
+            };
+          }
+          return { id: 'fila-aprobada' };
+        },
+      },
+    };
+    delete require.cache[citasPath];
+    const citas = require(citasPath);
+    const pagina = await citas.crearCitaPendiente({
+      requestId: 'req-promueve',
+      sponsorPageId: 's1',
+      asistentePageId: 'a1',
+      inicio: INICIO,
+      fin: FIN,
+      titulo: 'Cita real',
+      mesa: 1,
+    });
+    assert.strictEqual(pagina.reutilizoSugerencia, true);
+    assert.strictEqual(pagina.estatusPrevio, 'Aprobado');
+    assert.strictEqual(pagina.id, 'fila-aprobada');
+    assert.ok(calls.some((c) => c.url === '/pages/fila-aprobada' && c.method === 'PATCH'));
+    assert.ok(!calls.some((c) => c.url === '/pages' && c.method === 'POST'));
   });
 
   console.log('\n=== clasificarErrorSmtp (email.service real) ===');
