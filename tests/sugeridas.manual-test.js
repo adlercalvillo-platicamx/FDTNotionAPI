@@ -48,10 +48,40 @@ async function main() {
     assert.strictEqual(resUuid.body.error, 'INVALID_INPUT');
   });
 
-  const { variantesTelefono } = require('../src/services/contactos.service');
+  const {
+    variantesTelefono,
+    formatosTelefonoParaNotion,
+    coincidenTelefonos,
+    localMexico10,
+  } = require('../src/services/contactos.service');
+
   ok('variantes 521', () => {
     const v = variantesTelefono('+52 55 1234 5678');
     assert.ok(v.includes('525512345678') || v.includes('5512345678'));
+  });
+
+  ok('WhatsApp 52… vs Notion +52 espacio', () => {
+    const consulta = '523339521391';
+    const notion = '+52 3339521391';
+    assert.strictEqual(localMexico10(consulta), '3339521391');
+    assert.strictEqual(localMexico10(notion), '3339521391');
+    assert.ok(coincidenTelefonos(consulta, notion));
+    const formatos = formatosTelefonoParaNotion(consulta);
+    assert.ok(formatos.includes('+52 3339521391'), String(formatos));
+  });
+
+  ok('capturas equivalentes MX', () => {
+    const canon = '+52 3339521391';
+    for (const raw of [
+      '3339521391',
+      '523339521391',
+      '5213339521391',
+      '+523339521391',
+      '+52 1 3339521391',
+      '52 3339521391',
+    ]) {
+      assert.ok(coincidenTelefonos(raw, canon), raw);
+    }
   });
 
   if (fallos) process.exit(1);

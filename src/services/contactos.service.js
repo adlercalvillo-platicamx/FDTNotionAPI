@@ -393,10 +393,33 @@ async function listarSponsorsActivos() {
   return data.results.map(parsearContacto);
 }
 
+function digitosTelefono(raw) {
+  return String(raw || '').replace(/\D/g, '');
+}
+
+/** 10 dígitos nacionales MX (sin 52 / 521). WhatsApp a veces manda 521. */
+function localMexico10(raw) {
+  const d = digitosTelefono(raw);
+  if (!d) return '';
+  if (d.startsWith('521') && d.length >= 13) return d.slice(3, 13);
+  if (d.startsWith('52') && d.length >= 12) return d.slice(2, 12);
+  if (d.length === 10) return d;
+  if (d.length > 10) return d.slice(-10);
+  return d;
+}
+
+function coincidenTelefonos(a, b) {
+  const la = localMexico10(a);
+  const lb = localMexico10(b);
+  return Boolean(la) && la.length === 10 && la === lb;
+}
+
 function variantesTelefono(raw) {
-  const digits = String(raw || '').replace(/\D/g, '');
+  const digits = digitosTelefono(raw);
   if (!digits) return [];
   const set = new Set([digits]);
+  const local = localMexico10(digits);
+  if (local) set.add(local);
   if (digits.startsWith('521') && digits.length >= 13) {
     set.add(digits.slice(1));
     set.add(digits.slice(3));
@@ -404,21 +427,60 @@ function variantesTelefono(raw) {
   if (digits.startsWith('52') && digits.length >= 12) {
     set.add(digits.slice(2));
   }
-  if (digits.length === 10) {
-    set.add(`52${digits}`);
-    set.add(`521${digits}`);
+  if (local.length === 10) {
+    set.add(`52${local}`);
+    set.add(`521${local}`);
   }
   return [...set];
 }
 
 /**
+ * Strings que Notion suele guardar en phone_number (equals es exacto).
+ * Caso real FDT: `+52 3339521391` vs consulta WhatsApp `523339521391`.
+ */
+function formatosTelefonoParaNotion(raw) {
+  const digits = digitosTelefono(raw);
+  const local = localMexico10(raw);
+  if (!digits) return [];
+  const set = new Set();
+  const bases = [digits, local, local && `52${local}`, local && `521${local}`].filter(Boolean);
+  for (const b of bases) {
+    set.add(b);
+    set.add(`+${b}`);
+  }
+  if (local.length === 10) {
+    set.add(`+52 ${local}`);
+    set.add(`+52${local}`);
+    set.add(`52 ${local}`);
+    set.add(`+521 ${local}`);
+    set.add(`+521${local}`);
+    set.add(`521 ${local}`);
+    set.add(`+52 1 ${local}`);
+    set.add(`+52 1${local}`);
+    set.add(`+52 ${local.slice(0, 2)} ${local.slice(2)}`);
+    set.add(`+52 ${local.slice(0, 2)} ${local.slice(2, 6)} ${local.slice(6)}`);
+  }
+  return [...set];
+}
+
+function filtroWhatsAppPorTelefono(telefonoEntrada) {
+  const formatos = formatosTelefonoParaNotion(telefonoEntrada);
+  const local = localMexico10(telefonoEntrada);
+  const or = formatos.map((v) => ({ property: 'WhatsApp', phone_number: { equals: v } }));
+  if (local.length === 10) {
+    or.push({ property: 'WhatsApp', phone_number: { contains: local } });
+  }
+  return or;
+}
+
+/**
  * Asistente (Categoria=Asistente, no dado de baja) cuyo WhatsApp coincide
- * con alguna variante E.164 / 52 / 10 dígitos.
+ * ignorando +, espacios, 52 y 521.
  */
 async function buscarAsistentePorWhatsApp(telefonoEntrada) {
   requireDataSourceId();
-  const variantes = variantesTelefono(telefonoEntrada);
-  if (variantes.length === 0) return null;
+  const orTelefono = filtroWhatsAppPorTelefono(telefonoEntrada);
+  if (orTelefono.length === 0) return null;
 
   const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
@@ -427,9 +489,7 @@ async function buscarAsistentePorWhatsApp(telefonoEntrada) {
         and: [
           { property: 'Categoria', select: { equals: 'Asistente' } },
           { property: 'Dado de Baja', checkbox: { equals: false } },
-          {
-            or: variantes.map((v) => ({ property: 'WhatsApp', phone_number: { equals: v } })),
-          },
+          { or: orTelefono },
         ],
       },
       page_size: 10,
@@ -437,28 +497,8 @@ async function buscarAsistentePorWhatsApp(telefonoEntrada) {
   });
 
   const candidatos = (data.results || []).map(parsearContacto);
-  if (candidatos.length === 0) {
-    // Notion a veces guarda el número con +; reconsultar sin filtro de teléfono
-    // sería caro. Segundo intento: equals con "+" prefix.
-    const dataPlus = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
-      method: 'POST',
-      body: JSON.stringify({
-        filter: {
-          and: [
-            { property: 'Categoria', select: { equals: 'Asistente' } },
-            { property: 'Dado de Baja', checkbox: { equals: false } },
-            {
-              or: variantes.map((v) => ({ property: 'WhatsApp', phone_number: { equals: `+${v}` } })),
-            },
-          ],
-        },
-        page_size: 10,
-      }),
-    });
-    const extra = (dataPlus.results || []).map(parsearContacto);
-    return extra[0] || null;
-  }
-  return candidatos[0];
+  const match = candidatos.find((c) => coincidenTelefonos(telefonoEntrada, c.whatsapp));
+  return match || null;
 }
 
 module.exports = {
@@ -470,6 +510,9 @@ module.exports = {
   buscarContactoPorNombre,
   buscarAsistentePorWhatsApp,
   variantesTelefono,
+  formatosTelefonoParaNotion,
+  coincidenTelefonos,
+  localMexico10,
   listarSponsorsYSpeakersActivos,
   actualizarChecklist,
   listarSponsorsActivos,
