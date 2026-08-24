@@ -33,6 +33,7 @@ const relacionIds = (prop) => (prop?.relation || []).map((r) => r.id);
 const email = (prop) => prop?.email || '';
 const telefono = (prop) => prop?.phone_number || '';
 const url = (prop) => prop?.url || '';
+const fecha = (prop) => prop?.date?.start || null;
 
 /** Convierte una página cruda de la API de Notion a un objeto plano para matchmaking. */
 function parsearContacto(pagina) {
@@ -90,6 +91,9 @@ function parsearContacto(pagina) {
     esSpeaker: checkbox(p['Es Speaker']),
     email: email(p['Email']),
     whatsapp: telefono(p['WhatsApp']),
+    ultimaCampanaEnviada: select(p['Última Campaña Enviada']),
+    fechaUltimaCampana: fecha(p['Fecha Última Campaña']),
+    reactivacionesEnviadas: numero(p['Reactivaciones Enviadas']) || 0,
     bio: texto(p['Bio']),
     fotoSpeaker: url(p['Foto Speaker']),
     sitioWebEmpresa: url(p['Sitio Web Empresa']),
@@ -376,6 +380,31 @@ async function actualizarChecklist({ contactoId, completo, detalle }) {
   });
 }
 
+async function actualizarEstadoCampana({ contactoId, campana, fechaEnvio }) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        'Última Campaña Enviada': { select: { name: campana } },
+        'Fecha Última Campaña': { date: { start: fechaEnvio } },
+      },
+    }),
+  });
+}
+
+async function incrementarReactivaciones(contactoId, valorActual) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        'Reactivaciones Enviadas': { number: (valorActual || 0) + 1 },
+      },
+    }),
+  });
+}
+
 /**
  * Todos los Sponsor activos (excluye Dado de Baja) — universo que recorre
  * la orquestación global de matchmaking (sugerirMatchesGlobal). No excluye
@@ -521,5 +550,7 @@ module.exports = {
   localMexico10,
   listarSponsorsYSpeakersActivos,
   actualizarChecklist,
+  actualizarEstadoCampana,
+  incrementarReactivaciones,
   listarSponsorsActivos,
 };

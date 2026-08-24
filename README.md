@@ -31,10 +31,11 @@ src/
 │   ├── booking.service.js            # Reserva: mutex + mesa 1–11 + Calendar + correo/.ics (1 sola réplica Coolify)
 │   ├── email.service.js              # ICS + SMTP (nodemailer); 3 reintentos inmediatos por envío
 │   ├── matchmaking.service.js        # Capa 1 + Capa 2; guardarSugerenciaIndividual (19-ago); global con explicación
+│   ├── campanas-matchmaking.service.js # Campañas A/B/C agrupadas por asistente; simulación por default
 │   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 │   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api — NUNCA duplicar google.service.js aquí
 ├── mcp/
-│   ├── server.js                     # 8 herramientas MCP — capa delgada sobre services/
+│   ├── server.js                     # 9 herramientas MCP — capa delgada sobre services/
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
 └── utils/
     └── notion-client.js              # Cliente REST de Notion (nunca MCP para escrituras)
@@ -55,12 +56,13 @@ tests/
 
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
 ├── cargar-29-asistentes-faltantes.js
-└── verificar-casos-quiere-citas-giro.js
+├── verificar-casos-quiere-citas-giro.js
+└── marcar-cola-sin-enviar.js         # Transición: marca cola Aprobado sin WhatsApp (una vez, --confirmar)
 ```
 
 ## Endpoints
 
-Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET con query params son de solo lectura: `/checklist/consultar` y `/citas/disponibilidad`.
+Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks/*`, que usan su autenticación propia. Body en JSON. Los GET con query params son de solo lectura: `/checklist/consultar` y `/citas/disponibilidad`.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
@@ -69,6 +71,7 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
+| POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de campañas para filas `Aprobado`, agrupadas por asistente. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
 | POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
@@ -77,6 +80,8 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
 
 **Reserva — mesa y correo (18 ago):** `CAPACIDAD_MAXIMA_MESAS = 11`. Mesa = citas ya ocupando ese bloque + 1. Cancelar/fallar no reordena mesas de las demás. Correos: apertura por **empresa** (`DINUS agendó un espacio con Infracommerce`). Destinatarios se resuelven desde Contactos. El UID del `.ics` es el page_id de Notion; `SEQUENCE` en reenvíos es un timestamp para que el calendario actualice, no duplique.
+
+**Generación automática de sugerencias:** no hay scheduler dentro de Node. Configurar un cron HTTP externo cada 6 horas hacia `POST /matchmaking/sugerir-todos`, incluyendo `X-API-Key` desde un secret (nunca hardcodeado). Este cron solo crea `Sugerido`; no dispara WhatsApp.
 
 **Títulos y presentación por empresa (19 ago):** las sugerencias se guardan como `Sugerido: Empresa asistente × Empresa sponsor`; una reserva confirmada usa `Cita — Empresa asistente - Empresa sponsor` en Notion, Calendar y correo. Si `Empresa` está vacía, el nombre de la persona es únicamente el fallback. El parser concatena todos los fragmentos `title`/`rich_text` de Notion para no truncar nombres o empresas multipart.
 
@@ -88,7 +93,7 @@ Todos requieren header `X-API-Key` (excepto `/health`). Body en JSON. Los GET co
 
 Además de los endpoints REST de arriba, este servicio expone un servidor **MCP** (Model Context Protocol) en `POST /mcp` — mismo `X-API-Key` que el resto de rutas, mismo `authMiddleware`. Transporte Streamable HTTP, modo stateless (`sessionIdGenerator: undefined`).
 
-Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **8** tools MCP (+ `reservar_cita` como API REST en Plática, no en este servidor MCP).
+Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **9** tools MCP (+ `reservar_cita` como API REST en Plática, no en este servidor MCP).
 
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
@@ -100,6 +105,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match (19-ago: antes los solapamientos perdían la explicación). Mismo patrón dry-run. **Corregido el 10-ago** — timeout por ~130 llamadas Notion; ahora carga pares activos una sola vez (ver Bugs) |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
 | `reintentar_notificaciones_pendientes` | Escritura acotada, masiva | Reenvía a demanda correo/ICS para todas las citas `Confirmada sin notificar`; sin parámetros y sin tope de llamadas |
+| `disparar_campanas_aprobadas` | Escritura acotada, masiva | Procesa manualmente `Aprobado` sin campaña, agrupado por asistente. Simulación por default; el agente no puede habilitar envío real por parámetros. |
 
 **Rediseño del 12 de agosto — `Quiere Citas 1a1` y filtro de Giro:** el campo `Quiere Citas 1a1` pasó de checkbox a `select` (`Sí` / `No` / vacío) porque un checkbox no puede distinguir "nunca contestó" de "contestó que no". Decisión de Laura (demo 11-ago): se excluye solo `'No'` explícito; vacío histórico entra. Además, `buscarAsistentesCandidatos` filtra por Giro/Industria — solo Marca de moda, Retailer/tienda multimarca y Manufactura (aplica también a VIP). Mismo día se agregó `Calendario Google ID` por sponsor (multi-calendario) y se cargaron 29 asistentes reales que faltaban de la importación original de Ticketópolis.
 
@@ -124,6 +130,13 @@ Ver `.env.example`. Resumen:
   - `EMAIL_SMTP_USER`, `EMAIL_SMTP_APP_PASSWORD` (App Password; se puede pegar con espacios cada 4 letras)
   - `EMAIL_FROM_NAME` (default `Fashion Digital Talks`)
   - No hay `EMAIL_MAX_INTENTOS`: 3 SMTP inmediatos por envío (no cuentan en Notion); el reenvío a demanda no tiene tope.
+- **Campañas de matchmaking**:
+  - `NOTION_CAMPANAS_WEBHOOK_SECRET` — secret propio del botón/webhook de Notion.
+  - Defaults seguros: `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true` y `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`.
+  - El envío real además exige las plantillas `PLATICA_TEMPLATE_MATCHMAKING_A/B/C1/C2` aprobadas en Meta (C1/C2: copy pendiente con Sam).
+  - Tras A (o B perdida), el pool de reactivación rota C1→C2 con la misma ventana de 14 días y tope de 2 (`CAMPANAS_MATCHMAKING_REACTIVACIONES_MAXIMAS`, campo Notion `Reactivaciones Enviadas`). B solo se manda con cita confirmada viva; el tope no la bloquea.
+  - Envío real marca `Estado Envío Campaña=En curso` **antes** de WhatsApp; éxito → `Enviada` + checkbox `Campaña Enviada`; fallo de plantilla → `Falló`. Un `En curso` de más de 10 minutos se reintenta. `soloMarcar` pasa directo a `Enviada`. Simulación no escribe Notion.
+  - **Antes del primer envío real** (una vez por ambiente): revisar la vista Notion `Solo Aprobados`. Lo que sí deba recibir WhatsApp en ese primer disparo no debe estar `Aprobado`. Luego `node scripts/one-shots/marcar-cola-sin-enviar.js --confirmar`. El script muestra los títulos reales de Citas/Contactos del `.env` activo y el tamaño de la cola; hay que escribir el nombre de Citas tal cual para seguir. Misma decisión A/B/C, escribe `Campaña Enviada` / `Última Campaña Enviada`, **no** llama a Plática. No es REST ni MCP. No es una prueba repetible.
 
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.
@@ -148,6 +161,10 @@ node tests/sugeridas-whatsapp.manual-test.js
 node tests/sugeridas-empresas.manual-test.js
 node tests/flow-reserva.manual-test.js
 node tests/titulos-empresa.manual-test.js
+node tests/rechazado-pares-activos.manual-test.js
+node tests/campanas-matchmaking.manual-test.js
+node tests/campanas-webhook.manual-test.js
+node tests/marcar-cola-sin-enviar.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
 node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 ```

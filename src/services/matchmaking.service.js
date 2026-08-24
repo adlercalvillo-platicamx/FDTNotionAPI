@@ -102,6 +102,8 @@ const PESOS = {
   MADUREZ_NEGOCIO_CONSOLIDADO: 40,
   MADUREZ_NEGOCIO_PYME: 15,
   OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
+  // Conservado como referencia histórica (23-ago-2026), pero ya no se suma
+  // al score: la cuota cambia con el tiempo y no mide la calidad del par.
   CUOTA_PENDIENTE_POR_CITA: 15,
   DATO_DECLARADO: 10,
   DATO_INFERIDO: 3,
@@ -264,7 +266,6 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   }
 
   if (cuotaPendiente > 0) {
-    score += cuotaPendiente * PESOS.CUOTA_PENDIENTE_POR_CITA;
     detalle.push(`cuota_pendiente: ${cuotaPendiente} citas por cubrir`);
   }
 

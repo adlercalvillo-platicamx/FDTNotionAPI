@@ -215,6 +215,32 @@ ok('Explicación Presencial (no VIP) + Consolidado: ambas frases, orden correcto
   assert.ok(iPres < iMad && iMad < iCuota, `orden mal: ${texto}`);
 });
 
+console.log('\n=== Matchmaking — cuota pendiente informativa, no comparable ===');
+ok('Cuotas pendientes distintas producen exactamente el mismo score', () => {
+  const candidato = candidatoBase({
+    ticketTipo: 'Virtual',
+    madurezNegocioExa: 'Consolidado',
+    fuenteDato: 'Declarado',
+  });
+  const conUnaPendiente = calcularScore(sponsorBase, candidato, 1);
+  const conCuatroPendientes = calcularScore(sponsorBase, candidato, 4);
+  assert.strictEqual(conUnaPendiente.score, conCuatroPendientes.score);
+  assert.ok(conUnaPendiente.detalle.includes('cuota_pendiente: 1 citas por cubrir'));
+  assert.ok(conCuatroPendientes.detalle.includes('cuota_pendiente: 4 citas por cubrir'));
+});
+ok('Cuota pendiente positiva permanece en la explicación', () => {
+  const candidato = candidatoBase({ ticketTipo: 'Virtual' });
+  const { senales } = calcularScore(sponsorBase, candidato, 3);
+  const texto = generarExplicacionNatural(candidato, senales);
+  assert.ok(texto.includes('sponsor todavía tiene 3 citas por cubrir'), texto);
+});
+ok('Cuota pendiente cero no aparece en la explicación', () => {
+  const candidato = candidatoBase({ ticketTipo: 'Virtual' });
+  const { senales } = calcularScore(sponsorBase, candidato, 0);
+  const texto = generarExplicacionNatural(candidato, senales);
+  assert.ok(!texto.includes('por cubrir de su cuota'), texto);
+});
+
 console.log('\n=== DIFF-13 booking — duración + bloques de env (igual que /disponibilidad) ===');
 // Misma config que Coolify / smoke de disponibilidad — sin esto la validación
 // nueva no puede generar la grilla oficial de slots.

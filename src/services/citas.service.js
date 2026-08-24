@@ -17,6 +17,12 @@
 // (usa e589d487-b3db-4d9b-8ec1-6d0119728aca para la tabla activa).
 
 const { notionFetch } = require('../utils/notion-client');
+const {
+  ESTADO_ENVIO_EN_CURSO,
+  ESTADO_ENVIO_ENVIADA,
+  ESTADO_ENVIO_FALLO,
+  esCandidataEnvioCampana,
+} = require('../utils/estado-envio-campana');
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
 
@@ -596,6 +602,69 @@ async function queryCitasPaginado(filter) {
   return resultados;
 }
 
+async function buscarCitasAprobadasSinCampana() {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Estatus', select: { equals: 'Aprobado' } },
+      { property: 'Campaña Enviada', checkbox: { equals: false } },
+    ],
+  });
+
+  return filas
+    .map((fila) => ({
+      id: fila.id,
+      asistentePageId: fila.properties?.['Contacto Principal']?.relation?.[0]?.id || null,
+      estadoEnvioCampana: fila.properties?.['Estado Envío Campaña']?.select?.name || null,
+      fechaInicioEnvio: fila.properties?.['Fecha Inicio Envío']?.date?.start || null,
+    }))
+    .filter((fila) => fila.asistentePageId)
+    .filter((fila) => esCandidataEnvioCampana(fila));
+}
+
+async function obtenerAsistentesConCitaConfirmada() {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    or: [
+      { property: 'Estatus', select: { equals: 'Confirmada' } },
+      { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+    ],
+  });
+  const asistentes = new Set();
+  for (const fila of filas) {
+    for (const relacion of fila.properties?.['Contacto Principal']?.relation || []) {
+      asistentes.add(relacion.id);
+    }
+  }
+  return asistentes;
+}
+
+async function actualizarEstadoEnvioCampana(notionPageIds, { estado, fechaInicioEnvio, campanaEnviada } = {}) {
+  requireDataSourceId();
+  for (const notionPageId of notionPageIds) {
+    const properties = {
+      'Estado Envío Campaña': { select: { name: estado } },
+    };
+    if (fechaInicioEnvio) {
+      properties['Fecha Inicio Envío'] = { date: { start: fechaInicioEnvio } };
+    }
+    if (campanaEnviada === true) {
+      properties['Campaña Enviada'] = { checkbox: true };
+    }
+    await notionFetch(`/pages/${notionPageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ properties }),
+    });
+  }
+}
+
+async function marcarCampanaEnviada(notionPageIds) {
+  return actualizarEstadoEnvioCampana(notionPageIds, {
+    estado: ESTADO_ENVIO_ENVIADA,
+    campanaEnviada: true,
+  });
+}
+
 async function reabrirCitaParaReintento(notionPageId) {
   return notionFetch(`/pages/${notionPageId}`, {
     method: 'PATCH',
@@ -643,6 +712,8 @@ async function marcarCitaAprobada(notionPageId) {
  * CORRECCIÓN (17 de agosto): también "Confirmada sin notificar" — cita real
  * (Calendar + Notion) a la que solo le faltó el correo/ICS; sin esto el
  * matchmaking individual volvería a sugerir el mismo par.
+ * DECISIÓN (23 de agosto): "Rechazado" también bloquea el par. Conserva el
+ * historial y solo vuelve a evaluarse si un humano cambia el Estatus.
  */
 async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
   requireDataSourceId();
@@ -660,6 +731,7 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
               { property: 'Estatus', select: { equals: 'Confirmada' } },
               { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
               { property: 'Estatus', select: { equals: 'Pendiente Calendar' } },
+              { property: 'Estatus', select: { equals: 'Rechazado' } },
             ],
           },
         ],
@@ -690,7 +762,14 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
 // prácticamente siempre 1 con el volumen actual del proyecto).
 // ═══════════════════════════════════════════════════════════════
 
-const ESTATUS_ACTIVOS = ['Sugerido', 'Aprobado', 'Confirmada', 'Confirmada sin notificar', 'Pendiente Calendar'];
+const ESTATUS_ACTIVOS = [
+  'Sugerido',
+  'Aprobado',
+  'Confirmada',
+  'Confirmada sin notificar',
+  'Pendiente Calendar',
+  'Rechazado',
+];
 
 /**
  * Trae TODAS las filas de Citas cuyo Estatus esté en ESTATUS_ACTIVOS, con
@@ -952,6 +1031,14 @@ module.exports = {
   obtenerDisponibilidadSponsor,
   listarSugeridasPorAsistente,
   consultarSugeridasPorIdentificador,
+  buscarCitasAprobadasSinCampana,
+  obtenerAsistentesConCitaConfirmada,
+  actualizarEstadoEnvioCampana,
+  marcarCampanaEnviada,
+  ESTADO_ENVIO_EN_CURSO,
+  ESTADO_ENVIO_ENVIADA,
+  ESTADO_ENVIO_FALLO,
+  esCandidataEnvioCampana,
   reabrirCitaParaReintento,
   listarCitasConfirmadasEnFecha,
   finDeBloque,

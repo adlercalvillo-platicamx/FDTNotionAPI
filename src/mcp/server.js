@@ -5,7 +5,7 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (19 ago 2026): 8 herramientas MCP — consultar_checklist (lectura),
+// Estado (23 ago 2026): 9 herramientas MCP — consultar_checklist (lectura),
 // revisar_checklists_pendientes (lectura + actualiza estado),
 // sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
 // crean filas en Citas con Estatus "Sugerido", dry-run por default en
@@ -13,7 +13,8 @@
 // aprobar_match (marca una fila de Citas como "Aprobado"),
 // consultar_sugeridas_para_asistente (lectura por WhatsApp o page_id),
 // reintentar_notificaciones_pendientes (reenvía correos/.ics de citas en
-// "Confirmada sin notificar"). El campo "Match Sugerido" del sponsor quedó
+// "Confirmada sin notificar") y disparar_campanas_aprobadas (simulación por
+// default; agrupada por asistente). El campo "Match Sugerido" del sponsor quedó
 // en desuso el 9 de agosto — ver 03-reglas-negocio-y-matchmaking.md y
 // 10-backend-como-mcp.md §9.
 // reservar_cita sigue sin exponerse aquí — ver nota abajo.
@@ -29,6 +30,7 @@ const { z } = require('zod');
 const checklistService = require('../services/checklist.service');
 const matchmakingService = require('../services/matchmaking.service');
 const citasService = require('../services/citas.service');
+const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 
 function crearServidorMcp() {
@@ -257,6 +259,25 @@ function crearServidorMcp() {
       } catch (err) {
         return {
           content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.code }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    'disparar_campanas_aprobadas',
+    'Procesa manualmente todas las filas Aprobado pendientes de campaña, agrupadas por asistente para enviar como máximo un mensaje por persona. Por default corre en simulación: devuelve payloads y decisiones sin llamar WhatsApp ni marcar Notion. El envío real solo se habilita mediante configuración explícita del backend, nunca por parámetros del agente.',
+    {},
+    async () => {
+      try {
+        const resultado = await dispararCampanasAprobadas();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
           isError: true,
         };
       }

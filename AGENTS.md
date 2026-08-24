@@ -47,8 +47,11 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron) |
+| Disparar campañas aprobadas | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (misma función, agrupada por asistente) |
 
 `GET /citas/disponibilidad` usa una query de citas confirmadas del día (misma regla 11 mesas / sponsor). Sin env de horario → **503**. No sustituye a `reservar`. El Flow nunca confirma en pantalla; encola `reservarCita` y avisa por WhatsApp.
+
+La generación periódica de sugerencias es externa al proceso: cron HTTP cada 6h a `POST /matchmaking/sugerir-todos` con `X-API-Key`. Nunca usar ese cron para enviar WhatsApp. Las campañas A/B/C requieren disparo humano y permanecen en simulación hasta aprobar plantillas y variables en Meta. Limpiar la cola acumulada antes del primer envío real es `scripts/one-shots/marcar-cola-sin-enviar.js` (`soloMarcar`); pide `--confirmar` y después escribir el título real de Citas. No hay endpoint ni tool MCP para eso.
 
 ## Ciclo de vida en tabla `Citas`
 
@@ -89,7 +92,7 @@ Toda escritura a `Confirmada` / `Confirmada sin notificar` debe pasar por `booki
 - No duplicar lógica de negocio en `mcp/`, controllers o el prompt del agente de Plática.
 - No hardcodear horarios del 7/8 oct; van en env.
 - No `npm install` de paquetes nuevos ni borrar archivos fuera del repo sin preguntar.
-- No reejecutar `scripts/one-shots/` (cargas reales a Notion) sin revisar.
+- No reejecutar `scripts/one-shots/` (cargas reales a Notion) sin revisar. `marcar-cola-sin-enviar.js` es de un solo uso por ambiente, justo antes del primer envío real.
 - **Ninguna prueba con SMTP real** puede usar contactos con correo externo. Verificar destinatarios **antes** de `POST /citas/reservar`.
 - Si un comentario dice “sin confirmar” / “borrador” / “no verificado”, no construir encima sin señalarlo.
 - No cambiar reglas de negocio confirmadas (Bronce, giros, select Quiere Citas, mutex, no-MCP de reservar) salvo pedido explícito.
