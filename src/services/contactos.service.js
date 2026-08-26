@@ -122,6 +122,10 @@ function parsearContacto(pagina) {
     // 14 de agosto — agregado para el peso nuevo de matchmaking.service.js
     // (criterio de tamaño de empresa, pedido por Laura en la Demo 2, 13-ago).
     madurezNegocioExa: select(p['Madurez Negocio (Exa)']),
+    // Tamaño de Negocio — select del registro (25-ago). Filtro duro en
+    // matchmaking.service.js: Grande/Mediana entran; Micro/Pequeña no.
+    // Vacío = asistente viejo → fallback a Madurez Negocio (Exa).
+    tamanoNegocio: select(p['Tamaño de Negocio']),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
     icpModaEcommerce: select(p['ICP Moda/Ecommerce']),

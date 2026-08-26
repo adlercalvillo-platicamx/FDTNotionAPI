@@ -11,7 +11,10 @@ const { parsearContacto } = require('../src/services/contactos.service');
 const {
   calcularScore,
   generarExplicacionNatural,
+  esCandidatoPorTamanoNegocio,
   PESOS,
+  TAMANO_GRANDE,
+  TAMANO_MEDIANA,
 } = require('../src/services/matchmaking.service');
 const { validarDuracionYFecha, BookingError } = require('../src/services/booking.service');
 
@@ -27,7 +30,7 @@ function ok(nombre, fn) {
   }
 }
 
-function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial' } = {}) {
+function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial', tamanoNegocio = undefined } = {}) {
   const props = {
     Nombre: { title: [{ plain_text: 'Test' }] },
     Empresa: { rich_text: [] },
@@ -45,6 +48,13 @@ function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial'
     props['Madurez Negocio (Exa)'] = { select: { name: madurezNegocioExa } };
   } else {
     props['Madurez Negocio (Exa)'] = { select: null };
+  }
+  if (tamanoNegocio === null) {
+    props['Tamaño de Negocio'] = { select: null };
+  } else if (tamanoNegocio !== undefined) {
+    props['Tamaño de Negocio'] = { select: { name: tamanoNegocio } };
+  } else {
+    props['Tamaño de Negocio'] = { select: null };
   }
   return { id: 'test-id', properties: props };
 }
@@ -239,6 +249,71 @@ ok('Cuota pendiente cero no aparece en la explicación', () => {
   const { senales } = calcularScore(sponsorBase, candidato, 0);
   const texto = generarExplicacionNatural(candidato, senales);
   assert.ok(!texto.includes('por cubrir de su cuota'), texto);
+});
+
+console.log('\n=== Matchmaking — Tamaño de Negocio (filtro + pesos) ===');
+ok('parsearContacto lee Tamaño de Negocio', () => {
+  const c = parsearContacto(paginaNotion({ tamanoNegocio: TAMANO_GRANDE }));
+  assert.strictEqual(c.tamanoNegocio, TAMANO_GRANDE);
+});
+ok('Grande entra y suma 40 (Virtual, sin otras señales)', () => {
+  const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE }), 0);
+  assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_GRANDE }), true);
+  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
+  assert.ok(r.detalle.includes('tamano_negocio: empresa grande'));
+});
+ok('Mediana entra y suma 15', () => {
+  const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA }), 0);
+  assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_MEDIANA }), true);
+  assert.strictEqual(r.score, PESOS.TAMANO_MEDIANA);
+});
+ok('Micro excluido del pool (allowlist, no !== Micro)', () => {
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio({ tamanoNegocio: 'Micro - menos de 10 empleados', madurezNegocioExa: 'Consolidado' }),
+    false
+  );
+});
+ok('Pequeña excluida del pool', () => {
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio({ tamanoNegocio: 'Pequeña - 10 a 50 empleados' }),
+    false
+  );
+});
+ok('Vacío + Consolidado entra; peso de Madurez 40, no TAMANO', () => {
+  const c = candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Consolidado' });
+  assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
+  const r = calcularScore(sponsorBase, c, 0);
+  assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.ok(!r.detalle.some((d) => d.startsWith('tamano_negocio:')));
+});
+ok('Vacío + PyME entra; peso Madurez 15', () => {
+  const c = candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'PyME' });
+  assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
+  const r = calcularScore(sponsorBase, c, 0);
+  assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_PYME);
+});
+ok('Vacío + Temprano excluido', () => {
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio({ tamanoNegocio: null, madurezNegocioExa: 'Temprano' }),
+    false
+  );
+});
+ok('Vacío + vacío (ambos null) excluido', () => {
+  assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: null, madurezNegocioExa: null }), false);
+  assert.strictEqual(esCandidatoPorTamanoNegocio({}), false);
+});
+ok('Ambos poblados: gana Tamaño, no se suman 40+40', () => {
+  const c = candidatoBase({
+    ticketTipo: 'Virtual',
+    tamanoNegocio: TAMANO_GRANDE,
+    madurezNegocioExa: 'Consolidado',
+  });
+  assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
+  const r = calcularScore(sponsorBase, c, 0);
+  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
+  assert.strictEqual(r.senales.tamanoNegocio, 'Grande');
+  assert.strictEqual(r.senales.madurezNegocio, null);
+  assert.ok(!r.detalle.some((d) => d.startsWith('madurez_negocio:')));
 });
 
 console.log('\n=== DIFF-13 booking — duración + bloques de env (igual que /disponibilidad) ===');

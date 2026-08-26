@@ -90,17 +90,17 @@ const PESOS = {
   AREA: 60, // match directo de área/puesto
   SOLUCION: 60, // match directo por cada solución coincidente
   // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
-  // empresa 100% es un criterio... es lo más importante". Esto NO es el
-  // filtro duro de descarte que ella pidió formalmente (ese sigue bloqueado,
-  // pendiente de que ella defina el criterio operativo) — es un adelanto
-  // acotado usando la señal que ya existe hoy en Notion vía el
-  // enriquecimiento de Luis (Madurez Negocio (Exa): Temprano/PyME/Consolidado).
-  // Pesos por debajo de Área/Solución a propósito: es una inferencia
-  // automática, no un match directo de catálogo ni un dato declarado por el
-  // propio contacto — mismo criterio de cautela que ya distingue Declarado
-  // (10) de Inferido (3) más abajo. "Temprano" no suma ni resta.
+  // empresa 100% es un criterio... es lo más importante". Desde 26-ago el
+  // filtro duro vive en esCandidatoPorTamanoNegocio (Tamaño de Negocio del
+  // registro; si vacío, Madurez Negocio Exa). Estos pesos de madurez solo
+  // aplican al fallback de asistentes viejos sin el select nuevo.
   MADUREZ_NEGOCIO_CONSOLIDADO: 40,
   MADUREZ_NEGOCIO_PYME: 15,
+  // 26-ago: filtro duro de tamaño (Laura 25-ago). Estos pesos SOLO aplican
+  // si Tamaño de Negocio está poblado (Grande/Mediana). No se suman junto
+  // con MADUREZ_NEGOCIO_* — si ambos existen, gana el dato declarado.
+  TAMANO_GRANDE: 40,
+  TAMANO_MEDIANA: 15,
   OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
   // Conservado como referencia histórica (23-ago-2026), pero ya no se suma
   // al score: la cuota cambia con el tiempo y no mide la calidad del par.
@@ -113,6 +113,23 @@ const PESOS = {
 // sponsor busque "Otro" y un asistente sea "Otro" NO es una señal real de
 // afinidad — son dos "no sé" que coinciden por accidente. Se excluye del match.
 const VALOR_COMODIN = 'Otro';
+
+const TAMANO_GRANDE = 'Grande - más de 250 empleados';
+const TAMANO_MEDIANA = 'Mediana - 50 a 250 empleados';
+const TAMANOS_QUE_ENTRAN = new Set([TAMANO_GRANDE, TAMANO_MEDIANA]);
+const MADURECES_EXA_QUE_ENTRAN = new Set(['Consolidado', 'PyME']);
+
+/**
+ * Filtro duro de tamaño (Capa 1, antes de calcularScore).
+ * Allowlist, no denylist: un valor raro o vacío no “se cuela”.
+ * Con Tamaño poblado: solo Grande/Mediana. Vacío (registro viejo):
+ * Consolidado/PyME de Exa. Vacío + vacío o Temprano → fuera.
+ */
+function esCandidatoPorTamanoNegocio(candidato) {
+  const tamano = candidato.tamanoNegocio;
+  if (tamano) return TAMANOS_QUE_ENTRAN.has(tamano);
+  return MADURECES_EXA_QUE_ENTRAN.has(candidato.madurezNegocioExa);
+}
 
 function normalizar(texto) {
   return (texto || '')
@@ -184,6 +201,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     solucionesCoincidentes: [],
     coincidenciaTextoLibre: false,
     madurezNegocio: null, // "Temprano" | "PyME" | "Consolidado" | null
+    tamanoNegocio: null, // "Grande" | "Mediana" | null (Micro/Pequeña no llegan aquí)
     cuotaPendiente,
     // Distinguir "inferido" de "sin dato" importa: el reporte que lee Laura
     // afirma cosas sobre el candidato, y decir "esta info fue inferida" cuando
@@ -215,13 +233,20 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.esPresencial = true;
   }
 
-  // Madurez Negocio (Exa) — agregado 14 de agosto, ver nota de diseño en
-  // PESOS.MADUREZ_NEGOCIO_* arriba. Solo suma si el campo está poblado;
-  // "Temprano" y vacío se tratan igual (ninguno suma), pero se distinguen en
-  // `senales.madurezNegocio` para que la explicación en lenguaje natural
-  // pueda diferenciar "no se sabe" de "se sabe que es una empresa temprana"
-  // si algún día hace falta.
-  if (candidato.madurezNegocioExa === 'Consolidado') {
+  // Madurez Negocio (Exa) — solo si NO hay Tamaño de Negocio declarado.
+  // Si ambos existieran, gana el select del formulario (TAMANO_*), no se suman.
+  const tamanoDeclarado = TAMANOS_QUE_ENTRAN.has(candidato.tamanoNegocio);
+  if (tamanoDeclarado) {
+    if (candidato.tamanoNegocio === TAMANO_GRANDE) {
+      score += PESOS.TAMANO_GRANDE;
+      detalle.push('tamano_negocio: empresa grande');
+      senales.tamanoNegocio = 'Grande';
+    } else if (candidato.tamanoNegocio === TAMANO_MEDIANA) {
+      score += PESOS.TAMANO_MEDIANA;
+      detalle.push('tamano_negocio: empresa mediana');
+      senales.tamanoNegocio = 'Mediana';
+    }
+  } else if (candidato.madurezNegocioExa === 'Consolidado') {
     score += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
     detalle.push('madurez_negocio: empresa consolidada (Exa)');
     senales.madurezNegocio = 'Consolidado';
@@ -316,6 +341,11 @@ function generarExplicacionNatural(candidato, senales) {
   if (senales.esPresencial && !senales.esVip) {
     texto += ` Asistirá de forma presencial, lo cual se prioriza sobre los asistentes virtuales.`;
   }
+  if (senales.tamanoNegocio === 'Grande') {
+    texto += ` Declaró un negocio de tamaño grande.`;
+  } else if (senales.tamanoNegocio === 'Mediana') {
+    texto += ` Declaró un negocio de tamaño mediano.`;
+  }
   if (senales.madurezNegocio === 'Consolidado') {
     texto += ` El enriquecimiento automático identificó su negocio como consolidado.`;
   } else if (senales.madurezNegocio === 'PyME') {
@@ -378,7 +408,9 @@ async function sugerirMatchesParaSponsor(
   // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
   // dado de baja, etapa de negocio).
   const etapasValidas = getEtapasValidas(sponsor);
-  const candidatosBrutos = await notionContactos.buscarAsistentesCandidatos({ etapasValidas, incluirVirtual });
+  const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ etapasValidas, incluirVirtual })).filter(
+    esCandidatoPorTamanoNegocio
+  );
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
   const candidatosValidos = [];
@@ -727,10 +759,13 @@ module.exports = {
   // exportados para pruebas / depuración:
   getEtapasValidas,
   calcularScore,
+  esCandidatoPorTamanoNegocio,
   generarExplicacionNatural,
   empresaMencionadaEn,
   coincidenciaTextoLibre,
   ALIAS_ETAPA_SPONSOR_A_ASISTENTE,
   PRIORIDAD_NIVEL_PATROCINIO,
+  TAMANO_GRANDE,
+  TAMANO_MEDIANA,
   PESOS,
 };

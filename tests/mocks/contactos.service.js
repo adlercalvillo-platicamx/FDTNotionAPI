@@ -70,6 +70,8 @@ const CONTACTOS = [
     fuenteDato: 'Declarado',
     formatoRegistro: '2026',
     dadoDeBaja: false,
+    // Registro viejo: sin Tamaño de Negocio. Entra por fallback Exa.
+    madurezNegocioExa: 'Consolidado',
   },
   // Caso "vacío histórico" (12 ago): Presencial que nunca contestó
   // Quiere Citas 1a1 — con el fix debe seguir siendo elegible (solo se
