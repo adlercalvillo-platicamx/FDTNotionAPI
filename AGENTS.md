@@ -47,11 +47,12 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron) |
-| Disparar campañas aprobadas | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (misma función, agrupada por asistente) |
+| Disparar oferta inicial aprobada | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (hasta 4 sponsors; 3 horarios del sponsor top) |
+| Recordatorio del evento | POST `/matchmaking/enviar-recordatorio-evento` (`X-API-Key`; simulación por default; **sin cron**) | — |
 
 `GET /citas/disponibilidad` usa una query de citas confirmadas del día (misma regla 11 mesas / sponsor). Sin env de horario → **503**. No sustituye a `reservar`. El Flow nunca confirma en pantalla; encola `reservarCita` y avisa por WhatsApp.
 
-La generación periódica de sugerencias es externa al proceso: cron HTTP cada 6h a `POST /matchmaking/sugerir-todos` con `X-API-Key`. Nunca usar ese cron para enviar WhatsApp. Las campañas A/B/C requieren disparo humano y permanecen en simulación hasta aprobar plantillas y variables en Meta. Limpiar la cola acumulada antes del primer envío real es `scripts/one-shots/marcar-cola-sin-enviar.js` (`soloMarcar`); pide `--confirmar` y después escribir el título real de Citas. No hay endpoint ni tool MCP para eso.
+La generación periódica de sugerencias es externa al proceso: cron HTTP cada 6h a `POST /matchmaking/sugerir-todos` con `X-API-Key`. Nunca usar ese cron para enviar WhatsApp. La oferta inicial única requiere disparo humano y permanece en simulación hasta aprobar `PLATICA_TEMPLATE_OFERTA_INICIAL` y sus variables en Meta. Solo se envía a quien no tenga `Última Campaña Enviada`; A/B/C1/C2 y reactivaciones son legado no usado. Los 3 horarios del mensaje salen de **un solo sponsor** (el de mayor score con ≥1 bloque; si el top está lleno se recorre el resto por score), con corte configurable `CITAS_CORTE_MANANA_TARDE` (default 14:00); la grilla real sigue siendo la de booking (hoy 30 min). El recordatorio-reactivación del evento es `POST /matchmaking/enviar-recordatorio-evento` (manual, sin cron ni MCP). Limpiar la cola acumulada antes del primer envío real es `scripts/one-shots/marcar-cola-sin-enviar.js` (`soloMarcar`); pide `--confirmar` y después escribir el título real de Citas. No hay endpoint ni tool MCP para eso.
 
 ## Ciclo de vida en tabla `Citas`
 

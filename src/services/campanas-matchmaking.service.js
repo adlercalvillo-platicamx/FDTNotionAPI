@@ -16,28 +16,29 @@ const {
 } = require('../utils/estado-envio-campana');
 const { reintentarConBackoff, INTENTOS_MAXIMOS } = require('../utils/reintentar-con-backoff');
 
-const CAMPANA_A = 'A - Primera oferta';
-const CAMPANA_B = 'B - Más opciones';
-const CAMPANA_C_LEGACY = 'C - Reactivación';
-const REACTIVACION_1 = 'C1 - Reactivación';
-const REACTIVACION_2 = 'C2 - Reactivación';
-const VARIANTES_REACTIVACION = [REACTIVACION_1, REACTIVACION_2];
-const DIAS_REACTIVACION = Number(process.env.CAMPANAS_MATCHMAKING_DIAS_REACTIVACION || 14);
-const REACTIVACIONES_MAXIMAS = Number(process.env.CAMPANAS_MATCHMAKING_REACTIVACIONES_MAXIMAS || 2);
+const OFERTA_INICIAL = 'Oferta inicial';
+const TEMPLATE_ENV_OFERTA = 'PLATICA_TEMPLATE_OFERTA_INICIAL';
+const TEMPLATE_SIMULACION = 'oferta_inicial_con_horarios';
+const TEMPLATE_ENV_RECORDATORIO = 'PLATICA_TEMPLATE_RECORDATORIO_EVENTO';
+const TEMPLATE_SIMULACION_RECORDATORIO = 'PENDIENTE_PLANTILLA_RECORDATORIO_EVENTO';
+// Confirmado por Adler: 14 días antes del evento. El disparo sigue siendo
+// manual (POST /matchmaking/enviar-recordatorio-evento); no hay cron.
+const DIAS_ANTES_RECORDATORIO_EVENTO = 14;
 
-const TEMPLATE_ENV = {
-  [CAMPANA_A]: 'PLATICA_TEMPLATE_MATCHMAKING_A',
-  [CAMPANA_B]: 'PLATICA_TEMPLATE_MATCHMAKING_B',
-  [REACTIVACION_1]: 'PLATICA_TEMPLATE_MATCHMAKING_C1',
-  [REACTIVACION_2]: 'PLATICA_TEMPLATE_MATCHMAKING_C2',
-};
-
-const TEMPLATE_SIMULACION = {
-  [CAMPANA_A]: 'seleccion_horarios',
-  [CAMPANA_B]: 'PENDIENTE_PLANTILLA_B',
-  [REACTIVACION_1]: 'PENDIENTE_PLANTILLA_C1',
-  [REACTIVACION_2]: 'PENDIENTE_PLANTILLA_C2',
-};
+const ESTATUS_YA_INTERACTUO = [
+  'Confirmada',
+  'Confirmada sin notificar',
+  'Pendiente Calendar',
+  'Completada',
+];
+const ESTATUS_SIN_INTERACTUAR = ['Sugerido', 'Aprobado', 'Rechazado'];
+// Propuesta de Adler: elegibles = quien ya participó del matchmaking.
+// Rechazado no estaba en la lista de elegibles del prompt, pero sí en
+// "nunca interactuó". Lo incluimos para no dejar fuera a quien solo tiene
+// filas rechazadas. Completada puede no existir aún en el select de Citas.
+const ESTATUS_ELEGIBLES_RECORDATORIO = [
+  ...new Set([...ESTATUS_SIN_INTERACTUAR, ...ESTATUS_YA_INTERACTUO]),
+];
 
 function agruparPorAsistente(filas) {
   const grupos = new Map();
@@ -48,86 +49,59 @@ function agruparPorAsistente(filas) {
   return grupos;
 }
 
-function evaluarVentanaReactivacion(contacto, ahora) {
-  if (!contacto.fechaUltimaCampana) {
-    return { listo: false, motivo: 'FECHA_ULTIMA_CAMPANA_FALTANTE' };
-  }
-  const fechaAnterior = new Date(contacto.fechaUltimaCampana);
-  if (Number.isNaN(fechaAnterior.getTime())) {
-    return { listo: false, motivo: 'FECHA_ULTIMA_CAMPANA_INVALIDA' };
-  }
-  const limite = new Date(ahora.getTime() - DIAS_REACTIVACION * 24 * 60 * 60 * 1000);
-  if (fechaAnterior < limite) return { listo: true };
-  return { listo: false, motivo: 'VENTANA_REACTIVACION_NO_CUMPLIDA' };
-}
-
-function reactivacionesDe(contacto) {
-  const n = Number(contacto.reactivacionesEnviadas);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function varianteReactivacionPara(reactivacionesEnviadas) {
-  return VARIANTES_REACTIVACION[reactivacionesEnviadas] || null;
-}
-
-function esVarianteReactivacion(campana) {
-  return VARIANTES_REACTIVACION.includes(campana);
-}
-
-function elegirCampana({ contacto, tieneCitaConfirmada, ahora }) {
-  if (tieneCitaConfirmada) return { campana: CAMPANA_B };
-  if (!contacto.ultimaCampanaEnviada) return { campana: CAMPANA_A };
-
-  const reactivaciones = reactivacionesDe(contacto);
-
-  if (contacto.ultimaCampanaEnviada === CAMPANA_A) {
-    const ventana = evaluarVentanaReactivacion(contacto, ahora);
-    if (!ventana.listo) return { motivo: ventana.motivo };
-    return { campana: varianteReactivacionPara(0) };
-  }
-
-  // B perdida, C legado, o C1/C2: mismo camino. El tope solo bloquea reactivación.
-  if (reactivaciones >= REACTIVACIONES_MAXIMAS) {
-    return { motivo: 'TOPE_REACTIVACIONES_ALCANZADO' };
-  }
-  const ventana = evaluarVentanaReactivacion(contacto, ahora);
-  if (!ventana.listo) return { motivo: ventana.motivo };
-  const campana = varianteReactivacionPara(reactivaciones);
-  if (!campana) return { motivo: 'TOPE_REACTIVACIONES_ALCANZADO' };
-  return { campana };
-}
-
-async function persistirEnvioCampana({ contactoId, campana, fechaEnvio, reactivacionesEnviadas }) {
+async function persistirEnvioCampana({ contactoId, fechaEnvio }) {
+  const campana = OFERTA_INICIAL;
   await contactosService.actualizarEstadoCampana({ contactoId, campana, fechaEnvio });
-  if (esVarianteReactivacion(campana)) {
-    await contactosService.incrementarReactivaciones(contactoId, reactivacionesEnviadas);
-  }
 }
 
-function plantillaPara(campana, modoSimulacion) {
-  const nombreEnv = TEMPLATE_ENV[campana];
-  const configurada = process.env[nombreEnv];
+function plantillaPara(modoSimulacion) {
+  const configurada = process.env[TEMPLATE_ENV_OFERTA];
   if (configurada) return configurada;
-  if (modoSimulacion) return TEMPLATE_SIMULACION[campana];
-  throw new Error(`Falta ${nombreEnv}; no se puede enviar ${campana}`);
+  if (modoSimulacion) return TEMPLATE_SIMULACION;
+  throw new Error(`Falta ${TEMPLATE_ENV_OFERTA}; no se puede enviar ${OFERTA_INICIAL}`);
 }
 
-function payloadPara({ contacto, campana, modoSimulacion }) {
+function textoSugerencias(sugerencias) {
+  return sugerencias
+    .map((sponsor, indice) => {
+      const nombre = sponsor.empresa || sponsor.nombre || 'Sponsor';
+      const solucion = Array.isArray(sponsor.solucion)
+        ? sponsor.solucion.join(', ')
+        : sponsor.solucion || 'Solución por confirmar';
+      return `${indice + 1}. ${nombre} — ${solucion || 'Solución por confirmar'}`;
+    })
+    .join('\n');
+}
+
+function payloadPara({ contacto, sugerencias, horarios, modoSimulacion }) {
+  const horariosLegibles = horarios.map((bloque) =>
+    citasService.formatearHorarioLegible(bloque.inicio)
+  );
   return {
     phone: contacto.whatsapp,
-    templateName: plantillaPara(campana, modoSimulacion),
-    // Las plantillas agrupadas son genéricas y solo usan el nombre.
-    // Confirmar copy/variables en Meta antes de habilitar el envío real.
-    params: [contacto.nombre || 'Asistente'],
+    templateName: plantillaPara(modoSimulacion),
+    params: [
+      contacto.nombre || 'Asistente',
+      textoSugerencias(sugerencias),
+      horariosLegibles[0] || '',
+      horariosLegibles[1] || '',
+      horariosLegibles[2] || '',
+    ],
   };
 }
 
-function letraCampana(campana) {
-  if (campana === CAMPANA_A) return 'A';
-  if (campana === CAMPANA_B) return 'B';
-  if (campana === REACTIVACION_1) return 'C1';
-  if (campana === REACTIVACION_2) return 'C2';
-  return 'C';
+function modoSimulacionCampanas(modoSimulacion) {
+  return modoSimulacion !== undefined
+    ? Boolean(modoSimulacion)
+    : process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION !== 'false';
+}
+
+function exigirEnvioRealHabilitado(simulando) {
+  if (!simulando && process.env.CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO !== 'true') {
+    throw new Error(
+      'Envío real de campañas deshabilitado. Define CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true solo después de aprobar las plantillas.'
+    );
+  }
 }
 
 async function dispararCampanasAprobadas({
@@ -142,37 +116,21 @@ async function dispararCampanasAprobadas({
   // soloMarcar: true ignora el default de simulación del env. Si no, un
   // script { soloMarcar: true } con CAMPANAS_MATCHMAKING_MODO_SIMULACION=true
   // quedaría ambiguo (¿escribe Notion o no?) y podría caer en enviarPlantilla.
-  const simulando = soloMarcar
-    ? false
-    : modoSimulacion !== undefined
-      ? Boolean(modoSimulacion)
-      : process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION !== 'false';
-
-  if (!soloMarcar && !simulando && process.env.CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO !== 'true') {
-    throw new Error(
-      'Envío real de campañas deshabilitado. Define CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true solo después de aprobar las plantillas.'
-    );
-  }
+  const simulando = soloMarcar ? false : modoSimulacionCampanas(modoSimulacion);
+  if (!soloMarcar) exigirEnvioRealHabilitado(simulando);
 
   const candidatas = await citasService.buscarCitasAprobadasSinCampana();
-  const confirmados = await citasService.obtenerAsistentesConCitaConfirmada();
   const grupos = agruparPorAsistente(candidatas);
+  const indiceConfirmadas = soloMarcar
+    ? null
+    : await citasService.cargarIndiceCitasConfirmadas();
   const resumen = {
     modoSimulacion: simulando,
     soloMarcar: Boolean(soloMarcar),
     contactosProcesados: grupos.size,
-    enviadosA: 0,
-    enviadosB: 0,
-    enviadosC1: 0,
-    enviadosC2: 0,
-    simuladosA: 0,
-    simuladosB: 0,
-    simuladosC1: 0,
-    simuladosC2: 0,
-    marcadosSinEnviarA: 0,
-    marcadosSinEnviarB: 0,
-    marcadosSinEnviarC1: 0,
-    marcadosSinEnviarC2: 0,
+    enviadosOfertaInicial: 0,
+    simuladosOfertaInicial: 0,
+    marcadosSinEnviarOfertaInicial: 0,
     sinEnviar: 0,
     errores: [],
     detalle: [],
@@ -181,15 +139,14 @@ async function dispararCampanasAprobadas({
   for (const [asistentePageId, filas] of grupos.entries()) {
     try {
       const contacto = await contactosService.obtenerContacto(asistentePageId);
-      const decision = elegirCampana({
-        contacto,
-        tieneCitaConfirmada: confirmados.has(asistentePageId),
-        ahora,
-      });
-
-      if (!decision.campana) {
+      if (!soloMarcar && contacto.ultimaCampanaEnviada) {
         resumen.sinEnviar += 1;
-        resumen.detalle.push({ asistentePageId, filas: filas.map((f) => f.id), motivo: decision.motivo });
+        resumen.detalle.push({
+          asistentePageId,
+          filas: filas.map((f) => f.id),
+          motivo: 'CAMPANA_PREVIA',
+          campanaPrevia: contacto.ultimaCampanaEnviada,
+        });
         continue;
       }
 
@@ -197,16 +154,14 @@ async function dispararCampanasAprobadas({
         const fechaEnvio = ahora.toISOString();
         await persistirEnvioCampana({
           contactoId: asistentePageId,
-          campana: decision.campana,
           fechaEnvio,
-          reactivacionesEnviadas: contacto.reactivacionesEnviadas,
         });
         await citasService.marcarCampanaEnviada(filas.map((f) => f.id));
-        resumen[`marcadosSinEnviar${letraCampana(decision.campana)}`] += 1;
+        resumen.marcadosSinEnviarOfertaInicial += 1;
         resumen.detalle.push({
           asistentePageId,
           filas: filas.map((f) => f.id),
-          campana: decision.campana,
+          campana: OFERTA_INICIAL,
           marcadoSinEnviar: true,
         });
         continue;
@@ -216,13 +171,53 @@ async function dispararCampanasAprobadas({
         throw new Error('El contacto no tiene WhatsApp');
       }
 
-      const payload = payloadPara({ contacto, campana: decision.campana, modoSimulacion: simulando });
-      if (simulando) {
-        resumen[`simulados${letraCampana(decision.campana)}`] += 1;
+      const ordenadas = [...filas].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+      const filasOfrecidas = [];
+      const sponsorsVistos = new Set();
+      for (const fila of ordenadas) {
+        if (filasOfrecidas.length >= 4) break;
+        if (!fila.sponsorPageId || sponsorsVistos.has(fila.sponsorPageId)) continue;
+        sponsorsVistos.add(fila.sponsorPageId);
+        filasOfrecidas.push(fila);
+      }
+      const sugerencias = [];
+      for (const fila of filasOfrecidas) {
+        sugerencias.push(await contactosService.obtenerContacto(fila.sponsorPageId));
+      }
+      // Un solo sponsor aporta horarios: el de mayor score con ≥1 bloque.
+      // Si el top está lleno, se recorre el resto de las ofrecidas por score.
+      const { horarios, sponsorHorarios } = elegirHorariosDeSugerencias(
+        filasOfrecidas,
+        indiceConfirmadas
+      );
+      const idsOfrecidas = filasOfrecidas.map((fila) => fila.id);
+      const idsOmitidas = filas
+        .filter((fila) => !idsOfrecidas.includes(fila.id))
+        .map((fila) => fila.id);
+
+      if (horarios.length === 0) {
+        resumen.sinEnviar += 1;
         resumen.detalle.push({
           asistentePageId,
           filas: filas.map((f) => f.id),
-          campana: decision.campana,
+          ofrecidas: idsOfrecidas,
+          omitidas: idsOmitidas,
+          sponsorHorarios: null,
+          motivo: 'SIN_HORARIOS_SUGERIDOS',
+        });
+        continue;
+      }
+
+      const payload = payloadPara({ contacto, sugerencias, horarios, modoSimulacion: simulando });
+      if (simulando) {
+        resumen.simuladosOfertaInicial += 1;
+        resumen.detalle.push({
+          asistentePageId,
+          filas: filas.map((f) => f.id),
+          ofrecidas: idsOfrecidas,
+          omitidas: idsOmitidas,
+          sponsorHorarios,
+          campana: OFERTA_INICIAL,
           payload,
           simulado: true,
         });
@@ -253,9 +248,7 @@ async function dispararCampanasAprobadas({
         await reintentarConBackoff(async () => {
           await persistirEnvioCampana({
             contactoId: asistentePageId,
-            campana: decision.campana,
             fechaEnvio,
-            reactivacionesEnviadas: contacto.reactivacionesEnviadas,
           });
           await citasService.marcarCampanaEnviada(ids);
         });
@@ -266,11 +259,146 @@ async function dispararCampanasAprobadas({
         );
       }
 
-      resumen[`enviados${letraCampana(decision.campana)}`] += 1;
+      resumen.enviadosOfertaInicial += 1;
       resumen.detalle.push({
         asistentePageId,
         filas: ids,
-        campana: decision.campana,
+        ofrecidas: idsOfrecidas,
+        omitidas: idsOmitidas,
+        sponsorHorarios,
+        campana: OFERTA_INICIAL,
+        simulado: false,
+      });
+    } catch (err) {
+      resumen.errores.push({ asistentePageId, mensaje: err.message });
+    }
+  }
+
+  return resumen;
+}
+
+function elegirHorariosDeSugerencias(filasOfrecidas, indiceConfirmadas) {
+  for (const fila of filasOfrecidas || []) {
+    const bloques = citasService.bloquesDisponiblesParaSponsor({
+      sponsorPageId: fila.sponsorPageId,
+      indiceConfirmadas,
+    });
+    const horarios = citasService.seleccionarHorariosParaOferta(bloques);
+    if (horarios.length > 0) {
+      return { horarios, sponsorHorarios: fila.sponsorPageId };
+    }
+  }
+  return { horarios: [], sponsorHorarios: null };
+}
+
+function plantillaRecordatorio(modoSimulacion) {
+  const configurada = process.env[TEMPLATE_ENV_RECORDATORIO];
+  if (configurada) return configurada;
+  if (modoSimulacion) return TEMPLATE_SIMULACION_RECORDATORIO;
+  throw new Error(
+    `Falta ${TEMPLATE_ENV_RECORDATORIO}; no se puede enviar el recordatorio del evento`
+  );
+}
+
+function contactoYaInteractuo(filas) {
+  return (filas || []).some((fila) => ESTATUS_YA_INTERACTUO.includes(fila.estatus));
+}
+
+function payloadRecordatorio({ contacto, modoSimulacion }) {
+  return {
+    phone: contacto.whatsapp,
+    templateName: plantillaRecordatorio(modoSimulacion),
+    params: [contacto.nombre || 'Asistente'],
+  };
+}
+
+/**
+ * Recordatorio-reactivación del evento. Solo se manda a quien nunca
+ * interactuó (todas sus filas en Sugerido/Aprobado/Rechazado).
+ * Quien ya reservó se marca para no reevaluarlo, sin WhatsApp.
+ * Disparo manual; DIAS_ANTES_RECORDATORIO_EVENTO es referencia, no cron.
+ */
+async function enviarRecordatorioEvento({ modoSimulacion } = {}) {
+  const simulando = modoSimulacionCampanas(modoSimulacion);
+  exigirEnvioRealHabilitado(simulando);
+
+  const porAsistente = await citasService.cargarCitasPorAsistenteParaRecordatorio();
+  const resumen = {
+    modoSimulacion: simulando,
+    diasAntesReferencia: DIAS_ANTES_RECORDATORIO_EVENTO,
+    contactosEvaluados: porAsistente.size,
+    enviados: 0,
+    simulados: 0,
+    marcadosSinEnviarPorInteraccion: 0,
+    omitidosYaMarcado: 0,
+    sinEnviar: 0,
+    errores: [],
+    detalle: [],
+  };
+
+  for (const [asistentePageId, filas] of porAsistente.entries()) {
+    try {
+      const contacto = await contactosService.obtenerContacto(asistentePageId);
+      if (contacto.recordatorioEventoEnviado) {
+        resumen.omitidosYaMarcado += 1;
+        resumen.detalle.push({
+          asistentePageId,
+          motivo: 'RECORDATORIO_YA_ENVIADO',
+        });
+        continue;
+      }
+
+      if (contactoYaInteractuo(filas)) {
+        if (simulando) {
+          resumen.sinEnviar += 1;
+          resumen.detalle.push({
+            asistentePageId,
+            motivo: 'YA_INTERACTUO',
+            simulado: true,
+          });
+          continue;
+        }
+        await contactosService.marcarRecordatorioEventoEnviado(asistentePageId);
+        resumen.marcadosSinEnviarPorInteraccion += 1;
+        resumen.detalle.push({
+          asistentePageId,
+          motivo: 'YA_INTERACTUO',
+          marcadoSinEnviar: true,
+        });
+        continue;
+      }
+
+      if (!contacto.whatsapp) {
+        throw new Error('El contacto no tiene WhatsApp');
+      }
+
+      const payload = payloadRecordatorio({ contacto, modoSimulacion: simulando });
+      if (simulando) {
+        resumen.simulados += 1;
+        resumen.detalle.push({
+          asistentePageId,
+          campana: 'Recordatorio evento',
+          payload,
+          simulado: true,
+        });
+        continue;
+      }
+
+      await platicaClient.enviarPlantilla(payload);
+      try {
+        await reintentarConBackoff(async () => {
+          await contactosService.marcarRecordatorioEventoEnviado(asistentePageId);
+        });
+      } catch (errNotion) {
+        throw new Error(
+          `Fallo de escritura Notion POST-envío tras ${INTENTOS_MAXIMOS} intentos: ${errNotion.message || String(errNotion)}`
+        );
+      }
+
+      resumen.enviados += 1;
+      resumen.detalle.push({
+        asistentePageId,
+        campana: 'Recordatorio evento',
         simulado: false,
       });
     } catch (err) {
@@ -282,17 +410,16 @@ async function dispararCampanasAprobadas({
 }
 
 module.exports = {
-  CAMPANA_A,
-  CAMPANA_B,
-  CAMPANA_C_LEGACY,
-  REACTIVACION_1,
-  REACTIVACION_2,
-  VARIANTES_REACTIVACION,
-  DIAS_REACTIVACION,
-  REACTIVACIONES_MAXIMAS,
+  OFERTA_INICIAL,
+  DIAS_ANTES_RECORDATORIO_EVENTO,
+  ESTATUS_YA_INTERACTUO,
   agruparPorAsistente,
-  elegirCampana,
+  textoSugerencias,
+  payloadPara,
+  elegirHorariosDeSugerencias,
+  contactoYaInteractuo,
   dispararCampanasAprobadas,
+  enviarRecordatorioEvento,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,
   ESTADO_ENVIO_ENVIADA,

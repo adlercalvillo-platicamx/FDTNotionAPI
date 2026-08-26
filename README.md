@@ -31,7 +31,7 @@ src/
 │   ├── booking.service.js            # Reserva: mutex + mesa 1–11 + Calendar + correo/.ics (1 sola réplica Coolify)
 │   ├── email.service.js              # ICS + SMTP (nodemailer); 3 reintentos inmediatos por envío
 │   ├── matchmaking.service.js        # Capa 1 + Capa 2; guardarSugerenciaIndividual (19-ago); global con explicación
-│   ├── campanas-matchmaking.service.js # Campañas A/B/C agrupadas por asistente; simulación por default
+│   ├── campanas-matchmaking.service.js # Oferta inicial única: hasta 4 sponsors + 3 horarios; simulación por default
 │   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 │   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api — NUNCA duplicar google.service.js aquí
 ├── mcp/
@@ -71,11 +71,12 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
-| POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de campañas para filas `Aprobado`, agrupadas por asistente. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
+| POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score y 3 horarios del sponsor top. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
 | POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
 | POST | `/matchmaking/sugerir-todos` | Corre matchmaking para todos los sponsors activos, detecta solapamientos y (desde 19-ago) devuelve ranking por sponsor con `explicacion`/`detalle` en cada match. |
+| POST | `/matchmaking/enviar-recordatorio-evento` | **Nueva (26 de agosto).** Disparo **manual** (sin cron) del recordatorio-reactivación. `X-API-Key`. Simulación por default. No hay tool MCP. |
 | GET | `/checklist/consultar?nombre=...` | Consulta bajo demanda — "cómo va fulano". |
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
 
@@ -105,7 +106,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match (19-ago: antes los solapamientos perdían la explicación). Mismo patrón dry-run. **Corregido el 10-ago** — timeout por ~130 llamadas Notion; ahora carga pares activos una sola vez (ver Bugs) |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
 | `reintentar_notificaciones_pendientes` | Escritura acotada, masiva | Reenvía a demanda correo/ICS para todas las citas `Confirmada sin notificar`; sin parámetros y sin tope de llamadas |
-| `disparar_campanas_aprobadas` | Escritura acotada, masiva | Procesa manualmente `Aprobado` sin campaña, agrupado por asistente. Simulación por default; el agente no puede habilitar envío real por parámetros. |
+| `disparar_campanas_aprobadas` | Escritura acotada, masiva | Procesa manualmente `Aprobado` sin campaña previa y envía una sola oferta por asistente. Simulación por default; el agente no puede habilitar envío real por parámetros. |
 
 **Rediseño del 12 de agosto — `Quiere Citas 1a1` y filtro de Giro:** el campo `Quiere Citas 1a1` pasó de checkbox a `select` (`Sí` / `No` / vacío) porque un checkbox no puede distinguir "nunca contestó" de "contestó que no". Decisión de Laura (demo 11-ago): se excluye solo `'No'` explícito; vacío histórico entra. Además, `buscarAsistentesCandidatos` filtra por Giro/Industria — solo Marca de moda, Retailer/tienda multimarca y Manufactura (aplica también a VIP). Mismo día se agregó `Calendario Google ID` por sponsor (multi-calendario) y se cargaron 29 asistentes reales que faltaban de la importación original de Ticketópolis.
 
@@ -133,10 +134,13 @@ Ver `.env.example`. Resumen:
 - **Campañas de matchmaking**:
   - `NOTION_CAMPANAS_WEBHOOK_SECRET` — secret propio del botón/webhook de Notion.
   - Defaults seguros: `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true` y `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`.
-  - El envío real además exige las plantillas `PLATICA_TEMPLATE_MATCHMAKING_A/B/C1/C2` aprobadas en Meta (C1/C2: copy pendiente con Sam).
-  - Tras A (o B perdida), el pool de reactivación rota C1→C2 con la misma ventana de 14 días y tope de 2 (`CAMPANAS_MATCHMAKING_REACTIVACIONES_MAXIMAS`, campo Notion `Reactivaciones Enviadas`). B solo se manda con cita confirmada viva; el tope no la bloquea.
+  - El envío real exige `PLATICA_TEMPLATE_OFERTA_INICIAL` aprobada en Meta. Sus 5 parámetros planos son nombre, texto con hasta 4 sponsors/soluciones y horario 1–3 (vacíos si solo hay 1–2).
+  - Solo se envía a un contacto sin `Última Campaña Enviada`. No hay B, C1, C2 ni reactivación automática en el flujo activo; los campos/valores históricos de Notion permanecen por trazabilidad.
+  - Los 3 horarios salen de **un solo sponsor**: el de mayor score con al menos un bloque libre. Si el top está lleno, se recorre el resto de las sugerencias por score. Los otros sponsors se nombran en el texto, pero su agenda no entra al cruce. `CITAS_CORTE_MANANA_TARDE` (default `14:00`) guía la alternancia Mañana/Tarde. La grilla operativa sigue usando `CITAS_DURACION_BLOQUE_MINUTOS` (hoy 30 min); ningún copy de “20 min” cambia booking.
+  - Solo si **ninguno** de los (hasta 4) sponsors sugeridos tiene un bloque libre no se envía ni se marca.
   - Envío real marca `Estado Envío Campaña=En curso` **antes** de WhatsApp; éxito → `Enviada` + checkbox `Campaña Enviada`; fallo de plantilla → `Falló`. Un `En curso` de más de 10 minutos se reintenta. `soloMarcar` pasa directo a `Enviada`. Simulación no escribe Notion.
-  - **Antes del primer envío real** (una vez por ambiente): revisar la vista Notion `Solo Aprobados`. Lo que sí deba recibir WhatsApp en ese primer disparo no debe estar `Aprobado`. Luego `node scripts/one-shots/marcar-cola-sin-enviar.js --confirmar`. El script muestra los títulos reales de Citas/Contactos del `.env` activo y el tamaño de la cola; hay que escribir el nombre de Citas tal cual para seguir. Misma decisión A/B/C, escribe `Campaña Enviada` / `Última Campaña Enviada`, **no** llama a Plática. No es REST ni MCP. No es una prueba repetible.
+  - **Recordatorio del evento** (`POST /matchmaking/enviar-recordatorio-evento`, `X-API-Key`): disparo manual, sin cron. Constante `DIAS_ANTES_RECORDATORIO_EVENTO=14` solo como referencia. Quien nunca interactuó (filas en `Sugerido`/`Aprobado`/`Rechazado`) recibe `PLATICA_TEMPLATE_RECORDATORIO_EVENTO`. Quien ya tiene `Confirmada` / `Confirmada sin notificar` / `Pendiente Calendar` / `Completada` no recibe WhatsApp; en envío real se marca `Recordatorio Evento Enviado` para no reevaluarlo. Sin filas en `Citas` queda fuera. Simulación no escribe el checkbox. No hay tool MCP para este disparo.
+  - **Antes del primer envío real** (una vez por ambiente): revisar la vista Notion `Solo Aprobados`. Lo que sí deba recibir WhatsApp en ese primer disparo no debe estar `Aprobado`. Luego `node scripts/one-shots/marcar-cola-sin-enviar.js --confirmar`. El script muestra los títulos reales de Citas/Contactos del `.env` activo y el tamaño de la cola; hay que escribir el nombre de Citas tal cual para seguir. Marca toda la cola como oferta inicial procesada, **no** llama a Plática. No es REST ni MCP. No es una prueba repetible.
 
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.
@@ -163,6 +167,8 @@ node tests/flow-reserva.manual-test.js
 node tests/titulos-empresa.manual-test.js
 node tests/rechazado-pares-activos.manual-test.js
 node tests/campanas-matchmaking.manual-test.js
+node tests/horarios-oferta.manual-test.js
+node tests/recordatorio-evento.manual-test.js
 node tests/campanas-webhook.manual-test.js
 node tests/marcar-cola-sin-enviar.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):

@@ -6,9 +6,9 @@
 //
 // Justo ANTES de poner CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true
 // por primera vez en el workspace de producción de Laura, este script
-// recorre la cola Aprobado sin Campaña Enviada, aplica la misma
-// decisión A/B/C que un disparo real, y marca Notion como si se hubiera
-// enviado. NUNCA llama a Plática / WhatsApp.
+// recorre la cola Aprobado sin Campaña Enviada y marca toda en Notion como
+// oferta inicial procesada. NUNCA llama a Plática / WhatsApp ni necesita
+// calcular horarios.
 //
 // Antes de correrlo: abre la vista "Solo Aprobados" en Notion.
 // Cualquier fila que SÍ deba recibir WhatsApp en el primer disparo real

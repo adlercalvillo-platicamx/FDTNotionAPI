@@ -1,6 +1,7 @@
 // src/controllers/matchmaking.controller.js
 
 const { sugerirMatchesParaSponsor, sugerirMatchesGlobal } = require('../services/matchmaking.service');
+const { enviarRecordatorioEvento } = require('../services/campanas-matchmaking.service');
 
 // ─────────────────────────────────────────────────────────────
 // POST /sponsors/:sponsorId/sugerir-matches
@@ -29,7 +30,20 @@ async function sugerirMatches(req, res) {
   }
 }
 
-module.exports = { sugerirMatches, sugerirMatchesTodos };
+async function enviarRecordatorioEventoHttp(req, res) {
+  try {
+    const resultado = await enviarRecordatorioEvento({
+      modoSimulacion: req.body?.modoSimulacion,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    console.error('[MatchmakingController] Error en recordatorio de evento:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message || 'Error al enviar el recordatorio del evento.',
+    });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // POST /matchmaking/sugerir-todos
@@ -63,4 +77,7 @@ async function sugerirMatchesTodos(req, res) {
 //   const matchmakingController = require('../controllers/matchmaking.controller');
 //   router.post('/sponsors/:sponsorId/sugerir-matches', matchmakingController.sugerirMatches);
 //   router.post('/sugerir-todos', matchmakingController.sugerirMatchesTodos);
+//   router.post('/enviar-recordatorio-evento', matchmakingController.enviarRecordatorioEventoHttp);
 // ─────────────────────────────────────────────────────────────
+
+module.exports = { sugerirMatches, sugerirMatchesTodos, enviarRecordatorioEventoHttp };

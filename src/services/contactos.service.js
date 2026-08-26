@@ -94,6 +94,7 @@ function parsearContacto(pagina) {
     ultimaCampanaEnviada: select(p['Última Campaña Enviada']),
     fechaUltimaCampana: fecha(p['Fecha Última Campaña']),
     reactivacionesEnviadas: numero(p['Reactivaciones Enviadas']) || 0,
+    recordatorioEventoEnviado: checkbox(p['Recordatorio Evento Enviado']),
     bio: texto(p['Bio']),
     fotoSpeaker: url(p['Foto Speaker']),
     sitioWebEmpresa: url(p['Sitio Web Empresa']),
@@ -397,6 +398,18 @@ async function actualizarEstadoCampana({ contactoId, campana, fechaEnvio }) {
   });
 }
 
+async function marcarRecordatorioEventoEnviado(contactoId) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        'Recordatorio Evento Enviado': { checkbox: true },
+      },
+    }),
+  });
+}
+
 async function incrementarReactivaciones(contactoId, valorActual) {
   requireDataSourceId();
   return notionFetch(`/pages/${contactoId}`, {
@@ -555,6 +568,7 @@ module.exports = {
   listarSponsorsYSpeakersActivos,
   actualizarChecklist,
   actualizarEstadoCampana,
+  marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,
   listarSponsorsActivos,
 };

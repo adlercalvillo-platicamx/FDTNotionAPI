@@ -602,6 +602,19 @@ async function queryCitasPaginado(filter) {
   return resultados;
 }
 
+function textoRichText(prop) {
+  return (prop?.rich_text || []).map((parte) => parte?.plain_text || parte?.text?.content || '').join('');
+}
+
+function scoreDeFilaCita(fila) {
+  const formula = fila.properties?.['Score (de Notas)']?.formula;
+  if (typeof formula?.number === 'number') return formula.number;
+  const valorFormula = Number(formula?.string);
+  if (Number.isFinite(valorFormula)) return valorFormula;
+  const match = textoRichText(fila.properties?.Notas).match(/^\s*Score:\s*(-?\d+(?:\.\d+)?)/i);
+  return match ? Number(match[1]) : 0;
+}
+
 async function buscarCitasAprobadasSinCampana() {
   requireDataSourceId();
   const filas = await queryCitasPaginado({
@@ -615,11 +628,46 @@ async function buscarCitasAprobadasSinCampana() {
     .map((fila) => ({
       id: fila.id,
       asistentePageId: fila.properties?.['Contacto Principal']?.relation?.[0]?.id || null,
+      sponsorPageId: fila.properties?.['Contacto Match']?.relation?.[0]?.id || null,
+      score: scoreDeFilaCita(fila),
       estadoEnvioCampana: fila.properties?.['Estado Envío Campaña']?.select?.name || null,
       fechaInicioEnvio: fila.properties?.['Fecha Inicio Envío']?.date?.start || null,
     }))
-    .filter((fila) => fila.asistentePageId)
+    .filter((fila) => fila.asistentePageId && fila.sponsorPageId)
     .filter((fila) => esCandidataEnvioCampana(fila));
+}
+
+const ESTATUS_ELEGIBLES_RECORDATORIO = [
+  'Sugerido',
+  'Aprobado',
+  'Rechazado',
+  'Confirmada',
+  'Confirmada sin notificar',
+  'Pendiente Calendar',
+  'Completada',
+];
+
+/**
+ * Una foto paginada de Citas para el recordatorio-reactivación del evento.
+ * Agrupa por asistente; omite filas sin Contacto Principal.
+ */
+async function cargarCitasPorAsistenteParaRecordatorio() {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    or: ESTATUS_ELEGIBLES_RECORDATORIO.map((estatus) => ({
+      property: 'Estatus',
+      select: { equals: estatus },
+    })),
+  });
+  const porAsistente = new Map();
+  for (const fila of filas) {
+    const asistentePageId = fila.properties?.['Contacto Principal']?.relation?.[0]?.id || null;
+    const estatus = fila.properties?.Estatus?.select?.name || null;
+    if (!asistentePageId || !estatus) continue;
+    if (!porAsistente.has(asistentePageId)) porAsistente.set(asistentePageId, []);
+    porAsistente.get(asistentePageId).push({ id: fila.id, estatus });
+  }
+  return porAsistente;
 }
 
 async function obtenerAsistentesConCitaConfirmada() {
@@ -969,8 +1017,109 @@ async function listarCitasConfirmadasEnFecha(fecha) {
     .filter((r) => r.inicio.startsWith(fecha));
 }
 
+/**
+ * Foto única de capacidad/ocupación para todo el disparo de ofertas.
+ * Evita repetir el mismo query paginado por fecha × sponsor × contacto.
+ */
+async function cargarIndiceCitasConfirmadas() {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    or: [
+      { property: 'Estatus', select: { equals: 'Confirmada' } },
+      { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+    ],
+  });
+  const indice = new Map();
+  for (const fila of filas) {
+    const inicio = fila.properties?.['Fecha y Hora']?.date?.start || '';
+    if (!inicio) continue;
+    const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id || null;
+    if (!indice.has(inicio)) indice.set(inicio, { count: 0, sponsorIds: new Set() });
+    const entrada = indice.get(inicio);
+    entrada.count += 1;
+    if (sponsorId) entrada.sponsorIds.add(sponsorId);
+  }
+  return indice;
+}
+
 function obtenerFechasEvento() {
   return process.env.CITAS_FECHAS_EVENTO.split(',').map((f) => f.trim());
+}
+
+/**
+ * Bloques libres de UN sponsor (capacidad de 11 mesas + ocupación propia).
+ * La oferta inicial usa solo el sponsor de mayor score; no hay cruce entre varios.
+ * La reserva real vuelve a validar bajo mutex; esto sigue siendo una foto.
+ */
+function bloquesDisponiblesParaSponsor({ sponsorPageId, indiceConfirmadas }) {
+  if (!sponsorPageId) return [];
+  const indice = indiceConfirmadas || new Map();
+  const disponibles = [];
+  for (const fecha of obtenerFechasEvento()) {
+    requireHorarioConfigurado(fecha);
+    for (const inicio of generarBloquesParaFecha(fecha)) {
+      const entrada = indice.get(inicio) || { count: 0, sponsorIds: new Set() };
+      const bloque = armarBloqueDisponibilidad({
+        inicio,
+        sponsorOcupado: entrada.sponsorIds.has(sponsorPageId),
+        citasEnBloque: entrada.count,
+      });
+      if (bloque.disponible) disponibles.push(bloque);
+    }
+  }
+  return disponibles;
+}
+
+function minutosCorteOferta() {
+  const valor = process.env.CITAS_CORTE_MANANA_TARDE || '14:00';
+  const match = String(valor).match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) throw new Error(`CITAS_CORTE_MANANA_TARDE inválido: "${valor}"`);
+  const minutos = Number(match[1]) * 60 + Number(match[2]);
+  if (minutos < 0 || minutos >= 24 * 60) {
+    throw new Error(`CITAS_CORTE_MANANA_TARDE fuera de rango: "${valor}"`);
+  }
+  return minutos;
+}
+
+function periodoDeHorario(inicio) {
+  const match = String(inicio).match(/T(\d{2}):(\d{2}):/);
+  if (!match) throw new Error(`inicio ISO no parseable: ${inicio}`);
+  const minutos = Number(match[1]) * 60 + Number(match[2]);
+  return minutos < minutosCorteOferta() ? 'Mañana' : 'Tarde';
+}
+
+/**
+ * Primero el más próximo; después alterna Mañana/Tarde si existe opción.
+ * La alternancia es preferencia: si no existe, toma el siguiente cronológico.
+ */
+function seleccionarHorariosParaOferta(bloquesDisponibles, limite = 3) {
+  const restantes = [...(bloquesDisponibles || [])]
+    .filter((bloque) => bloque?.disponible !== false && bloque?.inicio)
+    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
+  const elegidos = [];
+  while (restantes.length > 0 && elegidos.length < limite) {
+    let indice = 0;
+    if (elegidos.length > 0) {
+      const periodoAnterior = periodoDeHorario(elegidos[elegidos.length - 1].inicio);
+      const alterno = restantes.findIndex((bloque) => periodoDeHorario(bloque.inicio) !== periodoAnterior);
+      if (alterno >= 0) indice = alterno;
+    }
+    elegidos.push(restantes.splice(indice, 1)[0]);
+  }
+  return elegidos;
+}
+
+function formatearHorarioLegible(inicio) {
+  const match = String(inicio).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):/);
+  if (!match) throw new Error(`inicio ISO no parseable: ${inicio}`);
+  const fecha = new Date(`${match[1]}T12:00:00Z`);
+  const etiqueta = new Intl.DateTimeFormat('es-MX', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(fecha);
+  return `${etiqueta}, ${match[2]}:${match[3]} h`;
 }
 
 /**
@@ -1032,6 +1181,8 @@ module.exports = {
   listarSugeridasPorAsistente,
   consultarSugeridasPorIdentificador,
   buscarCitasAprobadasSinCampana,
+  cargarCitasPorAsistenteParaRecordatorio,
+  scoreDeFilaCita,
   obtenerAsistentesConCitaConfirmada,
   actualizarEstadoEnvioCampana,
   marcarCampanaEnviada,
@@ -1041,6 +1192,11 @@ module.exports = {
   esCandidataEnvioCampana,
   reabrirCitaParaReintento,
   listarCitasConfirmadasEnFecha,
+  cargarIndiceCitasConfirmadas,
+  bloquesDisponiblesParaSponsor,
+  seleccionarHorariosParaOferta,
+  formatearHorarioLegible,
+  periodoDeHorario,
   finDeBloque,
   armarBloqueDisponibilidad,
   CAPACIDAD_MAXIMA_MESAS,

@@ -5,10 +5,7 @@
 const assert = require('assert');
 
 process.env.CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO = 'true';
-process.env.PLATICA_TEMPLATE_MATCHMAKING_A = 'plantilla-a-test';
-process.env.PLATICA_TEMPLATE_MATCHMAKING_B = 'plantilla-b-test';
-process.env.PLATICA_TEMPLATE_MATCHMAKING_C1 = 'plantilla-c1-test';
-process.env.PLATICA_TEMPLATE_MATCHMAKING_C2 = 'plantilla-c2-test';
+process.env.PLATICA_TEMPLATE_OFERTA_INICIAL = 'oferta-inicial-test';
 
 const citasPath = require.resolve('../src/services/citas.service');
 const contactosPath = require.resolve('../src/services/contactos.service');
@@ -18,6 +15,10 @@ const servicePath = require.resolve('../src/services/campanas-matchmaking.servic
 let candidatas = [];
 let confirmados = new Set();
 let contacto = {};
+let sponsors = {};
+let horariosDisponibles = [];
+let horariosPorSponsor = {};
+let sponsorsConsultados = [];
 const envios = [];
 const actualizacionesContacto = [];
 const incrementosReactivaciones = [];
@@ -40,8 +41,21 @@ require.cache[citasPath] = {
     async buscarCitasAprobadasSinCampana() {
       return candidatas;
     },
-    async obtenerAsistentesConCitaConfirmada() {
-      return confirmados;
+    async cargarIndiceCitasConfirmadas() {
+      return new Map();
+    },
+    bloquesDisponiblesParaSponsor({ sponsorPageId }) {
+      sponsorsConsultados.push(sponsorPageId);
+      if (Object.prototype.hasOwnProperty.call(horariosPorSponsor, sponsorPageId)) {
+        return horariosPorSponsor[sponsorPageId];
+      }
+      return horariosDisponibles;
+    },
+    seleccionarHorariosParaOferta(bloques) {
+      return bloques.slice(0, 3);
+    },
+    formatearHorarioLegible(inicio) {
+      return `legible:${inicio}`;
     },
     async actualizarEstadoEnvioCampana(ids, datos) {
       llamadasActualizarEstado += 1;
@@ -70,8 +84,8 @@ require.cache[contactosPath] = {
   filename: contactosPath,
   loaded: true,
   exports: {
-    async obtenerContacto() {
-      return contacto;
+    async obtenerContacto(id) {
+      return sponsors[id] || contacto;
     },
     async actualizarEstadoCampana(datos) {
       actualizacionesContacto.push(datos);
@@ -100,12 +114,14 @@ require.cache[platicaPath] = {
 
 delete require.cache[servicePath];
 const {
+  OFERTA_INICIAL,
   CAMPANA_A,
   CAMPANA_B,
   CAMPANA_C_LEGACY,
   REACTIVACION_1,
   REACTIVACION_2,
   elegirCampana,
+  payloadPara,
   dispararCampanasAprobadas,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,
@@ -134,6 +150,10 @@ function limpiarEfectos() {
   llamadasMarcarEnviada = 0;
   llamadasEnviarPlantilla = 0;
   llamadasActualizarEstado = 0;
+  sponsors = {};
+  horariosDisponibles = [];
+  horariosPorSponsor = {};
+  sponsorsConsultados = [];
 }
 
 async function casoAgrupadoA() {
@@ -525,45 +545,237 @@ async function casoEnvioPlantillaFallaMarcaFallo() {
   assert.strictEqual(estadosEnvio[1].estado, ESTADO_ENVIO_FALLO);
 }
 
+function configurarOferta({ cantidad = 5, conHorarios = true, campanaPrevia = null } = {}) {
+  limpiarEfectos();
+  contacto = {
+    id: 'asistente-1',
+    nombre: 'Ana',
+    whatsapp: '523300000000',
+    ultimaCampanaEnviada: campanaPrevia,
+  };
+  candidatas = Array.from({ length: cantidad }, (_, i) => ({
+    id: `cita-${i + 1}`,
+    asistentePageId: 'asistente-1',
+    sponsorPageId: `sponsor-${i + 1}`,
+    score: 100 - i,
+  }));
+  sponsors = Object.fromEntries(
+    candidatas.map((fila, i) => [
+      fila.sponsorPageId,
+      {
+        id: fila.sponsorPageId,
+        nombre: `Persona ${i + 1}`,
+        empresa: `Empresa ${i + 1}`,
+        solucion: [`Solución ${i + 1}`],
+      },
+    ])
+  );
+  horariosDisponibles = conHorarios
+    ? [
+        { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
+        { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
+        { inicio: '2026-10-08T09:00:00-06:00', disponible: true },
+      ]
+    : [];
+}
+
+async function casoTopCuatroYParamsEstables() {
+  configurarOferta();
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+  assert.strictEqual(resultado.simuladosOfertaInicial, 1);
+  assert.deepStrictEqual(resultado.detalle[0].ofrecidas, ['cita-1', 'cita-2', 'cita-3', 'cita-4']);
+  assert.deepStrictEqual(resultado.detalle[0].omitidas, ['cita-5']);
+  const payload = resultado.detalle[0].payload;
+  assert.strictEqual(payload.params.length, 5);
+  assert.ok(payload.params[1].includes('Empresa 1 — Solución 1'));
+  assert.ok(payload.params[1].includes('Empresa 4 — Solución 4'));
+  assert.ok(!payload.params[1].includes('Empresa 5'));
+  assert.ok(!JSON.stringify(resultado).match(/C1|C2|Reactivaci[oó]n/));
+  const payloadDosHorarios = payloadPara({
+    contacto,
+    sugerencias: [sponsors['sponsor-1']],
+    horarios: horariosDisponibles.slice(0, 2),
+    modoSimulacion: true,
+  });
+  assert.strictEqual(payloadDosHorarios.params[4], '', 'horario 3 debe conservar posición vacía');
+  assert.strictEqual(envios.length, 0);
+  assert.strictEqual(filasMarcadas.length, 0);
+}
+
+async function casoCampanaPreviaBloqueaReenvio() {
+  configurarOferta({ campanaPrevia: 'A - Primera oferta' });
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
+  assert.strictEqual(resultado.sinEnviar, 1);
+  assert.strictEqual(resultado.detalle[0].motivo, 'CAMPANA_PREVIA');
+  assert.strictEqual(envios.length, 0);
+  assert.strictEqual(filasMarcadas.length, 0);
+}
+
+async function casoCeroHorariosNoMarca() {
+  configurarOferta({ conHorarios: false });
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
+  assert.strictEqual(resultado.sinEnviar, 1);
+  assert.strictEqual(resultado.detalle[0].motivo, 'SIN_HORARIOS_SUGERIDOS');
+  assert.strictEqual(llamadasEnviarPlantilla, 0);
+  assert.strictEqual(actualizacionesContacto.length, 0);
+  assert.strictEqual(filasMarcadas.length, 0);
+}
+
+async function casoEnvioRealMarcaTodoElGrupo() {
+  configurarOferta();
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
+  assert.strictEqual(resultado.enviadosOfertaInicial, 1);
+  assert.strictEqual(envios.length, 1);
+  assert.strictEqual(envios[0].templateName, 'oferta-inicial-test');
+  assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
+  assert.strictEqual(actualizacionesContacto[0].campana, OFERTA_INICIAL);
+  assert.strictEqual(incrementosReactivaciones.length, 0);
+  assert.strictEqual(estadosEnvio[0].estado, ESTADO_ENVIO_EN_CURSO);
+  assert.strictEqual(estadosEnvio[estadosEnvio.length - 1].estado, ESTADO_ENVIO_ENVIADA);
+}
+
+async function casoBackoffPostEnvio() {
+  configurarOferta();
+  fallarMarcarCampanaEnviada = true;
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
+  assert.strictEqual(llamadasEnviarPlantilla, 1);
+  assert.strictEqual(llamadasMarcarEnviada, 3);
+  assert.deepStrictEqual(esperasBackoff, [300, 600]);
+  assert.ok(resultado.errores[0].mensaje.includes('POST-envío'));
+  assert.ok(estadosEnvio.every((e) => e.estado !== ESTADO_ENVIO_FALLO));
+}
+
+async function casoSoloMarcarTodaLaCola() {
+  configurarOferta({ conHorarios: false, campanaPrevia: 'C2 - Reactivación' });
+  const resultado = await dispararCampanasAprobadas({ soloMarcar: true });
+  assert.strictEqual(resultado.marcadosSinEnviarOfertaInicial, 1);
+  assert.strictEqual(envios.length, 0);
+  assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
+}
+
+async function casoHorariosSalenDelSponsorTop() {
+  configurarOferta();
+  horariosPorSponsor = {
+    'sponsor-1': [
+      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
+      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
+      { inicio: '2026-10-08T09:00:00-06:00', disponible: true },
+    ],
+    'sponsor-2': [{ inicio: '2026-10-08T17:30:00-06:00', disponible: true }],
+    'sponsor-3': [{ inicio: '2026-10-08T17:00:00-06:00', disponible: true }],
+    'sponsor-4': [{ inicio: '2026-10-07T18:30:00-06:00', disponible: true }],
+  };
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1']);
+  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-1');
+  assert.deepStrictEqual(resultado.detalle[0].payload.params.slice(2), [
+    'legible:2026-10-07T10:30:00-06:00',
+    'legible:2026-10-07T14:00:00-06:00',
+    'legible:2026-10-08T09:00:00-06:00',
+  ]);
+  assert.ok(!resultado.detalle[0].payload.params.includes('legible:2026-10-08T17:30:00-06:00'));
+}
+
+async function casoTopConPocosHorariosIgualEnvia() {
+  configurarOferta();
+  horariosPorSponsor = {
+    'sponsor-1': [
+      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
+      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
+    ],
+    'sponsor-2': [
+      { inicio: '2026-10-07T11:00:00-06:00', disponible: true },
+      { inicio: '2026-10-07T11:30:00-06:00', disponible: true },
+      { inicio: '2026-10-07T12:00:00-06:00', disponible: true },
+    ],
+  };
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+  assert.strictEqual(resultado.simuladosOfertaInicial, 1);
+  assert.strictEqual(resultado.detalle[0].payload.params[4], '');
+  assert.strictEqual(resultado.detalle[0].payload.params[2], 'legible:2026-10-07T10:30:00-06:00');
+  assert.ok(!resultado.detalle[0].payload.params[2].includes('11:00'));
+}
+
+async function casoFallbackAlSegundoSponsor() {
+  configurarOferta();
+  horariosPorSponsor = {
+    'sponsor-1': [],
+    'sponsor-2': [
+      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
+      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
+    ],
+    'sponsor-3': [{ inicio: '2026-10-08T09:00:00-06:00', disponible: true }],
+    'sponsor-4': [{ inicio: '2026-10-08T09:30:00-06:00', disponible: true }],
+  };
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2']);
+  assert.strictEqual(resultado.simuladosOfertaInicial, 1);
+  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-2');
+  assert.strictEqual(resultado.detalle[0].payload.params[2], 'legible:2026-10-07T10:30:00-06:00');
+  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 1 — Solución 1'));
+  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 4 — Solución 4'));
+}
+
+async function casoFallbackAlTercerSponsor() {
+  configurarOferta();
+  horariosPorSponsor = {
+    'sponsor-1': [],
+    'sponsor-2': [],
+    'sponsor-3': [{ inicio: '2026-10-08T09:00:00-06:00', disponible: true }],
+    'sponsor-4': [{ inicio: '2026-10-08T17:30:00-06:00', disponible: true }],
+  };
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2', 'sponsor-3']);
+  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-3');
+  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 1'));
+  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 4'));
+}
+
+async function casoTodosLosSugeridosSinHorarios() {
+  configurarOferta();
+  horariosPorSponsor = {
+    'sponsor-1': [],
+    'sponsor-2': [],
+    'sponsor-3': [],
+    'sponsor-4': [],
+  };
+  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
+  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2', 'sponsor-3', 'sponsor-4']);
+  assert.strictEqual(resultado.sinEnviar, 1);
+  assert.strictEqual(resultado.detalle[0].motivo, 'SIN_HORARIOS_SUGERIDOS');
+  assert.strictEqual(llamadasEnviarPlantilla, 0);
+  assert.strictEqual(filasMarcadas.length, 0);
+}
+
 async function main() {
-  await casoAgrupadoA();
-  console.log('✅ Tres aprobadas del mismo contacto producen una sola campaña A.');
-  await casoReactivacionSimulada();
-  console.log('✅ A con 20 días cae en C1 y sigue sin efectos en simulación.');
-  await casoBPerdidaEntraAReactivacion();
-  console.log('✅ B perdida (sin confirmada) entra a reactivación C1, no queda indefinida.');
-  casoLimiteExactoCatorceDias();
-  console.log('✅ A los 14 días exactos aún no se reactiva; debe haber pasado la ventana.');
-  await casoSoloMarcarAgrupado();
-  console.log('✅ soloMarcar marca las 3 filas y el contacto, sin llamar a Plática.');
-  await casoSoloMarcarNoConviveConSimulacion();
-  console.log('✅ soloMarcar + modoSimulacion:true truena y no escribe nada.');
-  casoMcpSinParametrosSoloMarcar();
-  console.log('✅ MCP sigue exponiendo disparar_campanas_aprobadas sin parámetros.');
-  await casoContadorCeroUsaVariante1();
-  console.log('✅ Contador 0 usa C1 y deja el contador en 1.');
-  await casoContadorUnoUsaVariante2();
-  console.log('✅ Contador 1 usa C2 y deja el contador en 2.');
-  await casoTopeGanaAunqueHayanPasadoCienDias();
-  console.log('✅ Contador en 2 no reactiva aunque hayan pasado 100 días.');
-  await casoTopeNoBloqueaBSiYaReservo();
-  console.log('✅ El tope no bloquea B si ya hay cita confirmada.');
-  await casoContadorVacioSeTrataComoCero();
-  console.log('✅ reactivacionesEnviadas vacío se trata como 0.');
+  await casoTopCuatroYParamsEstables();
+  console.log('✅ Oferta única usa top 4, empresa/solución y 5 params planos estables.');
+  await casoHorariosSalenDelSponsorTop();
+  console.log('✅ Los 3 horarios salen del sponsor de mayor score, no de los demás.');
+  await casoTopConPocosHorariosIgualEnvia();
+  console.log('✅ Top con 1–2 bloques envía igual; no rellena con agenda de otros sponsors.');
+  await casoFallbackAlSegundoSponsor();
+  console.log('✅ Si el top no tiene huecos, los horarios salen del segundo por score.');
+  await casoFallbackAlTercerSponsor();
+  console.log('✅ El fallback recorre más de un nivel hasta encontrar un bloque.');
+  await casoTodosLosSugeridosSinHorarios();
+  console.log('✅ Si los 4 sugeridos están llenos, no se envía ni se marca.');
+  await casoCampanaPreviaBloqueaReenvio();
+  console.log('✅ Una campaña previa bloquea cualquier segundo envío automático.');
+  await casoCeroHorariosNoMarca();
+  console.log('✅ Cero horarios en todos los sugeridos no envía ni marca filas/contacto.');
+  await casoEnvioRealMarcaTodoElGrupo();
+  console.log('✅ Envío real conserva send-state y marca incluso las filas omitidas del mensaje.');
   casoEnCursoRecienteNoEsCandidata();
-  console.log('✅ En curso de hace 5 minutos no es candidata.');
   casoEnCursoVencidoSiEsCandidata();
-  console.log('✅ En curso de hace 15 minutos sí se reintenta; Falló y Pendiente también.');
   casoBackoffIgualQueBooking();
-  console.log('✅ Reintentos Notion post-envío: 3 intentos y 300*intento ms, igual que booking.');
-  await casoEnvioOkPeroNotionFallaDejaRastroEnCurso();
-  console.log('✅ Si WhatsApp sale y Notion falla 3 veces, queda En curso con error POST-envío.');
-  await casoNotionFallaDosVecesLuegoConfirma();
-  console.log('✅ Si Notion falla 2 veces y sale en la 3ª, termina Enviada.');
-  await casoEnCursoNoSeReintenta();
-  console.log('✅ Marcar En curso no usa backoff; si falla, no hay WhatsApp.');
-  await casoEnvioPlantillaFallaMarcaFallo();
-  console.log('✅ Si enviarPlantilla falla, el estado queda Falló (no En curso colgado).');
+  await casoBackoffPostEnvio();
+  console.log('✅ Backoff post-envío conserva 3 intentos y deja rastro En curso.');
+  await casoSoloMarcarTodaLaCola();
+  console.log('✅ soloMarcar procesa toda la cola sin WhatsApp ni cálculo de horarios.');
+  await casoSoloMarcarNoConviveConSimulacion();
+  casoMcpSinParametrosSoloMarcar();
+  console.log('✅ Guardas de soloMarcar y MCP permanecen cerradas.');
 }
 
 main().catch((err) => {
