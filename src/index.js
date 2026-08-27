@@ -57,6 +57,11 @@ app.use((err, _req, res, _next) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
+  // Contra el workspace de Laura, el default de pruebas del contacto de
+  // bloqueo apagaría la exclusión de mesas en silencio. Se cae aquí, en el
+  // deploy, no en la primera consulta de disponibilidad del evento.
+  require('./services/citas.service').requireContactoBloqueoAgenda();
+
   app.listen(PORT, () => {
     console.log(`[App] fdt-notion-api iniciado en puerto ${PORT}`);
     console.log(`[App] Health check: http://localhost:${PORT}/health`);

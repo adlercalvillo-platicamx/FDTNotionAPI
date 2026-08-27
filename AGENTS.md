@@ -63,20 +63,20 @@ Si SMTP falla tras Calendar + Notion OK: **`Confirmada sin notificar`** (no reve
 
 **`Match Sugerido` / checkbox `Match Aprobado` están en desuso.** Escrituras nuevas van a filas en `Citas` por par sponsor–asistente. No revivir esos campos.
 
-Toda escritura a `Confirmada` / `Confirmada sin notificar` debe pasar por `booking.service.js`. Editar Estatus a mano en Notion rompe capacidad y “sponsor ocupado”.
+Toda escritura a `Confirmada` / `Confirmada sin notificar` de una cita real debe pasar por `booking.service.js`. Excepción: filas de **bloqueo de conferencia** (Contacto Principal = `Bloqueo de Agenda (Programa del Evento)`), que se cargan a mano / one-shot. Editar Estatus a mano en una cita real rompe capacidad y “sponsor ocupado”.
 
 ## Reserva (`booking.service.js`)
 
 - Mutex **en memoria, un proceso**. Coolify: **1 réplica**. No quitar ni “simplificar” el mutex.
 - Notion es el árbitro del slot; Calendar vía [`calendar-client.service.js`](src/services/calendar-client.service.js) → `platica-google-docs-api`. Si Calendar falla, **no** importar googleapis aquí.
 - Duración y grilla de bloques: mismas env que disponibilidad (`CITAS_*`). Reusar `generarBloquesParaFecha`; no duplicar la lista de slots.
-- Capacidad: **11 mesas por bloque** (`CAPACIDAD_MAXIMA_MESAS`). Mesa = `contarCitasEnBloque(inicio) + 1`. Cancelar no reutiliza el número.
+- Capacidad: **11 mesas por bloque** (`CAPACIDAD_MAXIMA_MESAS`). Mesa = `contarCitasEnBloque(inicio) + 1`. Cancelar no reutiliza el número. Las filas de bloqueo de conferencia **sí** marcan `SPONSOR_YA_OCUPADO` para ese sponsor y **no** restan mesa.
 - Correos: dos envíos distintos (sponsor con datos del asistente; asistente corto, **sin** contacto del sponsor). 3 reintentos SMTP inmediatos por envío. `emailsExtra` / `asistentes_email` van al correo del asistente.
 
 ## Matchmaking
 
 - **Bronce** no participa (error explícito). Prioridad de desempate: Cristal > Diamante > Oro. **`Citas Minimas Prometidas` es por sponsor**, no derivar cuota del nivel. `topN` = cuota + `MARGEN_CANDIDATOS` (2).
-- Capa 1: filtros duros (boleto, giro, etapa, tamaño de negocio Grande/Mediana o fallback Exa Consolidado/PyME, no “Dado de Baja”, no Expo). Capa 2: ranking en [`matchmaking.service.js`](src/services/matchmaking.service.js) (pesos `PESOS`).
+- Capa 1: filtros duros (boleto, giro, etapa, `Categoria = Asistente` explícito, tamaño de negocio Grande/Mediana o fallback Exa Consolidado/PyME, no “Dado de Baja”, no Expo). Capa 2: ranking en [`matchmaking.service.js`](src/services/matchmaking.service.js) (pesos `PESOS`).
 - Giro elegible (también VIP): Marca de moda, Retailer/tienda multimarca, Manufactura. `Quiere Citas 1a1` es **select** `Sí`/`No`/vacío — excluir solo `'No'` explícito.
 - Virtual es elegible por default (13-ago). `incluirVirtual` está **deprecado** (no-op, no usarlo en código nuevo).
 - Alias de etapa: `"Venta por redes sociales"` → `"Vendo principalmente por redes sociales"`.
@@ -87,6 +87,7 @@ Toda escritura a `Confirmada` / `Confirmada sin notificar` debe pasar por `booki
 
 - Cliente: [`src/utils/notion-client.js`](src/utils/notion-client.js) contra data sources `NOTION_CONTACTOS_DATA_SOURCE_ID` / `NOTION_CITAS_DATA_SOURCE_ID`.
 - Horario: `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`. En Coolify, Names con **underscores** en la fecha (`CITAS_HORA_INICIO_2026_10_07`). Guiones en el Name no se inyectan. El query `fecha` del API sigue con guiones.
+- `NOTION_CONTACTO_BLOQUEO_AGENDA_ID`: contacto ficticio de bloqueo de conferencias. Default = el de pruebas. Si los data sources son de producción (prefijo `3b162dda`) y la variable falta, está vacía o trae ese default → el servicio **no arranca** (503 en `requireContactoBloqueoAgenda`).
 - `API_SECRET_KEY` es de **este** servicio. `GOOGLE_API_KEY` es el X-API-Key de Google Docs API. No mezclarlos. FDT usa OAuth por cliente (Modelo 2), no refresh token de agencia.
 
 ## Qué no hacer

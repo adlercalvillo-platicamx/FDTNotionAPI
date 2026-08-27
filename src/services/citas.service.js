@@ -26,8 +26,110 @@ const {
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
 
+// Contacto ficticio "Bloqueo de Agenda (Programa del Evento)" — las filas
+// Confirmada sin notificar que lo tienen en Contacto Principal ocupan al
+// sponsor (conferencia/conversatorio) pero NO restan de las 11 mesas.
+// Default = page_id en Contactos (nueva) de Adler. En producción, si Laura
+// replica el contacto, poner su page_id en NOTION_CONTACTO_BLOQUEO_AGENDA_ID.
+// Cadena vacía desactiva la exclusión — solo en pruebas/depuración; contra
+// producción también falla (ver requireContactoBloqueoAgenda).
+const CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT = '3c990fe2-7345-8121-92a6-f9e09a540d2e';
+
+// Todos los data sources del workspace de Laura arrancan con este prefijo
+// (mismo criterio que scripts/one-shots/crear-bloqueos-conferencias.js).
+const PREFIJO_DATA_SOURCE_PRODUCCION = '3b162dda';
+
 function requireDataSourceId() {
   if (!CITAS_DATA_SOURCE_ID) throw new Error('Falta NOTION_CITAS_DATA_SOURCE_ID en variables de entorno');
+}
+
+function pageIdCanonico(id) {
+  return String(id || '').replace(/-/g, '').toLowerCase();
+}
+
+function apuntaAProduccion() {
+  return [
+    process.env.NOTION_CITAS_DATA_SOURCE_ID || CITAS_DATA_SOURCE_ID,
+    process.env.NOTION_CONTACTOS_DATA_SOURCE_ID,
+  ].some((id) => pageIdCanonico(id).startsWith(PREFIJO_DATA_SOURCE_PRODUCCION));
+}
+
+/**
+ * El default de pruebas apunta al contacto ficticio de Adler. Contra el
+ * workspace de Laura ese page_id no existe, así que la exclusión de mesas
+ * dejaría de aplicar SIN error: las conferencias empezarían a restar
+ * capacidad y nadie lo notaría. Se falla explícito, como
+ * requireHorarioConfigurado con el horario del evento.
+ */
+function requireContactoBloqueoAgenda() {
+  if (!apuntaAProduccion()) return;
+  const configurado = process.env.NOTION_CONTACTO_BLOQUEO_AGENDA_ID;
+  const esDefaultDePruebas =
+    configurado && pageIdCanonico(configurado) === pageIdCanonico(CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT);
+  if (configurado && !esDefaultDePruebas) return;
+  const err = new Error(
+    `NOTION_CONTACTO_BLOQUEO_AGENDA_ID ${
+      esDefaultDePruebas
+        ? `tiene el page_id del contacto ficticio de PRUEBAS (${CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT})`
+        : 'no está configurada'
+    } y este proceso apunta al workspace de producción de Laura. ` +
+      `Sin el page_id del "Bloqueo de Agenda (Programa del Evento)" de ESE workspace, las filas de ` +
+      `conferencia volverían a restar mesas de las 11 disponibles sin ningún error visible. ` +
+      `Configurar la variable con el page_id real antes de arrancar.`
+  );
+  err.status = 503; // precondición de configuración, igual que el horario del evento
+  throw err;
+}
+
+function contactoBloqueoAgendaId() {
+  requireContactoBloqueoAgenda();
+  if (process.env.NOTION_CONTACTO_BLOQUEO_AGENDA_ID === '') return null;
+  return process.env.NOTION_CONTACTO_BLOQUEO_AGENDA_ID || CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT;
+}
+
+function esFilaBloqueoAgenda(asistentePageId) {
+  const bloqueo = contactoBloqueoAgendaId();
+  if (!bloqueo || !asistentePageId) return false;
+  return pageIdCanonico(asistentePageId) === pageIdCanonico(bloqueo);
+}
+
+function primerRelacionId(prop) {
+  return (prop?.relation || [])[0]?.id || null;
+}
+
+function extraerIdsDeCitaConfirmada(fila) {
+  return {
+    inicio: normalizarInicioIso(fila.properties?.['Fecha y Hora']?.date?.start || ''),
+    sponsorId: primerRelacionId(fila.properties?.['Contacto Match']),
+    asistentePageId: primerRelacionId(fila.properties?.['Contacto Principal']),
+  };
+}
+
+function normalizarInicioIso(valor) {
+  return String(valor || '').replace(/\.\d{3}(?=[+-]\d{2}:\d{2}$)/, '');
+}
+
+function filtroExcluirContactoBloqueo() {
+  const bloqueo = contactoBloqueoAgendaId();
+  if (!bloqueo) return null;
+  return { property: 'Contacto Principal', relation: { does_not_contain: bloqueo } };
+}
+
+/**
+ * Cuenta mesas reales en un bloque. Las filas de bloqueo de conferencia
+ * (Contacto Principal = contacto ficticio) se excluyen aquí; siguen
+ * ocupando al sponsor vía sponsorOcupadoEnBloque.
+ */
+function construirIndiceCitasConfirmadas(filasMapeadas) {
+  const indice = new Map();
+  for (const fila of filasMapeadas) {
+    if (!fila.inicio) continue;
+    if (!indice.has(fila.inicio)) indice.set(fila.inicio, { count: 0, sponsorIds: new Set() });
+    const entrada = indice.get(fila.inicio);
+    if (!esFilaBloqueoAgenda(fila.asistentePageId)) entrada.count += 1;
+    if (fila.sponsorId) entrada.sponsorIds.add(fila.sponsorId);
+  }
+  return indice;
 }
 
 /**
@@ -40,23 +142,24 @@ function requireDataSourceId() {
  */
 async function contarCitasEnBloque({ inicio }) {
   requireDataSourceId();
+  const and = [
+    {
+      or: [
+        { property: 'Estatus', select: { equals: 'Confirmada' } },
+        { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+      ],
+    },
+    { property: 'Fecha y Hora', date: { equals: inicio } },
+  ];
+  const excluirBloqueo = filtroExcluirContactoBloqueo();
+  if (excluirBloqueo) and.push(excluirBloqueo);
   const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
-    body: JSON.stringify({
-      filter: {
-        and: [
-          {
-            or: [
-              { property: 'Estatus', select: { equals: 'Confirmada' } },
-              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
-            ],
-          },
-          { property: 'Fecha y Hora', date: { equals: inicio } },
-        ],
-      },
-    }),
+    body: JSON.stringify({ filter: { and } }),
   });
-  return data.results.length;
+  return (data.results || []).filter(
+    (fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))
+  ).length;
 }
 
 /**
@@ -364,27 +467,29 @@ async function marcarCitaFallida({ notionPageId, motivo }) {
  * Cuenta cuántas citas CONFIRMADAS tiene un sponsor en total (no por bloque
  * de horario, sino en general) — es el componente "citas confirmadas" de la
  * cuota pendiente: cuota_pendiente = Citas Minimas Prometidas − este número.
+ * No cuenta filas de bloqueo de conferencia (no son citas reales).
  * Usado por matchmaking.service.js, no por el flujo de reserva.
  */
 async function contarCitasConfirmadasPorSponsor(sponsorPageId) {
   requireDataSourceId();
+  const and = [
+    {
+      or: [
+        { property: 'Estatus', select: { equals: 'Confirmada' } },
+        { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+      ],
+    },
+    { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+  ];
+  const excluirBloqueo = filtroExcluirContactoBloqueo();
+  if (excluirBloqueo) and.push(excluirBloqueo);
   const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
-    body: JSON.stringify({
-      filter: {
-        and: [
-          {
-            or: [
-              { property: 'Estatus', select: { equals: 'Confirmada' } },
-              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
-            ],
-          },
-          { property: 'Contacto Match', relation: { contains: sponsorPageId } },
-        ],
-      },
-    }),
+    body: JSON.stringify({ filter: { and } }),
   });
-  return data.results.length;
+  return (data.results || []).filter(
+    (fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))
+  ).length;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1001,9 +1106,9 @@ function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePa
 // GET /citas/disponibilidad — solo lectura para el formulario de
 // horarios (WhatsApp Flow / botones / mini web app).
 //
-// Reusa sponsorOcupadoEnBloque y contarCitasEnBloque tal cual — no
-// reimplementa la regla de negocio. POST /citas/reservar sigue siendo
-// la única fuente de verdad al confirmar (esta es una foto del momento).
+// Misma regla que reserva: sponsor ocupado (incluye bloqueos de conferencia)
+// y conteo de 11 mesas (excluye esas filas ficticias). POST /citas/reservar
+// sigue siendo la única fuente de verdad al confirmar (esta es una foto).
 //
 // Horario POR FECHA vía env (confirmado Laura 14-ago): miércoles y
 // jueves NO comparten el mismo rango. Sin esas variables → 503, nunca
@@ -1106,11 +1211,7 @@ async function listarCitasConfirmadasEnFecha(fecha) {
     ],
   });
   return filas
-    .map((fila) => {
-      const inicio = fila.properties?.['Fecha y Hora']?.date?.start || '';
-      const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id || null;
-      return { inicio, sponsorId };
-    })
+    .map(extraerIdsDeCitaConfirmada)
     .filter((r) => r.inicio.startsWith(fecha));
 }
 
@@ -1126,17 +1227,7 @@ async function cargarIndiceCitasConfirmadas() {
       { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
     ],
   });
-  const indice = new Map();
-  for (const fila of filas) {
-    const inicio = fila.properties?.['Fecha y Hora']?.date?.start || '';
-    if (!inicio) continue;
-    const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id || null;
-    if (!indice.has(inicio)) indice.set(inicio, { count: 0, sponsorIds: new Set() });
-    const entrada = indice.get(inicio);
-    entrada.count += 1;
-    if (sponsorId) entrada.sponsorIds.add(sponsorId);
-  }
-  return indice;
+  return construirIndiceCitasConfirmadas(filas.map(extraerIdsDeCitaConfirmada));
 }
 
 function obtenerFechasEvento() {
@@ -1247,7 +1338,7 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
     return armarBloqueDisponibilidad({
       inicio,
       sponsorOcupado: enBloque.some((c) => c.sponsorId === sponsorPageId),
-      citasEnBloque: enBloque.length,
+      citasEnBloque: enBloque.filter((c) => !esFilaBloqueoAgenda(c.asistentePageId)).length,
     });
   });
 }
@@ -1299,6 +1390,13 @@ module.exports = {
   finDeBloque,
   armarBloqueDisponibilidad,
   CAPACIDAD_MAXIMA_MESAS,
+  CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT,
+  requireContactoBloqueoAgenda,
+  contactoBloqueoAgendaId,
+  esFilaBloqueoAgenda,
+  construirIndiceCitasConfirmadas,
+  extraerIdsDeCitaConfirmada,
+  normalizarInicioIso,
   generarBloquesParaFecha,
   requireHorarioConfigurado,
   obtenerFechasEvento,

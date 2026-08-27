@@ -131,6 +131,15 @@ function esCandidatoPorTamanoNegocio(candidato) {
   return MADURECES_EXA_QUE_ENTRAN.has(candidato.madurezNegocioExa);
 }
 
+/**
+ * Contactos de sistema (Comite/Team, el bloqueo de agenda, etc.) no son
+ * asistentes. Notion ya filtra Categoria=Asistente; esto es la exclusión
+ * explícita que Adler pidió, por si ese filtro se relaja o un mock se cuela.
+ */
+function esCandidatoAsistenteReal(candidato) {
+  return candidato.categoria === 'Asistente';
+}
+
 function normalizar(texto) {
   return (texto || '')
     .toLowerCase()
@@ -157,12 +166,43 @@ function getEtapasValidas(sponsor) {
   return Array.from(set);
 }
 
-/** ¿La empresa del candidato aparece mencionada dentro de un texto libre del sponsor? */
+/**
+ * ¿La empresa del candidato aparece en un texto libre del sponsor?
+ *
+ * Tolera que espacios, guiones o puntos varíen entre ambos lados
+ * (ej. "Price Shoes" vs "Priceshoes") pero exige límite de palabra
+ * para no matchear prefijos pegados ("Andrea" vs "AndreaMoto").
+ *
+ * Limitación conocida: no se recortan sufijos legales (SA de CV, S.A.,
+ * SAPI). Si el candidato trae razón social completa y el sponsor escribió
+ * solo el nombre comercial, no hay match. Hoy es raro (1 caso en pruebas);
+ * no vale una lista de recortes frágil. Revisar si Ticketópolis empieza a
+ * capturar razón social de forma consistente.
+ *
+ * No reusa un "solo quitar separadores": eso resuelve Price Shoes y
+ * reintroduce Andrea/AndreaMoto. Ambas correcciones viven aquí.
+ */
 function empresaMencionadaEn(empresaCandidato, textoLibreSponsor) {
   if (!empresaCandidato || !textoLibreSponsor) return false;
-  const empresaNorm = normalizar(empresaCandidato).trim();
-  if (empresaNorm.length < 3) return false; // evita falsos positivos con nombres muy cortos
-  return normalizar(textoLibreSponsor).includes(empresaNorm);
+
+  const soloAlfanum = (texto) =>
+    normalizar(texto).replace(/&/g, 'y').replace(/[^a-z0-9]/g, '');
+
+  const empresaNorm = soloAlfanum(empresaCandidato);
+  if (empresaNorm.length < 3) return false;
+
+  const textoConSeparadores = normalizar(textoLibreSponsor)
+    .replace(/&/g, ' y ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  const letras = empresaNorm.split('');
+  const patronFlexible = letras
+    .map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^a-z0-9]*');
+  const patronFinal = new RegExp(`(?<![a-z0-9])${patronFlexible}(?![a-z0-9])`);
+
+  return patronFinal.test(textoConSeparadores);
 }
 
 /**
@@ -409,7 +449,7 @@ async function sugerirMatchesParaSponsor(
   // dado de baja, etapa de negocio).
   const etapasValidas = getEtapasValidas(sponsor);
   const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ etapasValidas, incluirVirtual })).filter(
-    esCandidatoPorTamanoNegocio
+    (c) => esCandidatoAsistenteReal(c) && esCandidatoPorTamanoNegocio(c)
   );
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
@@ -760,6 +800,7 @@ module.exports = {
   getEtapasValidas,
   calcularScore,
   esCandidatoPorTamanoNegocio,
+  esCandidatoAsistenteReal,
   generarExplicacionNatural,
   empresaMencionadaEn,
   coincidenciaTextoLibre,

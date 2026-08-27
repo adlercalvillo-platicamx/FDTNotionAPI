@@ -49,6 +49,7 @@ tests/
 ├── global-cache-citas.manual-test.js
 ├── disponibilidad.local-smoke.js
 ├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
+├── bloqueo-conferencias.manual-test.js # Bloqueo de sponsor sin restar mesas + exclusión Comite/Team (26-ago)
 ├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
 ├── titulos-empresa.manual-test.js     # Empresa×Empresa + texto multipart sin truncar (19-ago)
 ├── sugeridas-empresas.manual-test.js  # Empresas hidratadas + solo Sugerido/Aprobado (19-ago)
@@ -57,7 +58,8 @@ tests/
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
 ├── cargar-29-asistentes-faltantes.js
 ├── verificar-casos-quiere-citas-giro.js
-└── marcar-cola-sin-enviar.js         # Transición: marca cola Aprobado sin WhatsApp (una vez, --confirmar)
+├── marcar-cola-sin-enviar.js         # Transición: marca cola Aprobado sin WhatsApp (una vez, --confirmar)
+└── crear-bloqueos-conferencias.js    # 7 bloqueos de conferencia en Citas (nueva); --confirmar
 ```
 
 ## Endpoints
@@ -70,7 +72,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Lista vacía si no hay aprobadas. `X-API-Key`. |
-| GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
+| GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). **No reemplaza** `POST /citas/reservar`. `Confirmada` / `Confirmada sin notificar` ocupan al sponsor; las filas de bloqueo de conferencia no restan de las 11 mesas. Sin horario en env → `503`. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
 | POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score y 3 horarios del sponsor top. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
@@ -119,6 +121,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 Ver `.env.example`. Resumen:
 - `API_SECRET_KEY` — clave para llamar a ESTE servicio (propia, no la del repo de Google).
 - `NOTION_API_KEY`, `NOTION_CONTACTOS_DATA_SOURCE_ID`, `NOTION_CITAS_DATA_SOURCE_ID`.
+- `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
 - `GOOGLE_API_BASE_URL`, `GOOGLE_API_KEY`, `GOOGLE_API_CLIENTE_ID` — para llamar HACIA `platica-google-docs-api`. `GOOGLE_API_CLIENTE_ID` requiere que la cuenta de Google de los sponsors ya esté conectada por OAuth en ese servicio (Adler lo maneja directamente, no es parte de este repo).
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
   - `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`

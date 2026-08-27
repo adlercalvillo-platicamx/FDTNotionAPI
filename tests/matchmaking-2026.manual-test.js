@@ -12,6 +12,7 @@ const {
   calcularScore,
   generarExplicacionNatural,
   coincidenciaTextoLibre,
+  empresaMencionadaEn,
 } = require('../src/services/matchmaking.service');
 
 let fallos = 0;
@@ -106,6 +107,26 @@ check('Texto sin relación NO coincide',
   coincidenciaTextoLibre('busco proveedor de cajas', 'marcas de ropa infantil') === false);
 check('Texto con 2+ palabras significativas SÍ coincide',
   coincidenciaTextoLibre('busco marcas de calzado deportivo', 'marcas de calzado para retail') === true);
+
+console.log('\n=== 6. Oro molido: separadores flexibles con límite de palabra ===');
+check('Price Shoes encuentra Priceshoes (caso real Reversso)',
+  empresaMencionadaEn('Price Shoes', 'nos interesa Priceshoes y otras marcas') === true);
+check('FLEXI exacto sigue matcheando',
+  empresaMencionadaEn('FLEXI', 'trabajamos con FLEXI en retail') === true);
+check('C&A encuentra C&A',
+  empresaMencionadaEn('C&A', 'trabajamos con C&A') === true);
+check('C&A encuentra "C y A Moda"',
+  empresaMencionadaEn('C&A', 'trabajamos con C y A Moda') === true);
+check('Andrea NO matchea AndreaMoto (prefijo pegado)',
+  empresaMencionadaEn('Andrea', 'buscamos AndreaMoto Refacciones') === false);
+check('Andrea sí matchea como palabra en una lista',
+  empresaMencionadaEn('Andrea', 'buscamos: Andrea, Old Navy') === true);
+check('Coca-Cola encuentra Coca Cola',
+  empresaMencionadaEn('Coca-Cola', 'trabajamos con Coca Cola') === true);
+check('AS corto sigue protegido por mínimo de 3',
+  empresaMencionadaEn('AS', 'trabajamos con as camisas') === false);
+check('Cempasúchil encuentra el nombre dentro de razón social del sponsor',
+  empresaMencionadaEn('Cempasúchil', 'nos interesa Cempasúchil SA de CV') === true);
 
 console.log(`\n=== RESULTADO: ${fallos === 0 ? 'todas las verificaciones pasaron' : fallos + ' FALLARON'} ===\n`);
 process.exit(fallos === 0 ? 0 : 1);
