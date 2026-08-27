@@ -44,6 +44,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita ni Calendar |
 | Reservar cita real | **POST `/citas/reservar`** | **NO exponer** `reservar_cita` como tool |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (alias `telefono=`; `asistente_notion_id=` opcional) | `consultar_sugeridas_para_asistente` (`whatsapp` preferido) |
+| Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional) | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron) |

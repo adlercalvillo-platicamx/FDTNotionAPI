@@ -578,6 +578,103 @@ async function consultarSugeridasPorIdentificador({ whatsapp, asistentePageId } 
   };
 }
 
+function textoSolucionSponsor(sponsor) {
+  const solucion = Array.isArray(sponsor?.solucion)
+    ? sponsor.solucion.join(', ')
+    : sponsor?.solucion || '';
+  return solucion || 'Solución por confirmar';
+}
+
+function formatearSugerenciaAprobada(fila, sponsor) {
+  return {
+    sponsorNombre: sponsor?.empresa || sponsor?.nombre || 'Sponsor',
+    solucion: textoSolucionSponsor(sponsor),
+    score: scoreDeFilaCita(fila),
+    campanaEnviada: fila.properties?.['Campaña Enviada']?.checkbox === true,
+    estatusCita: fila.properties?.Estatus?.select?.name || 'Aprobado',
+    citaId: fila.id,
+  };
+}
+
+async function listarSugerenciasAprobadasPorAsistente(asistentePageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      { property: 'Estatus', select: { equals: 'Aprobado' } },
+    ],
+  });
+  const contactos = require('./contactos.service');
+  const sugerencias = [];
+  for (const fila of filas) {
+    const sponsorId = fila.properties?.['Contacto Match']?.relation?.[0]?.id;
+    if (!sponsorId) continue;
+    let sponsor;
+    try {
+      sponsor = await contactos.obtenerContacto(sponsorId);
+    } catch (err) {
+      console.warn(`[Citas] No se pudo hidratar sponsor ${sponsorId}:`, err.message);
+      continue;
+    }
+    sugerencias.push(formatearSugerenciaAprobada(fila, sponsor));
+  }
+  sugerencias.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  return sugerencias;
+}
+
+/**
+ * Solo lectura para el agente de Carlos: filas Aprobado de un asistente.
+ * No filtra por Campaña Enviada; ese dato viaja en cada sugerencia.
+ */
+async function consultarSugerenciasAprobadasPorAsistente({ telefono, contactoId } = {}) {
+  const phone = String(telefono || '').trim();
+  let id = String(contactoId || '').trim();
+  let asistente = null;
+  const contactos = require('./contactos.service');
+
+  if (phone) {
+    asistente = await contactos.buscarAsistentePorWhatsApp(phone);
+    if (!asistente) {
+      const err = new Error('No hay un asistente activo con ese número de WhatsApp.');
+      err.code = 'CONTACTO_NO_RESUELTO';
+      err.status = 404;
+      throw err;
+    }
+    id = asistente.id;
+  }
+
+  if (!id) {
+    const err = new Error('Se requiere telefono o contactoId.');
+    err.code = 'INVALID_INPUT';
+    err.status = 400;
+    throw err;
+  }
+
+  if (!asistente) {
+    try {
+      asistente = await contactos.obtenerContacto(id);
+    } catch (err) {
+      if (err.status === 404) {
+        const noEncontrado = new Error('No hay un asistente con ese contactoId.');
+        noEncontrado.code = 'CONTACTO_NO_RESUELTO';
+        noEncontrado.status = 404;
+        throw noEncontrado;
+      }
+      throw err;
+    }
+  }
+
+  const sugerencias = await listarSugerenciasAprobadasPorAsistente(id);
+  return {
+    asistente: {
+      nombre: asistente?.nombre || '',
+      telefono: asistente?.whatsapp || phone || '',
+      empresa: asistente?.empresa || '',
+    },
+    sugerencias,
+  };
+}
+
 async function queryCitasPaginado(filter) {
   const resultados = [];
   let cursor = undefined;
@@ -1180,6 +1277,8 @@ module.exports = {
   obtenerDisponibilidadSponsor,
   listarSugeridasPorAsistente,
   consultarSugeridasPorIdentificador,
+  formatearSugerenciaAprobada,
+  consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,
   scoreDeFilaCita,

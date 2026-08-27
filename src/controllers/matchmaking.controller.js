@@ -2,6 +2,15 @@
 
 const { sugerirMatchesParaSponsor, sugerirMatchesGlobal } = require('../services/matchmaking.service');
 const { enviarRecordatorioEvento } = require('../services/campanas-matchmaking.service');
+const { consultarSugerenciasAprobadasPorAsistente } = require('../services/citas.service');
+const { variantesTelefono } = require('../services/contactos.service');
+
+const UUID_CANONICO_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function esUuidCanonico(valor) {
+  return UUID_CANONICO_RE.test(String(valor || ''));
+}
 
 // ─────────────────────────────────────────────────────────────
 // POST /sponsors/:sponsorId/sugerir-matches
@@ -26,6 +35,50 @@ async function sugerirMatches(req, res) {
     return res.status(500).json({
       error: 'Internal Server Error',
       message: error.message || 'Error al calcular sugerencias de matchmaking.',
+    });
+  }
+}
+
+async function sugerenciasAsistente(req, res) {
+  const telefono = String(req.query.telefono || req.query.whatsapp || '').trim();
+  const contactoId = String(req.query.contactoId || '').trim();
+
+  if (!telefono && !contactoId) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'Se requiere telefono o contactoId.',
+    });
+  }
+  if (telefono && variantesTelefono(telefono).length === 0) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'telefono debe ser un número de teléfono (dígitos, con o sin +52).',
+    });
+  }
+  if (!telefono && !esUuidCanonico(contactoId)) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'contactoId debe ser un UUID válido',
+    });
+  }
+
+  try {
+    const resultado = await consultarSugerenciasAprobadasPorAsistente({
+      telefono: telefono || undefined,
+      contactoId: telefono ? undefined : contactoId,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    if (error.status === 404 || error.code === 'CONTACTO_NO_RESUELTO') {
+      return res.status(404).json({ error: 'CONTACTO_NO_RESUELTO', message: error.message });
+    }
+    if (error.status === 400 || error.code === 'INVALID_INPUT') {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: error.message });
+    }
+    console.error('[MatchmakingController] Error en sugerencias-asistente:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Error al consultar sugerencias del asistente.',
     });
   }
 }
@@ -80,4 +133,9 @@ async function sugerirMatchesTodos(req, res) {
 //   router.post('/enviar-recordatorio-evento', matchmakingController.enviarRecordatorioEventoHttp);
 // ─────────────────────────────────────────────────────────────
 
-module.exports = { sugerirMatches, sugerirMatchesTodos, enviarRecordatorioEventoHttp };
+module.exports = {
+  sugerirMatches,
+  sugerirMatchesTodos,
+  enviarRecordatorioEventoHttp,
+  sugerenciasAsistente,
+};

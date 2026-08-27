@@ -69,6 +69,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
 | POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
+| GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Lista vacía si no hay aprobadas. `X-API-Key`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Para el formulario de horarios (WhatsApp Flow / botones / mini web app). Reusa `sponsorOcupadoEnBloque` y `contarCitasEnBloque` — no reimplementa reglas. **No reemplaza** `POST /citas/reservar` (es una foto del momento; la reserva sigue siendo la fuente de verdad). `Confirmada sin notificar` cuenta como ocupación. Sin variables de horario en el ambiente → `503` a propósito, nunca inventa bloques. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
 | POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score y 3 horarios del sponsor top. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
@@ -169,6 +170,7 @@ node tests/rechazado-pares-activos.manual-test.js
 node tests/campanas-matchmaking.manual-test.js
 node tests/horarios-oferta.manual-test.js
 node tests/recordatorio-evento.manual-test.js
+node tests/sugerencias-asistente.manual-test.js
 node tests/campanas-webhook.manual-test.js
 node tests/marcar-cola-sin-enviar.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
