@@ -43,8 +43,8 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | **NO exponer** `reservar_cita` como tool |
-| Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | **NO exponer** como tools (misma razón que reservar) |
-| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (alias `telefono=`; `asistente_notion_id=` opcional) | `consultar_sugeridas_para_asistente` (`whatsapp` preferido) |
+| Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
+| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (alias `telefono=`; `asistente_notion_id=` opcional) | `consultar_sugeridas_para_asistente` (`whatsapp` preferido; incluye `citasConfirmadas`) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
@@ -83,6 +83,7 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Dos reglas de tiempo, independientes entre sí: el horario **destino** no puede estar más de `CITAS_MARGEN_MODIFICACION_MINUTOS` (5) en el pasado; y una cita **original** ya pasada solo se puede mover si `Check-in Realizado` está en falso. No hay ventana mínima de anticipación sobre la cita original.
 - ICS: mismo UID (`page_id@fashiondigitaltalks.com`), `SEQUENCE` de `siguienteSecuenciaIcs()` (timestamp con garantía de incremento en el mismo segundo), `CONFIRMED` al modificar y `METHOD:CANCEL` + `STATUS:CANCELLED` al cancelar. No hay campo de secuencia en Notion y no hace falta.
 - El aviso de “si tu calendario no se actualiza solo” va en el **cuerpo del correo**, no en la respuesta HTTP (esa advertencia era del Google Calendar propio, retirado el 27-ago).
+- MCP (`modificar_cita` / `cancelar_cita`): misma función que REST. Si hay varias citas, la tool devuelve la lista y el agente pregunta. Si el correo falla, `exito_parcial` + `aviso` — no reportar que el aviso ya se envió. `reservar_cita` sigue fuera del MCP.
 
 ## Matchmaking
 
@@ -117,4 +118,4 @@ Inyectar mocks en `require.cache` **antes** de `require` del service real (ver `
 
 Baselines en `.cursor/rules/testing.mdc`: si cambian sin un cambio de negocio intencional, es regresión — reportar, no “arreglar” el test para que pase.
 
-Scripts locales útiles: `tests/disponibilidad.local-smoke.js` (sin Notion), `tests/email-notificacion.manual-test.js`, `tests/asignacion-mesa.manual-test.js`, `tests/modificar-cancelar-cita.manual-test.js`.
+Scripts locales útiles: `tests/disponibilidad.local-smoke.js` (sin Notion), `tests/email-notificacion.manual-test.js`, `tests/asignacion-mesa.manual-test.js`, `tests/modificar-cancelar-cita.manual-test.js`, `tests/mcp-modificar-cancelar.manual-test.js`.

@@ -5,24 +5,19 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (23 ago 2026): 9 herramientas MCP — consultar_checklist (lectura),
-// revisar_checklists_pendientes (lectura + actualiza estado),
-// sugerir_matches_para_sponsor y sugerir_matches_global (escritura acotada,
-// crean filas en Citas con Estatus "Sugerido", dry-run por default en
-// ambas), guardar_sugerencia_individual (crea solo el par elegido),
-// aprobar_match (marca una fila de Citas como "Aprobado"),
-// consultar_sugeridas_para_asistente (lectura por WhatsApp o page_id),
-// reintentar_notificaciones_pendientes (reenvía correos/.ics de citas en
-// "Confirmada sin notificar") y disparar_campanas_aprobadas (simulación por
-// default; agrupada por asistente). El campo "Match Sugerido" del sponsor quedó
-// en desuso el 9 de agosto — ver 03-reglas-negocio-y-matchmaking.md y
-// 10-backend-como-mcp.md §9.
+// Estado (27 ago 2026): 11 herramientas MCP — las 9 previas más
+// modificar_cita y cancelar_cita (misma lógica que POST /citas/modificar-cita
+// y POST /citas/cancelar-cita). consultar_sugeridas_para_asistente también
+// trae citasConfirmadas. El campo "Match Sugerido" del sponsor quedó en
+// desuso el 9 de agosto.
 // reservar_cita sigue sin exponerse aquí — ver nota abajo.
 //
 // reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
 // aparte con Laura — cada cita necesita aprobación humana antes de
 // ofrecerse, y el agente llamándola por una interpretación equivocada ya
-// deja el daño hecho (evento real en calendario de un sponsor real).
+// deja el daño hecho (cita real + correo). Modificar y cancelar SÍ se
+// exponen (27-ago, pedido explícito): son más sensibles que aprobar_match
+// y las descripciones exigen confirmación de cuál cita y qué cambio.
 
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
@@ -32,6 +27,127 @@ const matchmakingService = require('../services/matchmaking.service');
 const citasService = require('../services/citas.service');
 const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
+const { modificarCita, cancelarCita } = require('../services/booking.service');
+
+function respuestaJson(payload, isError = false) {
+  const result = {
+    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+  };
+  if (isError) result.isError = true;
+  return result;
+}
+
+function respuestaErrorBooking(err) {
+  const payload = {
+    error: err.code || 'ERROR',
+    message: err.message,
+  };
+  if (err.detalle) Object.assign(payload, err.detalle);
+  return respuestaJson(payload, true);
+}
+
+function conAvisoSiFalloElCorreo(resultado, accion) {
+  if (!resultado?.notificacion_error) return resultado;
+  const { categoria, mensaje } = resultado.notificacion_error;
+  const aviso =
+    accion === 'modificar'
+      ? `El horario nuevo quedó guardado en Notion, pero el correo/.ics NO se envió (${categoria}): ${mensaje}. Dile a la persona que el cambio de horario sí está hecho y que el aviso por correo quedó pendiente.`
+      : `La cita quedó cancelada en Notion y el horario ya está libre, pero el correo/.ics de baja NO se envió (${categoria}): ${mensaje}. Dile a la persona que la cancelación sí está hecha y que el aviso por correo quedó pendiente.`;
+  return { ...resultado, exito_parcial: true, aviso };
+}
+
+function horarioLegible(iso) {
+  if (!iso) return null;
+  try {
+    return citasService.formatearHorarioLegible(iso);
+  } catch {
+    return iso;
+  }
+}
+
+async function ejecutarModificarCita({ telefono, whatsapp, citaId, sponsorEmpresa, nuevaFechaHora } = {}) {
+  const telefonoResolvido = String(telefono || whatsapp || '').trim();
+  const id = String(citaId || '').trim();
+  if (!telefonoResolvido && !id) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Se requiere "telefono" (WhatsApp del asistente) o "citaId".',
+      },
+      true
+    );
+  }
+  if (!String(nuevaFechaHora || '').trim()) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'El campo "nuevaFechaHora" es requerido en formato ISO 8601 (ej. "2026-10-07T11:30:00-06:00").',
+      },
+      true
+    );
+  }
+  try {
+    const resultado = await modificarCita({
+      telefono: telefonoResolvido,
+      citaId: id,
+      sponsorEmpresa,
+      nuevaFechaHora,
+    });
+    const conAviso = conAvisoSiFalloElCorreo(resultado, 'modificar');
+    return respuestaJson({
+      ...conAviso,
+      horario_nuevo_legible: horarioLegible(resultado.inicio),
+      horario_anterior_legible: horarioLegible(resultado.horario_anterior),
+    });
+  } catch (err) {
+    return respuestaErrorBooking(err);
+  }
+}
+
+async function ejecutarCancelarCita({ telefono, whatsapp, citaId, sponsorEmpresa } = {}) {
+  const telefonoResolvido = String(telefono || whatsapp || '').trim();
+  const id = String(citaId || '').trim();
+  if (!telefonoResolvido && !id) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Se requiere "telefono" (WhatsApp del asistente) o "citaId".',
+      },
+      true
+    );
+  }
+  try {
+    const resultado = await cancelarCita({
+      telefono: telefonoResolvido,
+      citaId: id,
+      sponsorEmpresa,
+    });
+    return respuestaJson(conAvisoSiFalloElCorreo(resultado, 'cancelar'));
+  } catch (err) {
+    return respuestaErrorBooking(err);
+  }
+}
+
+async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePageId } = {}) {
+  if (!whatsapp && !asistentePageId) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Pasa whatsapp (preferido) o asistentePageId.',
+      },
+      true
+    );
+  }
+  try {
+    const resultado = await citasService.consultarSugeridasPorIdentificador({
+      whatsapp,
+      asistentePageId: whatsapp ? undefined : asistentePageId,
+    });
+    return respuestaJson(resultado);
+  } catch (err) {
+    return respuestaJson({ error: err.message, code: err.code }, true);
+  }
+}
 
 function crearServidorMcp() {
   const server = new McpServer({ name: 'fdt-notion-api', version: '1.0.0' });
@@ -221,51 +337,6 @@ function crearServidorMcp() {
   );
 
   server.tool(
-    'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 ya persistidas en Notion como Sugerido o Aprobado para un asistente (no recalcula matchmaking). El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente, y por cada sugerencia page_id, empresa, nombre y calendarioGoogleId del sponsor, para presentar Empresa asistente × Empresa sponsor. No escribe nada.',
-    {
-      whatsapp: z
-        .string()
-        .optional()
-        .describe('Teléfono WhatsApp del asistente (identificador principal). Con o sin +52.'),
-      asistentePageId: z
-        .string()
-        .optional()
-        .describe('page_id del asistente en Notion. Solo si no hay teléfono.'),
-    },
-    async ({ whatsapp, asistentePageId }) => {
-      if (!whatsapp && !asistentePageId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'INVALID_INPUT',
-                message: 'Pasa whatsapp (preferido) o asistentePageId.',
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-      try {
-        const resultado = await citasService.consultarSugeridasPorIdentificador({
-          whatsapp,
-          asistentePageId: whatsapp ? undefined : asistentePageId,
-        });
-        return {
-          content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: err.message, code: err.code }, null, 2) }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
     'disparar_campanas_aprobadas',
     'Procesa manualmente todas las filas Aprobado pendientes de campaña, agrupadas por asistente para enviar como máximo un mensaje por persona. Por default corre en simulación: devuelve payloads y decisiones sin llamar WhatsApp ni marcar Notion. El envío real solo se habilita mediante configuración explícita del backend, nunca por parámetros del agente.',
     {},
@@ -284,7 +355,74 @@ function crearServidorMcp() {
     }
   );
 
+  server.tool(
+    'consultar_sugeridas_para_asistente',
+    'Lista las citas 1a1 ya persistidas en Notion para un asistente: filas Sugerido o Aprobado (sugeridas) y, aparte, las ya reales (citasConfirmadas: Confirmada / Confirmada sin notificar, ordenadas por horario, con mesa y check-in). No recalcula matchmaking. El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente, y por cada sugerencia page_id, empresa y nombre del sponsor, para presentar Empresa asistente × Empresa sponsor. Úsala también para ver qué citas confirmadas tiene esa persona (modificar/cancelar) sin una tool aparte. No escribe nada.',
+    {
+      whatsapp: z
+        .string()
+        .optional()
+        .describe('Teléfono WhatsApp del asistente (identificador principal). Con o sin +52.'),
+      asistentePageId: z
+        .string()
+        .optional()
+        .describe('page_id del asistente en Notion. Solo si no hay teléfono.'),
+    },
+    async ({ whatsapp, asistentePageId }) =>
+      ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePageId })
+  );
+
+  server.tool(
+    'modificar_cita',
+    'Cambia el horario de una cita 1a1 YA CONFIRMADA de Fashion Digital Talks 2026 a un horario nuevo. Identifica la cita exacta con citaId (si ya se conoce) o con telefono del asistente; si ese teléfono tiene varias citas activas, la tool NO elige una: responde VARIAS_CITAS_ACTIVAS con la lista (citaId, sponsor, horario) para que preguntes cuál es y vuelvas a llamar con citaId o sponsorEmpresa. Valida disponibilidad del horario nuevo (grilla, 11 mesas, sponsor ocupado) antes de tocar Notion y envía el .ics actualizado por correo. SOLO usar cuando el usuario ya confirmó explícitamente, en la conversación, que quiere mover ESA cita específica a ESE horario específico — nunca inferirlo de un comentario ambiguo como "mejor en la tarde" o "a ver si se puede cambiar". Más sensible que aprobar_match: genera correos reales y mueve un compromiso ya agendado.',
+    {
+      telefono: z
+        .string()
+        .optional()
+        .describe('WhatsApp del asistente. El servidor valida que la cita sea de esa persona.'),
+      whatsapp: z.string().optional().describe('Alias de telefono.'),
+      citaId: z
+        .string()
+        .optional()
+        .describe('page_id de la fila en Citas. Laura/Liz pueden usarlo solo, sin teléfono.'),
+      sponsorEmpresa: z
+        .string()
+        .optional()
+        .describe('Desambigua cuando el teléfono tiene varias citas activas (ej. "Platica").'),
+      nuevaFechaHora: z
+        .string()
+        .describe('Horario nuevo en ISO 8601 con offset (ej. "2026-10-07T12:00:00-06:00").'),
+    },
+    async (args) => ejecutarModificarCita(args)
+  );
+
+  server.tool(
+    'cancelar_cita',
+    'Cancela una cita 1a1 YA CONFIRMADA de Fashion Digital Talks 2026. Identifica la cita exacta con citaId o telefono del asistente; si hay varias citas activas, responde VARIAS_CITAS_ACTIVAS con la lista y NO elige una — pregunta cuál es y vuelve a llamar con citaId o sponsorEmpresa. Envía el .ics de baja por correo y libera el horario. SOLO usar cuando el usuario ya confirmó explícitamente que quiere cancelar ESA cita específica — nunca inferirlo de frases ambiguas como "ya no va a poder" o "se le complicó" sin una confirmación directa de que se debe cancelar. Más sensible que aprobar_match: genera correos reales y deshace un compromiso ya agendado.',
+    {
+      telefono: z
+        .string()
+        .optional()
+        .describe('WhatsApp del asistente. El servidor valida que la cita sea de esa persona.'),
+      whatsapp: z.string().optional().describe('Alias de telefono.'),
+      citaId: z
+        .string()
+        .optional()
+        .describe('page_id de la fila en Citas. Laura/Liz pueden usarlo solo, sin teléfono.'),
+      sponsorEmpresa: z
+        .string()
+        .optional()
+        .describe('Desambigua cuando el teléfono tiene varias citas activas (ej. "Platica").'),
+    },
+    async (args) => ejecutarCancelarCita(args)
+  );
+
   return server;
 }
 
-module.exports = { crearServidorMcp };
+module.exports = {
+  crearServidorMcp,
+  ejecutarModificarCita,
+  ejecutarCancelarCita,
+  ejecutarConsultarSugeridasParaAsistente,
+};

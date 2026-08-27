@@ -782,7 +782,8 @@ const RANGO_SUGERIDA = { Aprobado: 2, Sugerido: 1 };
 
 /**
  * Filas Sugerido/Aprobado del asistente (Contacto Principal), hidratadas
- * con empresa, nombre y calendario del sponsor. Dedup por sponsor (Aprobado gana).
+ * con empresa y nombre del sponsor. Dedup por sponsor (Aprobado gana).
+ * Ya no incluye calendario Google: esa integración se retiró el 27-ago.
  */
 async function listarSugeridasPorAsistente(asistentePageId) {
   requireDataSourceId();
@@ -823,7 +824,6 @@ async function listarSugeridasPorAsistente(asistentePageId) {
         ...item,
         sponsor_nombre: null,
         sponsor_empresa: null,
-        sponsor_calendario_id: null,
         nivel_patrocinio: null,
       });
       continue;
@@ -832,7 +832,6 @@ async function listarSugeridasPorAsistente(asistentePageId) {
       ...item,
       sponsor_nombre: sponsor.nombre || null,
       sponsor_empresa: sponsor.empresa || null,
-      sponsor_calendario_id: sponsor.calendarioGoogleId || null,
       nivel_patrocinio: sponsor.nivelPatrocinio || null,
     });
   }
@@ -872,13 +871,21 @@ async function consultarSugeridasPorIdentificador({ whatsapp, asistentePageId } 
     asistente = await contactos.obtenerContacto(id);
   }
 
-  const sugeridas = await listarSugeridasPorAsistente(id);
+  const [sugeridas, citasReales] = await Promise.all([
+    listarSugeridasPorAsistente(id),
+    listarCitasRealesPorAsistente(id),
+  ]);
+  const citasConfirmadas = citasReales
+    .slice()
+    .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')))
+    .map(formatearCitaConfirmadaAsistente);
   return {
     asistente_notion_id: id,
     asistente_nombre: asistente?.nombre || null,
     asistente_empresa: asistente?.empresa || null,
     whatsapp: asistente?.whatsapp || phone || null,
     sugeridas,
+    citasConfirmadas,
   };
 }
 

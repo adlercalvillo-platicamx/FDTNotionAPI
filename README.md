@@ -34,7 +34,7 @@ src/
 │   ├── campanas-matchmaking.service.js # Oferta inicial única: hasta 4 sponsors + 3 horarios; simulación por default
 │   └── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 ├── mcp/
-│   ├── server.js                     # 9 herramientas MCP — capa delgada sobre services/
+│   ├── server.js                     # 11 herramientas MCP — capa delgada sobre services/
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
 └── utils/
     └── notion-client.js              # Cliente REST de Notion (nunca MCP para escrituras)
@@ -50,7 +50,7 @@ tests/
 ├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
 ├── bloqueo-conferencias.manual-test.js # Bloqueo de sponsor sin restar mesas + exclusión Comite/Team (26-ago)
 ├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
-├── modificar-cancelar-cita.manual-test.js # Modificar/cancelar: pertenencia, margen 5 min, check-in, .ics CANCEL (27-ago)
+├── mcp-modificar-cancelar.manual-test.js # Tools MCP modificar/cancelar + citasConfirmadas (27-ago)
 ├── titulos-empresa.manual-test.js     # Empresa×Empresa + texto multipart sin truncar (19-ago)
 ├── sugeridas-empresas.manual-test.js  # Empresas hidratadas + solo Sugerido/Aprobado (19-ago)
 └── mocks/
@@ -72,7 +72,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. `sponsor_calendario_id` en el body es legado e ignorado. |
 | POST | `/citas/modificar-cita` | **Nueva (27 de agosto).** Mueve una cita real a otro bloque. Identificación por `telefono` (el servidor valida que la cita sea de esa persona) o por `citaId` directo (Laura/Liz). Valida el horario nuevo con el mismo criterio que `reservar` (grilla, 11 mesas, sponsor ocupado, bloqueos de conferencia) **antes** de tocar Notion; reasigna mesa y manda el `.ics` actualizado (mismo UID, `SEQUENCE` mayor). El correo de cambio es texto propio (horario nuevo/anterior); el sponsor recibe datos del asistente y el asistente solo la empresa del sponsor. Si el correo falla, el horario nuevo **se conserva** y la cita queda `Confirmada sin notificar`. |
 | POST | `/citas/cancelar-cita` | **Nueva (27 de agosto).** Mismos dos caminos de identificación. Pasa el `Estatus` a `Cancelada` (con eso el bloque queda libre) y manda el `.ics` de baja (`METHOD:CANCEL`). El aviso nombra con quién se canceló: sponsor con datos del asistente, asistente solo con la empresa del sponsor. Si el correo falla, la cita sigue cancelada y queda marcada para reintento. Llamarla dos veces es idempotente. |
-| GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
+| GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas **y** `citasConfirmadas`. Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Desde el 27-ago también trae `citasConfirmadas` (`Confirmada` / `Confirmada sin notificar`, orden cronológico). `sugerencias` no cambió de schema. Lista vacía si no hay aprobadas. `X-API-Key`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). **No reemplaza** `POST /citas/reservar`. `Confirmada` / `Confirmada sin notificar` ocupan al sponsor; las filas de bloqueo de conferencia no restan de las 11 mesas. Sin horario en env → `503`. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
@@ -99,12 +99,12 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 
 Además de los endpoints REST de arriba, este servicio expone un servidor **MCP** (Model Context Protocol) en `POST /mcp` — mismo `X-API-Key` que el resto de rutas, mismo `authMiddleware`. Transporte Streamable HTTP, modo stateless (`sessionIdGenerator: undefined`).
 
-Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **9** tools MCP (+ `reservar_cita` como API REST en Plática, no en este servidor MCP).
+Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **11** tools MCP (`modificar_cita` y `cancelar_cita` desde el 27-ago) + `reservar_cita` como API REST en Plática, no en este servidor MCP.
 
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
-| `consultar_sugeridas_para_asistente` | Lectura | Filas Citas `Sugerido`/`Aprobado`. Identificador principal: `whatsapp`. Devuelve empresa y nombre del asistente y del sponsor para presentar `Empresa asistente × Empresa sponsor`. |
+| `consultar_sugeridas_para_asistente` | Lectura | Filas Citas `Sugerido`/`Aprobado` **y** `citasConfirmadas` (`Confirmada` / `Confirmada sin notificar`). Identificador principal: `whatsapp`. Devuelve empresa y nombre del asistente y del sponsor. Ya no incluye `calendarioGoogleId` (Calendar propio retirado el 27-ago). |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
 | `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
@@ -112,12 +112,14 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
 | `reintentar_notificaciones_pendientes` | Escritura acotada, masiva | Reenvía a demanda correo/ICS para todas las citas `Confirmada sin notificar`; sin parámetros y sin tope de llamadas |
 | `disparar_campanas_aprobadas` | Escritura acotada, masiva | Procesa manualmente `Aprobado` sin campaña previa y envía una sola oferta por asistente. Simulación por default; el agente no puede habilitar envío real por parámetros. |
+| `modificar_cita` | Escritura sensible | **Nueva (27 de agosto).** Llama a `modificarCita` (mismo service que REST). Exige confirmación explícita de cuál cita y a qué horario. Si hay varias citas activas, devuelve la lista; el agente no elige. Si el correo falla, `exito_parcial` + `aviso` (el horario sí quedó). |
+| `cancelar_cita` | Escritura sensible | **Nueva (27 de agosto).** Llama a `cancelarCita`. Misma identificación y misma regla de ambigüedad. Si el correo falla, lo dice; la cita sigue cancelada. |
 
 **Rediseño del 12 de agosto — `Quiere Citas 1a1` y filtro de Giro:** el campo `Quiere Citas 1a1` pasó de checkbox a `select` (`Sí` / `No` / vacío) porque un checkbox no puede distinguir "nunca contestó" de "contestó que no". Decisión de Laura (demo 11-ago): se excluye solo `'No'` explícito; vacío histórico entra. Además, `buscarAsistentesCandidatos` filtra por Giro/Industria — solo Marca de moda, Retailer/tienda multimarca y Manufactura (aplica también a VIP). Mismo día se agregó `Calendario Google ID` por sponsor (multi-calendario) y se cargaron 29 asistentes reales que faltaban de la importación original de Ticketópolis.
 
 **Rediseño del 9 de agosto — de dónde salió `aprobar_match`:** el campo `Match Aprobado` (checkbox único por sponsor) no distinguía CUÁL de varios candidatos sugeridos había sido aprobado — un hueco de diseño que se volvió real en cuanto `Citas Minimas Prometidas` se confirmó como variable por sponsor (un sponsor con cuota de 4+ tiene 4+ candidatos sugeridos, no 1). La tabla `Citas` ya tenía la forma correcta (una fila por par sponsor-asistente), así que se extendió su `Estatus` con `Sugerido` y `Aprobado` como los dos primeros pasos del ciclo de vida, antes de `Pendiente Calendar`. `Match Sugerido` (relation en el sponsor) queda en desuso a partir de este cambio — se conserva en el schema por historial, pero ningún código nuevo lo escribe.
 
-**`modificar-cita` y `cancelar-cita` tampoco se exponen como herramientas MCP**, por la misma razón que `reservar_cita`: mueven o borran una cita real y mandan correo. Van como herramientas de API REST en Plática, con la validación de pertenencia del lado del servidor — nunca se confía en que el agente de Carlos ya haya verificado que la cita es de quien escribe.
+**`modificar_cita` y `cancelar_cita` se exponen como MCP (27-ago)** para Laura/Liz y el agente de Carlos, llamando al mismo `booking.service.js` que REST. Las descripciones exigen confirmación explícita de cuál cita y qué cambio — más estricto que `aprobar_match`. Si hay ambigüedad, la tool responde `VARIAS_CITAS_ACTIVAS` con la lista; el agente pregunta, no elige. **`reservar_cita` sigue fuera del MCP.**
 
 **Google Calendar propio se retiró el 27-ago (Adler).** Nadie del equipo lo consultaba; Notion ya era adonde todos iban, y el `.ics` cubre el calendario personal del sponsor. `calendar-client.service.js` ya no existe. Los campos `Google Event ID` (Citas) y `Calendario Google ID` (Contactos) quedan en el schema por historial; el código nuevo no los escribe ni los exige. `sponsor_calendario_id` en `POST /citas/reservar` se ignora si llega, para no romper clientes viejos.
 
@@ -179,6 +181,8 @@ node tests/campanas-matchmaking.manual-test.js
 node tests/horarios-oferta.manual-test.js
 node tests/recordatorio-evento.manual-test.js
 node tests/sugerencias-asistente.manual-test.js
+node tests/modificar-cancelar-cita.manual-test.js
+node tests/mcp-modificar-cancelar.manual-test.js
 node tests/campanas-webhook.manual-test.js
 node tests/marcar-cola-sin-enviar.manual-test.js
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
