@@ -21,9 +21,13 @@ const TEMPLATE_ENV_OFERTA = 'PLATICA_TEMPLATE_OFERTA_INICIAL';
 const TEMPLATE_SIMULACION = 'oferta_inicial_con_horarios';
 const TEMPLATE_ENV_RECORDATORIO = 'PLATICA_TEMPLATE_RECORDATORIO_EVENTO';
 const TEMPLATE_SIMULACION_RECORDATORIO = 'PENDIENTE_PLANTILLA_RECORDATORIO_EVENTO';
-// Confirmado por Adler: 14 días antes del evento. El disparo sigue siendo
-// manual (POST /matchmaking/enviar-recordatorio-evento); no hay cron.
+// Confirmado por Adler: 14 días antes del evento. El endpoint es seguro
+// como cron diario: si la ventana no se ha cumplido, sale sin efecto.
 const DIAS_ANTES_RECORDATORIO_EVENTO = 14;
+// Primer día del evento. Se reusa CITAS_FECHAS_EVENTO si está definida;
+// este fallback es el mismo valor documentado (7-oct-2026).
+const FECHA_EVENTO = '2026-10-07';
+const ZONA_EVENTO = 'America/Mexico_City';
 
 const ESTATUS_YA_INTERACTUO = [
   'Confirmada',
@@ -300,6 +304,54 @@ function plantillaRecordatorio(modoSimulacion) {
   );
 }
 
+function fechaPrimerDiaEvento() {
+  const desdeEnv = String(process.env.CITAS_FECHAS_EVENTO || '')
+    .split(',')
+    .map((f) => f.trim())
+    .find((f) => /^\d{4}-\d{2}-\d{2}$/.test(f));
+  return desdeEnv || FECHA_EVENTO;
+}
+
+function ymdEnMexico(ahora) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA_EVENTO,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora instanceof Date ? ahora : new Date(ahora));
+}
+
+function restarDiasYmd(ymd, dias) {
+  const [anio, mes, dia] = ymd.split('-').map(Number);
+  const utc = Date.UTC(anio, mes - 1, dia) - dias * 24 * 60 * 60 * 1000;
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
+function diffDiasYmd(desde, hasta) {
+  const [y1, m1, d1] = desde.split('-').map(Number);
+  const [y2, m2, d2] = hasta.split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Ventana: hoy (México) >= primer día del evento − 14 días.
+ * diasRestantes = días que faltan para que abra (0 si ya abrió).
+ */
+function evaluarVentanaRecordatorio(ahora = new Date()) {
+  const fechaEvento = fechaPrimerDiaEvento();
+  const abreEl = restarDiasYmd(fechaEvento, DIAS_ANTES_RECORDATORIO_EVENTO);
+  const hoy = ymdEnMexico(ahora);
+  const diasRestantes = Math.max(0, diffDiasYmd(hoy, abreEl));
+  return {
+    cumplida: hoy >= abreEl,
+    fechaEvento,
+    abreEl,
+    hoy,
+    diasRestantes,
+    diasAntes: DIAS_ANTES_RECORDATORIO_EVENTO,
+  };
+}
+
 function contactoYaInteractuo(filas) {
   return (filas || []).some((fila) => ESTATUS_YA_INTERACTUO.includes(fila.estatus));
 }
@@ -316,14 +368,34 @@ function payloadRecordatorio({ contacto, modoSimulacion }) {
  * Recordatorio-reactivación del evento. Solo se manda a quien nunca
  * interactuó (todas sus filas en Sugerido/Aprobado/Rechazado).
  * Quien ya reservó se marca para no reevaluarlo, sin WhatsApp.
- * Disparo manual; DIAS_ANTES_RECORDATORIO_EVENTO es referencia, no cron.
+ * Seguro como cron diario: antes de la ventana responde sin tocar Notion
+ * ni Plática. `ahora` es solo para pruebas; el HTTP no lo acepta.
  */
-async function enviarRecordatorioEvento({ modoSimulacion } = {}) {
+async function enviarRecordatorioEvento({ modoSimulacion, ahora = new Date() } = {}) {
+  const ventana = evaluarVentanaRecordatorio(ahora);
+  if (!ventana.cumplida) {
+    return {
+      disparado: false,
+      motivo: 'VENTANA_NO_CUMPLIDA',
+      diasRestantes: ventana.diasRestantes,
+      fechaEvento: ventana.fechaEvento,
+      abreEl: ventana.abreEl,
+      hoy: ventana.hoy,
+      diasAntes: ventana.diasAntes,
+    };
+  }
+
   const simulando = modoSimulacionCampanas(modoSimulacion);
   exigirEnvioRealHabilitado(simulando);
 
   const porAsistente = await citasService.cargarCitasPorAsistenteParaRecordatorio();
   const resumen = {
+    disparado: true,
+    motivo: null,
+    diasRestantes: 0,
+    fechaEvento: ventana.fechaEvento,
+    abreEl: ventana.abreEl,
+    hoy: ventana.hoy,
     modoSimulacion: simulando,
     diasAntesReferencia: DIAS_ANTES_RECORDATORIO_EVENTO,
     contactosEvaluados: porAsistente.size,
@@ -412,6 +484,8 @@ async function enviarRecordatorioEvento({ modoSimulacion } = {}) {
 module.exports = {
   OFERTA_INICIAL,
   DIAS_ANTES_RECORDATORIO_EVENTO,
+  FECHA_EVENTO,
+  evaluarVentanaRecordatorio,
   ESTATUS_YA_INTERACTUO,
   agruparPorAsistente,
   textoSugerencias,

@@ -17,6 +17,7 @@ const contactos = {};
 const envios = [];
 const marcadosRecordatorio = [];
 let llamadasEnviarPlantilla = 0;
+let llamadasCargarCitas = 0;
 
 require.cache[citasPath] = {
   id: citasPath,
@@ -24,6 +25,7 @@ require.cache[citasPath] = {
   loaded: true,
   exports: {
     async cargarCitasPorAsistenteParaRecordatorio() {
+      llamadasCargarCitas += 1;
       return porAsistente;
     },
   },
@@ -61,7 +63,12 @@ const {
   enviarRecordatorioEvento,
   contactoYaInteractuo,
   DIAS_ANTES_RECORDATORIO_EVENTO,
+  FECHA_EVENTO,
+  evaluarVentanaRecordatorio,
 } = require('../src/services/campanas-matchmaking.service');
+
+const ANTES_DE_VENTANA = new Date('2026-09-22T09:00:00-06:00');
+const DENTRO_DE_VENTANA = new Date('2026-09-24T09:00:00-06:00');
 
 function limpiar() {
   porAsistente = new Map();
@@ -71,6 +78,7 @@ function limpiar() {
   envios.length = 0;
   marcadosRecordatorio.length = 0;
   llamadasEnviarPlantilla = 0;
+  llamadasCargarCitas = 0;
 }
 
 function contactoBase(id, extras = {}) {
@@ -90,7 +98,7 @@ async function casoNuncaInteractuoRecibeMensaje() {
     { id: 'cita-1', estatus: 'Sugerido' },
     { id: 'cita-2', estatus: 'Aprobado' },
   ]);
-  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false });
+  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false, ahora: DENTRO_DE_VENTANA });
   assert.strictEqual(resultado.enviados, 1);
   assert.strictEqual(envios.length, 1);
   assert.strictEqual(envios[0].templateName, 'recordatorio-evento-test');
@@ -104,7 +112,7 @@ async function casoYaInteractuoSeMarcaSinWhatsApp() {
     { id: 'cita-1', estatus: 'Sugerido' },
     { id: 'cita-2', estatus: 'Confirmada' },
   ]);
-  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false });
+  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false, ahora: DENTRO_DE_VENTANA });
   assert.strictEqual(resultado.enviados, 0);
   assert.strictEqual(resultado.marcadosSinEnviarPorInteraccion, 1);
   assert.strictEqual(llamadasEnviarPlantilla, 0);
@@ -116,7 +124,7 @@ async function casoYaMarcadoSeExcluye() {
   limpiar();
   contactoBase('asistente-ok', { recordatorioEventoEnviado: true });
   porAsistente.set('asistente-ok', [{ id: 'cita-1', estatus: 'Aprobado' }]);
-  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false });
+  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false, ahora: DENTRO_DE_VENTANA });
   assert.strictEqual(resultado.omitidosYaMarcado, 1);
   assert.strictEqual(envios.length, 0);
   assert.strictEqual(marcadosRecordatorio.length, 0);
@@ -125,7 +133,7 @@ async function casoYaMarcadoSeExcluye() {
 async function casoSinFilasEnCitasSeExcluye() {
   limpiar();
   contactoBase('nunca-ofertado');
-  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false });
+  const resultado = await enviarRecordatorioEvento({ modoSimulacion: false, ahora: DENTRO_DE_VENTANA });
   assert.strictEqual(resultado.contactosEvaluados, 0);
   assert.strictEqual(resultado.enviados, 0);
   assert.strictEqual(marcadosRecordatorio.length, 0);
@@ -137,7 +145,10 @@ async function casoSimulacionNoEscribeNiEnInteractuados() {
   contactoBase('sim-si');
   porAsistente.set('sim-sin', [{ id: 'c1', estatus: 'Aprobado' }]);
   porAsistente.set('sim-si', [{ id: 'c2', estatus: 'Pendiente Calendar' }]);
-  const resultado = await enviarRecordatorioEvento({ modoSimulacion: true });
+  const resultado = await enviarRecordatorioEvento({
+    modoSimulacion: true,
+    ahora: DENTRO_DE_VENTANA,
+  });
   assert.strictEqual(resultado.simulados, 1);
   assert.strictEqual(resultado.detalle.find((d) => d.asistentePageId === 'sim-si').motivo, 'YA_INTERACTUO');
   assert.strictEqual(envios.length, 0);
@@ -146,15 +157,94 @@ async function casoSimulacionNoEscribeNiEnInteractuados() {
 
 function casoSenalDeInteraccion() {
   assert.strictEqual(DIAS_ANTES_RECORDATORIO_EVENTO, 14);
+  assert.strictEqual(FECHA_EVENTO, '2026-10-07');
   assert.strictEqual(contactoYaInteractuo([{ estatus: 'Sugerido' }]), false);
   assert.strictEqual(contactoYaInteractuo([{ estatus: 'Rechazado' }]), false);
   assert.strictEqual(contactoYaInteractuo([{ estatus: 'Completada' }]), true);
   assert.strictEqual(contactoYaInteractuo([{ estatus: 'Confirmada sin notificar' }]), true);
+  const antes = evaluarVentanaRecordatorio(ANTES_DE_VENTANA);
+  assert.strictEqual(antes.cumplida, false);
+  assert.strictEqual(antes.abreEl, '2026-09-23');
+  assert.ok(antes.diasRestantes >= 1);
+  const despues = evaluarVentanaRecordatorio(DENTRO_DE_VENTANA);
+  assert.strictEqual(despues.cumplida, true);
+  assert.strictEqual(despues.diasRestantes, 0);
+}
+
+async function casoAntesDeVentanaNoTocaNada() {
+  limpiar();
+  contactoBase('asistente-sin');
+  porAsistente.set('asistente-sin', [{ id: 'cita-1', estatus: 'Aprobado' }]);
+  const resultado = await enviarRecordatorioEvento({
+    modoSimulacion: false,
+    ahora: ANTES_DE_VENTANA,
+  });
+  assert.strictEqual(resultado.disparado, false);
+  assert.strictEqual(resultado.motivo, 'VENTANA_NO_CUMPLIDA');
+  assert.ok(resultado.diasRestantes >= 1);
+  assert.strictEqual(llamadasCargarCitas, 0);
+  assert.strictEqual(llamadasEnviarPlantilla, 0);
+  assert.strictEqual(marcadosRecordatorio.length, 0);
+}
+
+async function casoDespuesDeVentanaProcesaIgual() {
+  limpiar();
+  contactoBase('asistente-sin');
+  porAsistente.set('asistente-sin', [{ id: 'cita-1', estatus: 'Sugerido' }]);
+  const resultado = await enviarRecordatorioEvento({
+    modoSimulacion: false,
+    ahora: DENTRO_DE_VENTANA,
+  });
+  assert.strictEqual(resultado.disparado, true);
+  assert.strictEqual(resultado.enviados, 1);
+  assert.strictEqual(llamadasCargarCitas, 1);
+}
+
+async function casoSegundaCorridaNoReenvia() {
+  limpiar();
+  contactoBase('asistente-sin');
+  porAsistente.set('asistente-sin', [{ id: 'cita-1', estatus: 'Aprobado' }]);
+  const primera = await enviarRecordatorioEvento({
+    modoSimulacion: false,
+    ahora: DENTRO_DE_VENTANA,
+  });
+  assert.strictEqual(primera.enviados, 1);
+  contactos['asistente-sin'].recordatorioEventoEnviado = true;
+  envios.length = 0;
+  llamadasEnviarPlantilla = 0;
+  const segunda = await enviarRecordatorioEvento({
+    modoSimulacion: false,
+    ahora: DENTRO_DE_VENTANA,
+  });
+  assert.strictEqual(segunda.enviados, 0);
+  assert.strictEqual(segunda.omitidosYaMarcado, 1);
+  assert.strictEqual(envios.length, 0);
+}
+
+async function casoNoCorrioUnDiaSeRecupera() {
+  limpiar();
+  contactoBase('asistente-sin');
+  porAsistente.set('asistente-sin', [{ id: 'cita-1', estatus: 'Rechazado' }]);
+  const resultado = await enviarRecordatorioEvento({
+    modoSimulacion: false,
+    ahora: DENTRO_DE_VENTANA,
+  });
+  assert.strictEqual(resultado.disparado, true);
+  assert.strictEqual(resultado.enviados, 1);
+  assert.strictEqual(marcadosRecordatorio.length, 1);
 }
 
 async function main() {
   casoSenalDeInteraccion();
-  console.log('✅ Señal de interacción y constante de 14 días.');
+  console.log('✅ Señal de interacción, 14 días y ventana 23-sep.');
+  await casoAntesDeVentanaNoTocaNada();
+  console.log('✅ Antes de la ventana: disparado false, sin Notion ni Plática.');
+  await casoDespuesDeVentanaProcesaIgual();
+  console.log('✅ Después de la ventana procesa como antes.');
+  await casoSegundaCorridaNoReenvia();
+  console.log('✅ Segunda corrida no reenvía a quien ya tiene el checkbox.');
+  await casoNoCorrioUnDiaSeRecupera();
+  console.log('✅ Si el cron falló el 23, el 24 envía igual sin intervención.');
   await casoNuncaInteractuoRecibeMensaje();
   console.log('✅ Quien nunca interactuó recibe el recordatorio.');
   await casoYaInteractuoSeMarcaSinWhatsApp();

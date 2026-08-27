@@ -87,6 +87,7 @@ async function enviarRecordatorioEventoHttp(req, res) {
   try {
     const resultado = await enviarRecordatorioEvento({
       modoSimulacion: req.body?.modoSimulacion,
+      // `ahora` no se toma del body: el cron no debe poder saltarse la ventana.
     });
     return res.status(200).json(resultado);
   } catch (error) {
