@@ -97,6 +97,11 @@ function primerRelacionId(prop) {
   return (prop?.relation || [])[0]?.id || null;
 }
 
+function esMismaPagina(a, b) {
+  if (!a || !b) return false;
+  return pageIdCanonico(a) === pageIdCanonico(b);
+}
+
 function extraerIdsDeCitaConfirmada(fila) {
   return {
     inicio: normalizarInicioIso(fila.properties?.['Fecha y Hora']?.date?.start || ''),
@@ -140,7 +145,7 @@ function construirIndiceCitasConfirmadas(filasMapeadas) {
  * siempre de 30 min exactos alineados, hay que cambiar esto a un filtro de
  * rango (before/after) en vez de equals.
  */
-async function contarCitasEnBloque({ inicio }) {
+async function contarCitasEnBloque({ inicio, exceptPageId }) {
   requireDataSourceId();
   const and = [
     {
@@ -157,9 +162,9 @@ async function contarCitasEnBloque({ inicio }) {
     method: 'POST',
     body: JSON.stringify({ filter: { and } }),
   });
-  return (data.results || []).filter(
-    (fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))
-  ).length;
+  return (data.results || [])
+    .filter((fila) => !esMismaPagina(fila.id, exceptPageId))
+    .filter((fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))).length;
 }
 
 /**
@@ -167,8 +172,12 @@ async function contarCitasEnBloque({ inicio }) {
  * Confirmada sin notificar) en ese mismo horario (regla: 1 cita por
  * sponsor por bloque, porque solo tiene un agente comercial disponible).
  * El sponsor vive en "Contacto Match".
+ *
+ * `exceptPageId` es para modificar-cita: al mover una cita dentro del
+ * mismo bloque, la propia fila aparecería como "el sponsor ya está
+ * ocupado consigo mismo". Se omite del resultado.
  */
-async function sponsorOcupadoEnBloque({ sponsorPageId, inicio }) {
+async function sponsorOcupadoEnBloque({ sponsorPageId, inicio, exceptPageId }) {
   requireDataSourceId();
   const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
@@ -187,7 +196,7 @@ async function sponsorOcupadoEnBloque({ sponsorPageId, inicio }) {
       },
     }),
   });
-  return data.results.length > 0;
+  return (data.results || []).some((fila) => !esMismaPagina(fila.id, exceptPageId));
 }
 
 /**
@@ -368,14 +377,14 @@ async function archivarSugerenciasDelPar({ sponsorPageId, asistentePageId, excep
   return { archivadas: aArchivar.length, ids: aArchivar.map((f) => f.id) };
 }
 
-/** Marca la cita como Confirmada una vez que Calendar ya devolvió el evento creado. */
-async function confirmarCita({ notionPageId, eventoId }) {
+/** Marca la cita como Confirmada. "Google Event ID" ya no se escribe
+ * (Calendar propio retirado 27-ago); el campo queda en el schema por historial. */
+async function confirmarCita({ notionPageId }) {
   return notionFetch(`/pages/${notionPageId}`, {
     method: 'PATCH',
     body: JSON.stringify({
       properties: {
         Estatus: { select: { name: 'Confirmada' } },
-        'Google Event ID': { rich_text: [{ text: { content: eventoId } }] },
       },
     }),
   });
@@ -385,7 +394,7 @@ async function confirmarCita({ notionPageId, eventoId }) {
  * Degrada una cita ya Confirmada (Calendar + Notion OK) a "Confirmada sin
  * notificar" cuando el envío del correo/ICS falló tras los 3 reintentos
  * inmediatos de SMTP (o tras un reenvío a demanda que también falló).
- * La cita NUNCA se revierte — Calendar y Notion ya son ciertos.
+ * La cita NUNCA se revierte — Notion ya es cierto.
  *
  * Escribe el motivo en "Notas Envio Email" (separado de "Notas", que ya
  * se usa para fallas de booking / match). No hay contador de intentos:
@@ -461,6 +470,196 @@ async function marcarCitaFallida({ notionPageId, motivo }) {
       },
     }),
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODIFICAR / CANCELAR una cita ya real (27-ago)
+//
+// Verificado contra el schema real de Citas antes de escribir esto:
+//   - "Cancelada" ya existe en el select Estatus, y NO está en
+//     ESTATUS_ACTIVOS ni en los queries de confirmadas → cambiar el
+//     Estatus ya libera el bloque, sin trabajo adicional.
+//   - "Check-in Realizado" (checkbox) y "Reprogramada" /
+//     "Reprogramada Horario Original" ya existen — los agregó Luis y
+//     hasta hoy nadie los leía desde el backend.
+//   - NO hay campo de secuencia del ICS. No se agrega: el SEQUENCE sale
+//     de Math.floor(Date.now()/1000), que siempre es mayor que el 0 del
+//     envío original y que cualquier envío anterior (misma convención
+//     que ya usaba reintentarNotificacion).
+//
+// Una cancelación cuyo correo falló NO puede quedar en "Confirmada sin
+// notificar": ese estatus vuelve a ocupar mesa y sponsor. Se queda en
+// "Cancelada" y el pendiente de aviso se marca con MARCA_CANCELACION_PENDIENTE
+// al inicio de "Notas Envio Email", que es lo que busca el barrido de
+// reintentos para saber que ahí falta mandar el .ics de baja, no el de alta.
+// ═══════════════════════════════════════════════════════════════
+
+const MARCA_CANCELACION_PENDIENTE = '[CANCELACION_PENDIENTE]';
+
+/** Estatus de una cita que ya existe de verdad (ocupa mesa y sponsor). */
+const ESTATUS_CITA_REAL = ['Confirmada', 'Confirmada sin notificar'];
+
+/** Vista plana de una página de Citas — lo que necesitan modificar/cancelar. */
+function datosDeCita(pagina) {
+  const props = pagina?.properties || {};
+  const fecha = props['Fecha y Hora']?.date || {};
+  return {
+    id: pagina?.id || null,
+    estatus: props.Estatus?.select?.name || null,
+    titulo: tituloDePaginaCita(pagina),
+    inicio: normalizarInicioIso(fecha.start || '') || null,
+    fin: normalizarInicioIso(fecha.end || '') || null,
+    mesa: textoRichText(props['Mesa / Ubicacion']) || null,
+    sponsorPageId: primerRelacionId(props['Contacto Match']),
+    asistentePageId: primerRelacionId(props['Contacto Principal']),
+    checkInRealizado: props['Check-in Realizado']?.checkbox === true,
+    // Histórico: ya no se escribe ni se usa. Lo deja datosDeCita por si
+    // hay que leer filas viejas; no hay consumidores nuevos.
+    googleEventId: textoRichText(props['Google Event ID']) || null,
+    notasEnvioEmail: textoRichText(props['Notas Envio Email']) || '',
+    horarioOriginal: props['Reprogramada Horario Original']?.date?.start || null,
+  };
+}
+
+function tieneCancelacionPendienteDeAviso(pagina) {
+  const datos = datosDeCita(pagina);
+  return datos.estatus === 'Cancelada' && datos.notasEnvioEmail.startsWith(MARCA_CANCELACION_PENDIENTE);
+}
+
+/**
+ * Mueve una cita real a otro bloque. Solo se llama DESPUÉS de verificar
+ * disponibilidad del bloque nuevo (booking.service.js, dentro del mutex).
+ *
+ * Deja el Estatus en "Confirmada": el cambio de horario ya es cierto
+ * aunque el correo falle después (ahí se degrada a "Confirmada sin
+ * notificar", igual que en una reserva nueva).
+ *
+ * "Reprogramada Horario Original" guarda el horario de la PRIMERA
+ * reprogramación — mover la cita tres veces no borra dónde empezó.
+ */
+async function reprogramarCita({ notionPageId, inicio, fin, mesa, horarioOriginal, horarioOriginalYaGuardado }) {
+  requireDataSourceId();
+  const properties = {
+    Estatus: { select: { name: 'Confirmada' } },
+    'Fecha y Hora': { date: { start: inicio, end: fin } },
+    Reprogramada: { checkbox: true },
+    'Notas Envio Email': { rich_text: [] },
+  };
+  if (mesa) {
+    properties['Mesa / Ubicacion'] = { rich_text: [{ text: { content: `Mesa ${mesa}` } }] };
+  }
+  if (horarioOriginal && !horarioOriginalYaGuardado) {
+    properties['Reprogramada Horario Original'] = { date: { start: horarioOriginal } };
+  }
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
+/**
+ * Cancela la cita. Con esto el bloque queda libre de inmediato:
+ * "Cancelada" no entra en ningún conteo de capacidad ni de sponsor
+ * ocupado. El aviso por correo va después y no condiciona esto.
+ */
+async function marcarCitaCancelada({ notionPageId }) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Estatus: { select: { name: 'Cancelada' } },
+        'Notas Envio Email': { rich_text: [] },
+      },
+    }),
+  });
+}
+
+/** Cancelada en Notion, pero el .ics de baja nunca llegó — queda para reintento. */
+async function marcarCancelacionSinNotificar({ notionPageId, motivoCategoria, motivoDetalle }) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        Estatus: { select: { name: 'Cancelada' } },
+        'Notas Envio Email': {
+          rich_text: [
+            {
+              text: {
+                content: `${MARCA_CANCELACION_PENDIENTE} [${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
+              },
+            },
+          ],
+        },
+      },
+    }),
+  });
+}
+
+/** El aviso de cancelación sí salió: se limpia la marca, el Estatus no cambia. */
+async function marcarCancelacionNotificada(notionPageId) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        'Notas Envio Email': { rich_text: [] },
+        'Intentos Envio Email': { number: 0 },
+      },
+    }),
+  });
+}
+
+/** Canceladas cuyo aviso quedó pendiente — para el mismo barrido a demanda. */
+async function buscarCancelacionesSinNotificar() {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Estatus', select: { equals: 'Cancelada' } },
+      { property: 'Notas Envio Email', rich_text: { contains: MARCA_CANCELACION_PENDIENTE } },
+    ],
+  });
+  return filas.filter(tieneCancelacionPendienteDeAviso);
+}
+
+/**
+ * Citas reales (Confirmada / Confirmada sin notificar) de un asistente,
+ * hidratadas con la empresa del sponsor. Sirve para resolver "la cita de
+ * Platica" cuando el agente identifica por teléfono y no trae citaId.
+ */
+async function listarCitasRealesPorAsistente(asistentePageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      {
+        or: ESTATUS_CITA_REAL.map((estatus) => ({ property: 'Estatus', select: { equals: estatus } })),
+      },
+    ],
+  });
+
+  const contactos = require('./contactos.service');
+  const citas = [];
+  for (const fila of filas) {
+    const datos = datosDeCita(fila);
+    if (!ESTATUS_CITA_REAL.includes(datos.estatus)) continue;
+    let sponsor = null;
+    if (datos.sponsorPageId) {
+      try {
+        sponsor = await contactos.obtenerContacto(datos.sponsorPageId);
+      } catch (err) {
+        console.warn(`[Citas] No se pudo hidratar sponsor ${datos.sponsorPageId}:`, err.message);
+      }
+    }
+    citas.push({
+      ...datos,
+      sponsorEmpresa: sponsor?.empresa || null,
+      sponsorNombre: sponsor?.nombre || null,
+      sponsorCalendarioId: sponsor?.calendarioGoogleId || null,
+    });
+  }
+  return citas;
 }
 
 /**
@@ -701,6 +900,16 @@ function formatearSugerenciaAprobada(fila, sponsor) {
   };
 }
 
+function formatearCitaConfirmadaAsistente(cita) {
+  return {
+    sponsorNombre: cita.sponsorEmpresa || cita.sponsorNombre || 'Sponsor',
+    fechaHora: cita.inicio || null,
+    mesa: cita.mesa || null,
+    citaId: cita.id,
+    checkInRealizado: cita.checkInRealizado === true,
+  };
+}
+
 async function listarSugerenciasAprobadasPorAsistente(asistentePageId) {
   requireDataSourceId();
   const filas = await queryCitasPaginado({
@@ -712,6 +921,7 @@ async function listarSugerenciasAprobadasPorAsistente(asistentePageId) {
   const contactos = require('./contactos.service');
   const sugerencias = [];
   for (const fila of filas) {
+    if (fila.properties?.Estatus?.select?.name !== 'Aprobado') continue;
     const sponsorId = fila.properties?.['Contacto Match']?.relation?.[0]?.id;
     if (!sponsorId) continue;
     let sponsor;
@@ -728,8 +938,10 @@ async function listarSugerenciasAprobadasPorAsistente(asistentePageId) {
 }
 
 /**
- * Solo lectura para el agente de Carlos: filas Aprobado de un asistente.
+ * Solo lectura para el agente de Carlos: filas Aprobado de un asistente
+ * más las citas ya reales (Confirmada / Confirmada sin notificar).
  * No filtra por Campaña Enviada; ese dato viaja en cada sugerencia.
+ * `sugerencias` no cambia de schema; `citasConfirmadas` es un array aparte.
  */
 async function consultarSugerenciasAprobadasPorAsistente({ telefono, contactoId } = {}) {
   const phone = String(telefono || '').trim();
@@ -769,7 +981,14 @@ async function consultarSugerenciasAprobadasPorAsistente({ telefono, contactoId 
     }
   }
 
-  const sugerencias = await listarSugerenciasAprobadasPorAsistente(id);
+  const [sugerencias, citasReales] = await Promise.all([
+    listarSugerenciasAprobadasPorAsistente(id),
+    listarCitasRealesPorAsistente(id),
+  ]);
+  const citasConfirmadas = citasReales
+    .slice()
+    .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')))
+    .map(formatearCitaConfirmadaAsistente);
   return {
     asistente: {
       nombre: asistente?.nombre || '',
@@ -777,6 +996,7 @@ async function consultarSugerenciasAprobadasPorAsistente({ telefono, contactoId 
       empresa: asistente?.empresa || '',
     },
     sugerencias,
+    citasConfirmadas,
   };
 }
 
@@ -1358,6 +1578,16 @@ module.exports = {
   confirmarNotificacionEnviada,
   buscarCitasSinNotificarParaReintentar,
   obtenerCitaPorId,
+  datosDeCita,
+  reprogramarCita,
+  marcarCitaCancelada,
+  marcarCancelacionSinNotificar,
+  marcarCancelacionNotificada,
+  buscarCancelacionesSinNotificar,
+  tieneCancelacionPendienteDeAviso,
+  listarCitasRealesPorAsistente,
+  MARCA_CANCELACION_PENDIENTE,
+  ESTATUS_CITA_REAL,
   contarCitasConfirmadasPorSponsor,
   crearCitaSugerida,
   buscarSugerenciasPendientesPorSponsor,
@@ -1369,6 +1599,7 @@ module.exports = {
   listarSugeridasPorAsistente,
   consultarSugeridasPorIdentificador,
   formatearSugerenciaAprobada,
+  formatearCitaConfirmadaAsistente,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,

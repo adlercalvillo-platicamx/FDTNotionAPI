@@ -9,7 +9,14 @@ const citasService = require('../services/citas.service');
 const { reintentarNotificacion } = require('../services/booking.service');
 
 async function ejecutarReintentosPendientes() {
-  const candidatas = await citasService.buscarCitasSinNotificarParaReintentar();
+  // Dos pendientes distintos: la confirmación que nunca salió y el aviso
+  // de cancelación que nunca salió. reintentarNotificacion() distingue
+  // cuál .ics toca por el estatus de la fila.
+  const [sinConfirmar, sinCancelar] = await Promise.all([
+    citasService.buscarCitasSinNotificarParaReintentar(),
+    citasService.buscarCancelacionesSinNotificar(),
+  ]);
+  const candidatas = [...sinConfirmar, ...sinCancelar];
   const resultados = { total: candidatas.length, exitosos: 0, fallidos: 0, detalle: [] };
 
   for (const cita of candidatas) {

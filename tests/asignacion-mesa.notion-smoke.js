@@ -1,7 +1,7 @@
 // tests/asignacion-mesa.notion-smoke.js
 //
 // Verificación REAL contra Notion de pruebas (Citas nueva,
-// data_source df93bc94-…). Calendar mockeado — no crea eventos Google.
+// data_source df93bc94-…). No toca Google Calendar (retirado 27-ago).
 //
 //   node -r dotenv/config tests/asignacion-mesa.notion-smoke.js
 
@@ -21,26 +21,10 @@ process.env.CITAS_HORA_FIN_2026_10_07 = process.env.CITAS_HORA_FIN_2026_10_07 ||
 process.env.CITAS_HORA_INICIO_2026_10_08 = process.env.CITAS_HORA_INICIO_2026_10_08 || '09:00';
 process.env.CITAS_HORA_FIN_2026_10_08 = process.env.CITAS_HORA_FIN_2026_10_08 || '18:00';
 
-const calendarPath = path.resolve(__dirname, '../src/services/calendar-client.service.js');
 const citasPath = path.resolve(__dirname, '../src/services/citas.service.js');
 const bookingPath = path.resolve(__dirname, '../src/services/booking.service.js');
-delete require.cache[calendarPath];
 delete require.cache[citasPath];
 delete require.cache[bookingPath];
-
-require.cache[calendarPath] = {
-  id: calendarPath,
-  filename: calendarPath,
-  loaded: true,
-  exports: {
-    async createEvent() {
-      return { evento_id: `smoke-mesa-${Date.now()}` };
-    },
-    async cancelEvent() {
-      return { ok: true };
-    },
-  },
-};
 
 const { notionFetch } = require('../src/utils/notion-client');
 const { reservarCita } = require('../src/services/booking.service');

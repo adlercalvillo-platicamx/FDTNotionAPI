@@ -8,7 +8,7 @@ alwaysApply: true
 Lee README.md completo antes de proponer cambios — tiene el porqué de cada punto de abajo, no solo el qué.
 
 - **`booking.service.js` usa un mutex en memoria de un solo proceso.** Solo funciona si este servicio corre en **1 sola réplica** de Coolify. No lo quites, no lo reemplaces, no lo "simplifiques" — no es código de más.
-- **Nunca dupliques `google.service.js` aquí.** Calendar se llama por HTTP vía `calendar-client.service.js` contra el servicio que ya está en producción (`platica-google-docs-api`). Si algo falla al llamar Calendar, el arreglo NUNCA es "importemos la librería de Google directo".
+- **Google Calendar propio se retiró el 27-ago (Adler).** Fuente de verdad de citas: Notion + `.ics` por correo. No reintroducir `calendar-client.service.js`, no importar googleapis, no volver a llamar `platica-google-docs-api` para crear/cancelar eventos. Si alguien pide "sincronizar Calendar", el arreglo es el `.ics`, no una segunda copia.
 - **Notion se llama por REST directo** (`src/utils/notion-client.js`), nunca vía MCP — la escritura tiene que ser determinística, no una decisión de un agente/LLM.
 - **Reglas de negocio ya confirmadas — no cambiarlas sin que Adler lo pida explícitamente:**
   - Bronce no participa en citas 1a1 (bloqueado con error explícito en `matchmaking.service.js`)

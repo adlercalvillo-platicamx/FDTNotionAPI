@@ -72,7 +72,6 @@ function tituloHora(inicioIso) {
 async function sponsorsParaFlow(asistenteId) {
   const sugeridas = await citas.listarSugeridasPorAsistente(asistenteId);
   return sugeridas
-    .filter((s) => s.sponsor_calendario_id)
     .slice(0, MAX_DROPDOWN)
     .map((s) => ({
       id: s.sponsor_notion_id,
@@ -180,13 +179,12 @@ async function manejarAdvance(envelope) {
     if (!sponsorId || !inicio || !asistenteId) return errorPantalla(MSG.INVALIDO);
     const lista = await citas.listarSugeridasPorAsistente(asistenteId);
     const sug = lista.find((s) => s.sponsor_notion_id === sponsorId);
-    if (!sug?.sponsor_calendario_id) return errorPantalla(MSG.SIN_SUGERIDAS);
+    if (!sug) return errorPantalla(MSG.SIN_SUGERIDAS);
 
     const request_id = requestIdEstable(flowToken, sponsorId, inicio);
     encolarReservaFlow({
       request_id,
       sponsor_notion_id: sponsorId,
-      sponsor_calendario_id: sug.sponsor_calendario_id,
       asistente_notion_id: asistenteId,
       inicio,
       fin: citas.finDeBloque(inicio),

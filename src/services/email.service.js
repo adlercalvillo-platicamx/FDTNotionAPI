@@ -66,16 +66,22 @@ function _setTransporterForTests(transporter) {
 }
 
 /**
- * Construye el string .ics para una cita confirmada.
+ * Construye el string .ics de una cita.
  * UID estable = notionPageId — ver nota de cabecera sobre por qué.
+ *
+ * `cancelacion: true` genera METHOD:CANCEL + STATUS:CANCELLED sobre el
+ * MISMO UID: el cliente de correo lo trata como "borra este evento", no
+ * como uno nuevo. Verificado contra la librería `ics` que ya usa el
+ * proyecto — no hizo falta cambiarla.
  */
-function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion, secuencia }) {
+function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion, secuencia, cancelacion }) {
   const fecha = new Date(inicio);
   const fechaFin = new Date(fin);
 
   const evento = {
     uid: `${notionPageId}@fashiondigitaltalks.com`,
     sequence: secuencia || 0,
+    ...(cancelacion ? { method: 'CANCEL' } : {}),
     start: [
       fecha.getUTCFullYear(),
       fecha.getUTCMonth() + 1,
@@ -95,7 +101,7 @@ function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion,
     title: titulo,
     description: descripcion || '',
     location: ubicacion || '',
-    status: 'CONFIRMED',
+    status: cancelacion ? 'CANCELLED' : 'CONFIRMED',
   };
 
   const { error, value } = createEvent(evento);
@@ -150,31 +156,103 @@ async function enviarConfirmacionCita({
   notionPageId,
   destinatarios, // array de emails para ESTE envío (uno al sponsor, otro al asistente)
   titulo,
+  asunto, // opcional: solo cambia el Subject; el SUMMARY del .ics sigue siendo `titulo`
   descripcion,
   inicio,
   fin,
   ubicacion,
   secuencia,
 }) {
+  return enviarCorreoConIcs({
+    notionPageId,
+    destinatarios,
+    titulo,
+    asunto,
+    descripcion,
+    inicio,
+    fin,
+    ubicacion,
+    secuencia,
+    cancelacion: false,
+  });
+}
+
+/**
+ * Aviso de cancelación con el .ics de baja (mismo UID, secuencia mayor,
+ * METHOD:CANCEL). Mismos destinatarios que ya recibieron la confirmación
+ * original — no se agrega a nadie más.
+ *
+ * Igual que en la confirmación, quien llama es responsable de decidir qué
+ * hacer si esto falla: la cancelación en Notion ya es cierta y no se
+ * revierte por un problema de correo.
+ */
+async function enviarCancelacionCita({
+  notionPageId,
+  destinatarios,
+  titulo,
+  asunto,
+  descripcion,
+  inicio,
+  fin,
+  ubicacion,
+  secuencia,
+}) {
+  return enviarCorreoConIcs({
+    notionPageId,
+    destinatarios,
+    titulo,
+    asunto,
+    descripcion,
+    inicio,
+    fin,
+    ubicacion,
+    secuencia,
+    cancelacion: true,
+  });
+}
+
+async function enviarCorreoConIcs({
+  notionPageId,
+  destinatarios,
+  titulo,
+  asunto,
+  descripcion,
+  inicio,
+  fin,
+  ubicacion,
+  secuencia,
+  cancelacion,
+}) {
   if (!Array.isArray(destinatarios) || destinatarios.length === 0) {
     throw new EmailError(
       CATEGORIAS.CORREO_INVALIDO,
-      'No hay destinatarios válidos para enviar la confirmación (destinatarios vacío).'
+      `No hay destinatarios válidos para enviar ${
+        cancelacion ? 'la cancelación' : 'la confirmación'
+      } (destinatarios vacío).`
     );
   }
 
-  const icsContent = generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion, secuencia });
+  const icsContent = generarIcs({
+    notionPageId,
+    titulo,
+    descripcion,
+    inicio,
+    fin,
+    ubicacion,
+    secuencia,
+    cancelacion,
+  });
 
   const transporter = getTransporter();
   try {
     await transporter.sendMail({
       from: `"${process.env.EMAIL_FROM_NAME || 'Fashion Digital Talks'}" <${process.env.EMAIL_SMTP_USER}>`,
       to: destinatarios,
-      subject: titulo,
-      text: descripcion || 'Tu cita 1 a 1 ha sido confirmada.',
+      subject: asunto || titulo,
+      text: descripcion || (cancelacion ? 'Tu cita 1 a 1 fue cancelada.' : 'Tu cita 1 a 1 ha sido confirmada.'),
       icalEvent: {
-        filename: 'invitacion.ics',
-        method: 'REQUEST',
+        filename: cancelacion ? 'cancelacion.ics' : 'invitacion.ics',
+        method: cancelacion ? 'CANCEL' : 'REQUEST',
         content: icsContent,
       },
     });
@@ -182,7 +260,7 @@ async function enviarConfirmacionCita({
     const categoria = clasificarErrorSmtp(err);
     throw new EmailError(
       categoria,
-      `Fallo al enviar correo de confirmación (${categoria}): ${err.message}`,
+      `Fallo al enviar correo de ${cancelacion ? 'cancelación' : 'confirmación'} (${categoria}): ${err.message}`,
       err
     );
   }
@@ -190,6 +268,7 @@ async function enviarConfirmacionCita({
 
 module.exports = {
   enviarConfirmacionCita,
+  enviarCancelacionCita,
   generarIcs,
   EmailError,
   CATEGORIAS,

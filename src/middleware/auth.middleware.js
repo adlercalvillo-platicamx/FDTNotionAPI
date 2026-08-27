@@ -1,10 +1,7 @@
 // src/middleware/auth.middleware.js
 //
-// Mismo patrón que platica-google-docs-api: header X-API-Key en todos los
-// endpoints salvo /health. La clave vive en API_SECRET_KEY — es propia de
-// este repo, NO la misma que GOOGLE_API_KEY (esa es para llamar HACIA
-// afuera al servicio de Calendar; esta es para validar quién llama HACIA
-// este servicio).
+// Mismo patrón de header X-API-Key en todos los endpoints salvo /health.
+// La clave vive en API_SECRET_KEY — es propia de este repo.
 
 const API_SECRET_KEY = process.env.API_SECRET_KEY;
 

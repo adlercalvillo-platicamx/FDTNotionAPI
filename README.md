@@ -2,7 +2,7 @@
 
 Backend de citas 1a1, matchmaking y checklist para **Fashion Digital Talks 2026** — Plática.mx.
 
-Repo independiente de `platica-google-docs-api` (el de Ernesto/Adler para Google Docs/Sheets/Calendar). Este servicio **no duplica** ese código — le llama por HTTP cuando necesita Calendar. Ver razones en la sección "Por qué un repo separado" abajo.
+Repo independiente de `platica-google-docs-api`. Este servicio **no llama** a Google Calendar: la fuente de verdad de citas es Notion + el `.ics` por correo (retiro del 27-ago). Ver razones en la sección "Por qué un repo separado" abajo.
 
 ## Stack
 - Node.js + Express
@@ -28,12 +28,11 @@ src/
 ├── services/
 │   ├── citas.service.js              # Queries/escrituras sobre `Citas` — ciclo Sugerido→Aprobado→Confirmada / Confirmada sin notificar (9–18 ago); mesa; caché de pares activos (10-ago)
 │   ├── contactos.service.js          # Queries/escrituras sobre `Contactos` — Giro/Industria + Quiere Citas 1a1 (select) + calendarioGoogleId (12-ago)
-│   ├── booking.service.js            # Reserva: mutex + mesa 1–11 + Calendar + correo/.ics (1 sola réplica Coolify)
+│   ├── booking.service.js            # Reserva: mutex + mesa 1–11 + correo/.ics (1 sola réplica Coolify)
 │   ├── email.service.js              # ICS + SMTP (nodemailer); 3 reintentos inmediatos por envío
 │   ├── matchmaking.service.js        # Capa 1 + Capa 2; guardarSugerenciaIndividual (19-ago); global con explicación
 │   ├── campanas-matchmaking.service.js # Oferta inicial única: hasta 4 sponsors + 3 horarios; simulación por default
-│   ├── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
-│   └── calendar-client.service.js    # Llama por HTTP a platica-google-docs-api — NUNCA duplicar google.service.js aquí
+│   └── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 ├── mcp/
 │   ├── server.js                     # 9 herramientas MCP — capa delgada sobre services/
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
@@ -51,6 +50,7 @@ tests/
 ├── asignacion-mesa.manual-test.js    # Orden de llegada, tope 11, mutex (18-ago)
 ├── bloqueo-conferencias.manual-test.js # Bloqueo de sponsor sin restar mesas + exclusión Comite/Team (26-ago)
 ├── email-notificacion.manual-test.js # Confirmada vs Confirmada sin notificar + reenvío (18-ago)
+├── modificar-cancelar-cita.manual-test.js # Modificar/cancelar: pertenencia, margen 5 min, check-in, .ics CANCEL (27-ago)
 ├── titulos-empresa.manual-test.js     # Empresa×Empresa + texto multipart sin truncar (19-ago)
 ├── sugeridas-empresas.manual-test.js  # Empresas hidratadas + solo Sugerido/Aprobado (19-ago)
 └── mocks/
@@ -69,13 +69,15 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
-| POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; crea el evento en Calendar; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. |
+| POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna mesa 1–11 por orden de confirmación en el bloque; genera el título `Cita — Empresa asistente - Empresa sponsor`; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. `sponsor_calendario_id` en el body es legado e ignorado. |
+| POST | `/citas/modificar-cita` | **Nueva (27 de agosto).** Mueve una cita real a otro bloque. Identificación por `telefono` (el servidor valida que la cita sea de esa persona) o por `citaId` directo (Laura/Liz). Valida el horario nuevo con el mismo criterio que `reservar` (grilla, 11 mesas, sponsor ocupado, bloqueos de conferencia) **antes** de tocar Notion; reasigna mesa y manda el `.ics` actualizado (mismo UID, `SEQUENCE` mayor). Si el correo falla, el horario nuevo **se conserva** y la cita queda `Confirmada sin notificar`. |
+| POST | `/citas/cancelar-cita` | **Nueva (27 de agosto).** Mismos dos caminos de identificación. Pasa el `Estatus` a `Cancelada` (con eso el bloque queda libre) y manda el `.ics` de baja (`METHOD:CANCEL`). Si el correo falla, la cita sigue cancelada y queda marcada para reintento. Llamarla dos veces es idempotente. |
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura — identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas. Sin match → `404 CONTACTO_NO_RESUELTO`. |
-| GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Lista vacía si no hay aprobadas. `X-API-Key`. |
+| GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Desde el 27-ago también trae `citasConfirmadas` (`Confirmada` / `Confirmada sin notificar`, orden cronológico). `sugerencias` no cambió de schema. Lista vacía si no hay aprobadas. `X-API-Key`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). **No reemplaza** `POST /citas/reservar`. `Confirmada` / `Confirmada sin notificar` ocupan al sponsor; las filas de bloqueo de conferencia no restan de las 11 mesas. Sin horario en env → `503`. |
 | POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
 | POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score y 3 horarios del sponsor top. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
-| POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar`. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
+| POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar` y (desde 27-ago) de las `Cancelada` cuyo aviso de baja nunca salió. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
 | POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
 | POST | `/matchmaking/sugerir-todos` | Corre matchmaking para todos los sponsors activos, detecta solapamientos y (desde 19-ago) devuelve ranking por sponsor con `explicacion`/`detalle` en cada match. |
@@ -87,7 +89,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 
 **Generación automática de sugerencias:** no hay scheduler dentro de Node. Configurar un cron HTTP externo cada 6 horas hacia `POST /matchmaking/sugerir-todos`, incluyendo `X-API-Key` desde un secret (nunca hardcodeado). Este cron solo crea `Sugerido`; no dispara WhatsApp.
 
-**Títulos y presentación por empresa (19 ago):** las sugerencias se guardan como `Sugerido: Empresa asistente × Empresa sponsor`; una reserva confirmada usa `Cita — Empresa asistente - Empresa sponsor` en Notion, Calendar y correo. Si `Empresa` está vacía, el nombre de la persona es únicamente el fallback. El parser concatena todos los fragmentos `title`/`rich_text` de Notion para no truncar nombres o empresas multipart.
+**Títulos y presentación por empresa (19 ago):** las sugerencias se guardan como `Sugerido: Empresa asistente × Empresa sponsor`; una reserva confirmada usa `Cita — Empresa asistente - Empresa sponsor` en Notion y correo. Si `Empresa` está vacía, el nombre de la persona es únicamente el fallback. El parser concatena todos los fragmentos `title`/`rich_text` de Notion para no truncar nombres o empresas multipart.
 
 **Nota sobre los GET de solo lectura:** el resto del repo de Google usa solo POST/PATCH/DELETE por convención (no por limitación técnica). Aquí se dejaron como GET porque son consultas de solo lectura y son más simples de probar/cachear — si quieres uniformidad total con el otro repo, se pueden cambiar a POST sin problema.
 
@@ -115,14 +117,17 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 
 **Rediseño del 9 de agosto — de dónde salió `aprobar_match`:** el campo `Match Aprobado` (checkbox único por sponsor) no distinguía CUÁL de varios candidatos sugeridos había sido aprobado — un hueco de diseño que se volvió real en cuanto `Citas Minimas Prometidas` se confirmó como variable por sponsor (un sponsor con cuota de 4+ tiene 4+ candidatos sugeridos, no 1). La tabla `Citas` ya tenía la forma correcta (una fila por par sponsor-asistente), así que se extendió su `Estatus` con `Sugerido` y `Aprobado` como los dos primeros pasos del ciclo de vida, antes de `Pendiente Calendar`. `Match Sugerido` (relation en el sponsor) queda en desuso a partir de este cambio — se conserva en el schema por historial, pero ningún código nuevo lo escribe.
 
-**`reservar_cita` deliberadamente NO se expone como herramienta MCP.** Crea un evento real en el calendario de un sponsor real, y la regla de negocio del cliente exige aprobación humana antes de ofrecer una cita — una herramienta que el agente pudiera invocar por una interpretación equivocada en conversación contradice esa regla directamente. En su lugar, `POST /citas/reservar` se conectó como herramienta de **API REST** directamente en la plataforma de Plática, con la instrucción explícita de invocarse solo tras aprobación humana.
+**`modificar-cita` y `cancelar-cita` tampoco se exponen como herramientas MCP**, por la misma razón que `reservar_cita`: mueven o borran una cita real y mandan correo. Van como herramientas de API REST en Plática, con la validación de pertenencia del lado del servidor — nunca se confía en que el agente de Carlos ya haya verificado que la cita es de quien escribe.
+
+**Google Calendar propio se retiró el 27-ago (Adler).** Nadie del equipo lo consultaba; Notion ya era adonde todos iban, y el `.ics` cubre el calendario personal del sponsor. `calendar-client.service.js` ya no existe. Los campos `Google Event ID` (Citas) y `Calendario Google ID` (Contactos) quedan en el schema por historial; el código nuevo no los escribe ni los exige. `sponsor_calendario_id` en `POST /citas/reservar` se ignora si llega, para no romper clientes viejos.
+
+**`reservar_cita` deliberadamente NO se expone como herramienta MCP.** Crea una cita real en Notion y manda correo, y la regla de negocio del cliente exige aprobación humana antes de ofrecerla — una herramienta que el agente pudiera invocar por una interpretación equivocada en conversación contradice esa regla directamente. En su lugar, `POST /citas/reservar` se conectó como herramienta de **API REST** directamente en la plataforma de Plática, con la instrucción explícita de invocarse solo tras aprobación humana.
 
 ## Variables de entorno
 Ver `.env.example`. Resumen:
-- `API_SECRET_KEY` — clave para llamar a ESTE servicio (propia, no la del repo de Google).
+- `API_SECRET_KEY` — clave para llamar a ESTE servicio.
 - `NOTION_API_KEY`, `NOTION_CONTACTOS_DATA_SOURCE_ID`, `NOTION_CITAS_DATA_SOURCE_ID`.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
-- `GOOGLE_API_BASE_URL`, `GOOGLE_API_KEY`, `GOOGLE_API_CLIENTE_ID` — para llamar HACIA `platica-google-docs-api`. `GOOGLE_API_CLIENTE_ID` requiere que la cuenta de Google de los sponsors ya esté conectada por OAuth en ese servicio (Adler lo maneja directamente, no es parte de este repo).
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
   - `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`
   - `CITAS_HORA_INICIO_2026_10_07` / `CITAS_HORA_FIN_2026_10_07` (mié: `10:30` / `19:00`)
@@ -149,7 +154,7 @@ Ver `.env.example`. Resumen:
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.
 2. **Concurrencia** — `booking.service.js` depende de un mutex en memoria de un solo proceso. Compartir servidor con otro servicio cuya política de réplicas no controlas directamente es un riesgo real de que la protección se rompa en silencio.
-3. Nada de esto bloquea reusar el código de Calendar — se llama por HTTP (`calendar-client.service.js`), no se duplica.
+3. Google Calendar propio se retiró el 27-ago: ya no hay llamada HTTP a ese repo desde aquí.
 
 ## Cómo correr las pruebas manuales
 No hay suite automatizada con Jest todavía — son scripts que se corren a mano y muestran resultado en consola, usando datos reales de los contactos de ejemplo en Notion con las llamadas de escritura simuladas:
@@ -185,7 +190,7 @@ Pruebas SMTP reales contra Coolify: destinatarios **solo** en allowlist de prueb
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
 - Cron de reconciliación para citas que quedan en "Pendiente Calendar" por un crash a media ejecución.
 - Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada` (ver `matchmaking-spec-fdt.md`).
-- ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — **verificado el 22 de julio con una reserva real de punta a punta** (mutex → Notion → Calendar → Notion confirmado), contra el calendario "Prueba FDT" y el cliente_id `adler-calvillo`. `evento_id` sí viene donde se esperaba.
+- ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — verificado el 22 de julio; **irrelevante desde el 27-ago** (Calendar propio retirado).
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
 - Confirmar con Laura: ¿última cita del miércoles puede ser `18:30–19:00` (toca el cierre del horario de citas) o hay que cortar antes? Mismo análisis jueves (`17:30–18:00`). Ver Caso 4c de `tests-disponibilidad`.
 - Restaurar emails reales de sponsors/asistentes en Notion (backups en `tests/_emails-*-backup-*.json`) cuando terminen las pruebas de SMTP.

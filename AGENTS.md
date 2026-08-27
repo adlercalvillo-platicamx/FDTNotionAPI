@@ -1,6 +1,6 @@
 # AGENTS.md — fdt-notion-api
 
-Backend Node/Express de citas 1a1, matchmaking y checklist para **Fashion Digital Talks 2026** (Plática.mx). Fuente de verdad: Notion. Calendar se consume por HTTP; no hay SDK de Google en este repo.
+Backend Node/Express de citas 1a1, matchmaking y checklist para **Fashion Digital Talks 2026** (Plática.mx). Fuente de verdad: Notion + `.ics` por correo. Google Calendar propio se retiró el 27-ago.
 
 Lee [`README.md`](README.md) y [`.cursor/rules/architecture.mdc`](.cursor/rules/architecture.mdc) antes de cambiar código. Las bitácoras (`bitacora-*.md`) son handoff, no spec: si contradicen el código, gana el código.
 
@@ -41,10 +41,11 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 |---|---|---|
 | Checklist consultar / barrido | GET `/checklist/consultar`, POST `/checklist/revisar-pendientes` | `consultar_checklist`, `revisar_checklists_pendientes` |
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
-| Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita ni Calendar |
+| Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | **NO exponer** `reservar_cita` como tool |
+| Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | **NO exponer** como tools (misma razón que reservar) |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (alias `telefono=`; `asistente_notion_id=` opcional) | `consultar_sugeridas_para_asistente` (`whatsapp` preferido) |
-| Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional) | — |
+| Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron) |
@@ -57,9 +58,9 @@ La generación periódica de sugerencias es externa al proceso: cron HTTP cada 6
 
 ## Ciclo de vida en tabla `Citas`
 
-`Sugerido` → `Aprobado` → `Pendiente Calendar` → `Confirmada`
+`Sugerido` → `Aprobado` → `Pendiente Calendar` → `Confirmada` → (`Cancelada`)
 
-Si SMTP falla tras Calendar + Notion OK: **`Confirmada sin notificar`** (no revertir la cita). Motivo en `Notas Envio Email`.
+Si SMTP falla tras Notion OK: **`Confirmada sin notificar`** (no revertir la cita). Motivo en `Notas Envio Email`. Si lo que falló fue el aviso de una **cancelación**, la fila se queda en `Cancelada` con `[CANCELACION_PENDIENTE]` en ese mismo campo.
 
 **`Match Sugerido` / checkbox `Match Aprobado` están en desuso.** Escrituras nuevas van a filas en `Citas` por par sponsor–asistente. No revivir esos campos.
 
@@ -68,10 +69,20 @@ Toda escritura a `Confirmada` / `Confirmada sin notificar` de una cita real debe
 ## Reserva (`booking.service.js`)
 
 - Mutex **en memoria, un proceso**. Coolify: **1 réplica**. No quitar ni “simplificar” el mutex.
-- Notion es el árbitro del slot; Calendar vía [`calendar-client.service.js`](src/services/calendar-client.service.js) → `platica-google-docs-api`. Si Calendar falla, **no** importar googleapis aquí.
+- Notion es el árbitro del slot. El sponsor ve la cita en su calendario personal vía `.ics` por correo. Google Calendar propio se retiró el 27-ago (`calendar-client.service.js` ya no existe).
 - Duración y grilla de bloques: mismas env que disponibilidad (`CITAS_*`). Reusar `generarBloquesParaFecha`; no duplicar la lista de slots.
 - Capacidad: **11 mesas por bloque** (`CAPACIDAD_MAXIMA_MESAS`). Mesa = `contarCitasEnBloque(inicio) + 1`. Cancelar no reutiliza el número. Las filas de bloqueo de conferencia **sí** marcan `SPONSOR_YA_OCUPADO` para ese sponsor y **no** restan mesa.
 - Correos: dos envíos distintos (sponsor con datos del asistente; asistente corto, **sin** contacto del sponsor). 3 reintentos SMTP inmediatos por envío. `emailsExtra` / `asistentes_email` van al correo del asistente.
+
+## Modificar / cancelar (27-ago, mismo `booking.service.js`)
+
+Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Principal` sea ese contacto; `telefono` + `citaId` ajeno → **403 `CITA_NO_PERTENECE`**) o `citaId` directo (Laura/Liz, sin validación cruzada). Con teléfono y sin `citaId`: 1 cita activa se resuelve sola, varias devuelven **409 `VARIAS_CITAS_ACTIVAS`** con la lista; `sponsorEmpresa` desambigua.
+
+- **Modificar**: valida el bloque nuevo (grilla + 11 mesas + sponsor ocupado, con `exceptPageId` para no chocar consigo misma) **antes** de escribir Notion, dentro del mismo mutex. Reasigna mesa, marca `Reprogramada` y guarda el horario de la primera reprogramación en `Reprogramada Horario Original`. Correo fallido → `Confirmada sin notificar` (el horario nuevo NO se revierte); el reenvío a demanda lee `Fecha y Hora` de Notion, así que manda el horario correcto.
+- **Cancelar**: `Estatus` → `Cancelada` libera el bloque solo (no está en `ESTATUS_ACTIVOS` ni en los conteos). Correo fallido → sigue `Cancelada` + marca `[CANCELACION_PENDIENTE]` al inicio de `Notas Envio Email`. **Nunca** degradar una cancelación a `Confirmada sin notificar`: volvería a ocupar mesa.
+- Dos reglas de tiempo, independientes entre sí: el horario **destino** no puede estar más de `CITAS_MARGEN_MODIFICACION_MINUTOS` (5) en el pasado; y una cita **original** ya pasada solo se puede mover si `Check-in Realizado` está en falso. No hay ventana mínima de anticipación sobre la cita original.
+- ICS: mismo UID (`page_id@fashiondigitaltalks.com`), `SEQUENCE` de `siguienteSecuenciaIcs()` (timestamp con garantía de incremento en el mismo segundo), `CONFIRMED` al modificar y `METHOD:CANCEL` + `STATUS:CANCELLED` al cancelar. No hay campo de secuencia en Notion y no hace falta.
+- El aviso de “si tu calendario no se actualiza solo” va en el **cuerpo del correo**, no en la respuesta HTTP (esa advertencia era del Google Calendar propio, retirado el 27-ago).
 
 ## Matchmaking
 
@@ -88,7 +99,7 @@ Toda escritura a `Confirmada` / `Confirmada sin notificar` de una cita real debe
 - Cliente: [`src/utils/notion-client.js`](src/utils/notion-client.js) contra data sources `NOTION_CONTACTOS_DATA_SOURCE_ID` / `NOTION_CITAS_DATA_SOURCE_ID`.
 - Horario: `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`. En Coolify, Names con **underscores** en la fecha (`CITAS_HORA_INICIO_2026_10_07`). Guiones en el Name no se inyectan. El query `fecha` del API sigue con guiones.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID`: contacto ficticio de bloqueo de conferencias. Default = el de pruebas. Si los data sources son de producción (prefijo `3b162dda`) y la variable falta, está vacía o trae ese default → el servicio **no arranca** (503 en `requireContactoBloqueoAgenda`).
-- `API_SECRET_KEY` es de **este** servicio. `GOOGLE_API_KEY` es el X-API-Key de Google Docs API. No mezclarlos. FDT usa OAuth por cliente (Modelo 2), no refresh token de agencia.
+- `API_SECRET_KEY` es de **este** servicio. No hay `GOOGLE_API_*` en el flujo de citas (retirado 27-ago).
 
 ## Qué no hacer
 
@@ -106,4 +117,4 @@ Inyectar mocks en `require.cache` **antes** de `require` del service real (ver `
 
 Baselines en `.cursor/rules/testing.mdc`: si cambian sin un cambio de negocio intencional, es regresión — reportar, no “arreglar” el test para que pase.
 
-Scripts locales útiles: `tests/disponibilidad.local-smoke.js` (sin Notion), `tests/email-notificacion.manual-test.js`, `tests/asignacion-mesa.manual-test.js`.
+Scripts locales útiles: `tests/disponibilidad.local-smoke.js` (sin Notion), `tests/email-notificacion.manual-test.js`, `tests/asignacion-mesa.manual-test.js`, `tests/modificar-cancelar-cita.manual-test.js`.

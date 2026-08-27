@@ -22,14 +22,13 @@ const INICIO = '2026-10-07T12:00:00-06:00';
 const FIN = '2026-10-07T12:30:00-06:00';
 
 const citasPath = path.resolve(__dirname, '../src/services/citas.service.js');
-const calendarPath = path.resolve(__dirname, '../src/services/calendar-client.service.js');
 const contactosPath = path.resolve(__dirname, '../src/services/contactos.service.js');
 const emailPath = path.resolve(__dirname, '../src/services/email.service.js');
 const bookingPath = path.resolve(__dirname, '../src/services/booking.service.js');
 const jobPath = path.resolve(__dirname, '../src/jobs/reintentar-notificaciones.job.js');
 
 function limpiarCache() {
-  for (const p of [citasPath, calendarPath, contactosPath, emailPath, bookingPath, jobPath]) {
+  for (const p of [citasPath, contactosPath, emailPath, bookingPath, jobPath]) {
     delete require.cache[p];
   }
 }
@@ -46,7 +45,6 @@ function crearHarness({
   emailsPorId = {},
   emailFailCategoria = null,
   emailFailTimes = null, // si number: falla N veces y luego OK; si null + categoria: siempre falla
-  calendarCreateCalls = [],
   emailCalls = [],
 } = {}) {
   limpiarCache();
@@ -220,21 +218,6 @@ function crearHarness({
 
   Object.assign(citasReal, mockCitas);
 
-  require.cache[calendarPath] = {
-    id: calendarPath,
-    filename: calendarPath,
-    loaded: true,
-    exports: {
-      async createEvent(args) {
-        calendarCreateCalls.push(args);
-        return { evento_id: `evt-${calendarCreateCalls.length}` };
-      },
-      async cancelEvent() {
-        return { ok: true };
-      },
-    },
-  };
-
   require.cache[contactosPath] = {
     id: contactosPath,
     filename: contactosPath,
@@ -287,7 +270,7 @@ function crearHarness({
   };
 
   const booking = require(bookingPath);
-  return { booking, porId, mockCitas, calendarCreateCalls, emailCalls, citasReal };
+  return { booking, porId, mockCitas, emailCalls, citasReal };
 }
 
 let fallos = 0;
@@ -317,7 +300,7 @@ function baseParams(overrides = {}) {
 
 (async () => {
   console.log('\n=== Caso 1 — reserva + 2 correos (sponsor / asistente) ===');
-  await ok('estado Confirmada, 2 emails distintos, Calendar con descripción del sponsor', async () => {
+  await ok('estado Confirmada, 2 emails distintos (sponsor con contacto, asistente corto)', async () => {
     const h = crearHarness({ emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' } });
     const r = await h.booking.reservarCita(baseParams({ request_id: 'req-caso1' }));
     assert.strictEqual(r.estado, 'Confirmada');
@@ -344,8 +327,6 @@ function baseParams(overrides = {}) {
     assert.ok(!mailAsistente.descripcion.includes('a@t.com'));
     assert.ok(!mailAsistente.descripcion.includes('Teléfono'));
 
-    assert.ok(h.calendarCreateCalls[0].descripcion.includes('Empresa asistente-b agendó'));
-    assert.strictEqual(h.calendarCreateCalls[0].titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(h.porId.get(r.notion_page_id).titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(r.titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
@@ -402,8 +383,6 @@ function baseParams(overrides = {}) {
       const page = h.porId.get(r.notion_page_id);
       assert.strictEqual(page.estatus, 'Confirmada sin notificar');
       assert.ok(page.notasEnvio.includes(cat));
-      assert.ok(page.eventoId, 'debe conservar evento de Calendar');
-      assert.strictEqual(h.calendarCreateCalls.length, 1);
       // Solo el correo del sponsor llega a intentarse (falla 3 veces y corta
       // antes del asistente)
       assert.strictEqual(h.emailCalls.length, 3);
@@ -643,21 +622,6 @@ function baseParams(overrides = {}) {
       },
       async revertirCitaPendienteAMatch() {},
     });
-    const calendarCalls = [];
-    require.cache[calendarPath] = {
-      id: calendarPath,
-      filename: calendarPath,
-      loaded: true,
-      exports: {
-        async createEvent() {
-          calendarCalls.push(1);
-          return { evento_id: 'x' };
-        },
-        async cancelEvent() {
-          return {};
-        },
-      },
-    };
     require.cache[contactosPath] = {
       id: contactosPath,
       filename: contactosPath,
@@ -689,7 +653,6 @@ function baseParams(overrides = {}) {
     );
     const page = [...porId.values()][0];
     assert.strictEqual(page.estatus, 'Fallida');
-    assert.strictEqual(calendarCalls.length, 0);
   });
 
   console.log('\n=== crearCitaPendiente reutiliza Aprobado (sin fila nueva) ===');

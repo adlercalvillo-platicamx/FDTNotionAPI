@@ -13,9 +13,21 @@ const citasPath = require.resolve('../src/services/citas.service');
 const controllerPath = require.resolve('../src/controllers/matchmaking.controller');
 
 let filasNotion = [];
-let lastQueryFilter = null;
+let lastQueryFilters = [];
 const contactosPorId = {};
 let telefonoBuscado = null;
+
+function estatusEnFiltro(filter) {
+  const names = [];
+  function walk(nodo) {
+    if (!nodo) return;
+    if (nodo.property === 'Estatus' && nodo.select?.equals) names.push(nodo.select.equals);
+    if (Array.isArray(nodo.and)) nodo.and.forEach(walk);
+    if (Array.isArray(nodo.or)) nodo.or.forEach(walk);
+  }
+  walk(filter);
+  return names;
+}
 
 require.cache[notionPath] = {
   id: notionPath,
@@ -24,8 +36,12 @@ require.cache[notionPath] = {
   exports: {
     async notionFetch(path, options = {}) {
       if (String(path).includes('/query')) {
-        lastQueryFilter = options.body ? JSON.parse(options.body).filter : null;
-        return { results: filasNotion, has_more: false };
+        lastQueryFilters.push(options.body ? JSON.parse(options.body).filter : null);
+        const pedidos = estatusEnFiltro(lastQueryFilters[lastQueryFilters.length - 1]);
+        const results = pedidos.length
+          ? filasNotion.filter((f) => pedidos.includes(f.properties?.Estatus?.select?.name))
+          : filasNotion;
+        return { results, has_more: false };
       }
       throw new Error(`notionFetch inesperado: ${path}`);
     },
@@ -69,14 +85,20 @@ const {
 delete require.cache[controllerPath];
 const { sugerenciasAsistente } = require('../src/controllers/matchmaking.controller');
 
-function filaCita({ id, estatus, score, campanaEnviada, sponsorId }) {
+function filaCita({ id, estatus, score, campanaEnviada, sponsorId, inicio, mesa, checkIn }) {
   return {
     id,
     properties: {
       Estatus: { select: { name: estatus } },
       'Campaña Enviada': { checkbox: campanaEnviada },
       'Contacto Match': { relation: sponsorId ? [{ id: sponsorId }] : [] },
+      'Contacto Principal': { relation: [{ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }] },
       Notas: { rich_text: [{ plain_text: `Score: ${score}\n` }] },
+      'Fecha y Hora': inicio ? { date: { start: inicio, end: null } } : { date: null },
+      'Mesa / Ubicacion': mesa
+        ? { rich_text: [{ plain_text: mesa, text: { content: mesa } }] }
+        : { rich_text: [] },
+      'Check-in Realizado': { checkbox: checkIn === true },
     },
   };
 }
@@ -150,7 +172,7 @@ async function casoTresAprobadasOrdenadasPorScore() {
       sponsorId: 'sponsor-medio',
     }),
   ];
-  lastQueryFilter = null;
+  lastQueryFilters = [];
   const resultado = await consultarSugerenciasAprobadasPorAsistente({
     telefono: '+52 33 1234 5678',
   });
@@ -170,10 +192,11 @@ async function casoTresAprobadasOrdenadasPorScore() {
   assert.strictEqual(resultado.sugerencias[0].campanaEnviada, true);
   assert.strictEqual(resultado.sugerencias[1].campanaEnviada, false);
   assert.strictEqual(resultado.sugerencias[2].campanaEnviada, false);
-  const filtroTxt = JSON.stringify(lastQueryFilter);
+  const filtroTxt = JSON.stringify(lastQueryFilters);
   assert.ok(filtroTxt.includes('"Aprobado"'));
   assert.ok(!filtroTxt.includes('Sugerido'), 'el query de Notion no debe pedir Sugerido');
   assert.ok(!filtroTxt.includes('Campaña Enviada'), 'no filtrar por Campaña Enviada');
+  assert.deepStrictEqual(resultado.citasConfirmadas, []);
 }
 
 async function casoSinAprobadasListaVacia() {
@@ -183,6 +206,7 @@ async function casoSinAprobadasListaVacia() {
     contactoId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   });
   assert.deepStrictEqual(resultado.sugerencias, []);
+  assert.deepStrictEqual(resultado.citasConfirmadas, []);
 }
 
 function casoFormatoCampanaEnviadaUsaCheckbox() {
@@ -243,6 +267,142 @@ async function casoControllerPorContactoId() {
   assert.strictEqual(res.statusCode, 200);
   assert.strictEqual(res.body.sugerencias.length, 1);
   assert.strictEqual(res.body.sugerencias[0].citaId, 'cita-id');
+  assert.deepStrictEqual(res.body.citasConfirmadas, []);
+}
+
+async function casoAprobadasYConfirmadasNoSeMezclan() {
+  setupAsistente();
+  filasNotion = [
+    filaCita({
+      id: 'ap-1',
+      estatus: 'Aprobado',
+      score: 80,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-alto',
+    }),
+    filaCita({
+      id: 'ap-2',
+      estatus: 'Aprobado',
+      score: 20,
+      campanaEnviada: true,
+      sponsorId: 'sponsor-medio',
+    }),
+    filaCita({
+      id: 'conf-1',
+      estatus: 'Confirmada',
+      score: 99,
+      campanaEnviada: true,
+      sponsorId: 'sponsor-bajo',
+      inicio: '2026-10-07T12:00:00-06:00',
+      mesa: 'Mesa 3',
+      checkIn: false,
+    }),
+    filaCita({
+      id: 'cancelada',
+      estatus: 'Cancelada',
+      score: 1,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-alto',
+      inicio: '2026-10-07T10:30:00-06:00',
+    }),
+    filaCita({
+      id: 'sugerida',
+      estatus: 'Sugerido',
+      score: 50,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-alto',
+    }),
+  ];
+  const resultado = await consultarSugerenciasAprobadasPorAsistente({
+    telefono: '+52 33 1234 5678',
+  });
+  assert.deepStrictEqual(
+    resultado.sugerencias.map((s) => s.citaId),
+    ['ap-1', 'ap-2']
+  );
+  assert.deepStrictEqual(
+    resultado.citasConfirmadas.map((c) => c.citaId),
+    ['conf-1']
+  );
+  assert.deepStrictEqual(resultado.citasConfirmadas[0], {
+    sponsorNombre: 'Empresa Bajo',
+    fechaHora: '2026-10-07T12:00:00-06:00',
+    mesa: 'Mesa 3',
+    citaId: 'conf-1',
+    checkInRealizado: false,
+  });
+}
+
+async function casoConfirmadaYSinNotificar() {
+  setupAsistente();
+  filasNotion = [
+    filaCita({
+      id: 'sin-notif',
+      estatus: 'Confirmada sin notificar',
+      score: 10,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-medio',
+      inicio: '2026-10-08T09:00:00-06:00',
+      mesa: 'Mesa 1',
+    }),
+    filaCita({
+      id: 'conf',
+      estatus: 'Confirmada',
+      score: 10,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-alto',
+      inicio: '2026-10-07T16:00:00-06:00',
+      mesa: 'Mesa 2',
+      checkIn: true,
+    }),
+  ];
+  const resultado = await consultarSugerenciasAprobadasPorAsistente({
+    contactoId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  });
+  assert.deepStrictEqual(resultado.sugerencias, []);
+  assert.deepStrictEqual(
+    resultado.citasConfirmadas.map((c) => c.citaId),
+    ['conf', 'sin-notif']
+  );
+  assert.strictEqual(resultado.citasConfirmadas[0].checkInRealizado, true);
+  assert.strictEqual(resultado.citasConfirmadas[1].checkInRealizado, false);
+}
+
+async function casoOrdenCronologicoConfirmadas() {
+  setupAsistente();
+  filasNotion = [
+    filaCita({
+      id: 'tarde',
+      estatus: 'Confirmada',
+      score: 1,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-bajo',
+      inicio: '2026-10-08T17:00:00-06:00',
+    }),
+    filaCita({
+      id: 'manana',
+      estatus: 'Confirmada',
+      score: 1,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-alto',
+      inicio: '2026-10-07T10:30:00-06:00',
+    }),
+    filaCita({
+      id: 'medio',
+      estatus: 'Confirmada sin notificar',
+      score: 1,
+      campanaEnviada: false,
+      sponsorId: 'sponsor-medio',
+      inicio: '2026-10-07T15:00:00-06:00',
+    }),
+  ];
+  const resultado = await consultarSugerenciasAprobadasPorAsistente({
+    telefono: '+52 33 1234 5678',
+  });
+  assert.deepStrictEqual(
+    resultado.citasConfirmadas.map((c) => c.citaId),
+    ['manana', 'medio', 'tarde']
+  );
 }
 
 async function main() {
@@ -258,6 +418,12 @@ async function main() {
   console.log('✅ Teléfono desconocido → 404.');
   await casoControllerPorContactoId();
   console.log('✅ contactoId resuelve sin pasar por teléfono.');
+  await casoAprobadasYConfirmadasNoSeMezclan();
+  console.log('✅ 2 Aprobado + 1 Confirmada: arrays separados; Cancelada/Sugerido fuera.');
+  await casoConfirmadaYSinNotificar();
+  console.log('✅ Confirmada y Confirmada sin notificar salen juntas en citasConfirmadas.');
+  await casoOrdenCronologicoConfirmadas();
+  console.log('✅ citasConfirmadas ordenadas por fechaHora ascendente.');
 }
 
 main().catch((err) => {

@@ -4,6 +4,8 @@ const router = express.Router();
 const citasController = require('../controllers/citas.controller');
 
 router.post('/reservar', citasController.reservar);
+router.post('/modificar-cita', citasController.modificar);
+router.post('/cancelar-cita', citasController.cancelar);
 router.get('/disponibilidad', citasController.disponibilidad);
 router.get('/sugeridas', citasController.sugeridas);
 // Ruta estática ANTES de /:id/... para que Express no la matchee contra :id

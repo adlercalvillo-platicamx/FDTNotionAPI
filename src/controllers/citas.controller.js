@@ -2,6 +2,8 @@
 
 const {
   reservarCita,
+  modificarCita,
+  cancelarCita,
   reintentarNotificacion,
   BookingError,
 } = require('../services/booking.service');
@@ -17,9 +19,15 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   CONTACTO_NO_RESUELTO: 409,
   SIN_DESTINATARIOS: 400,
   ESTADO_INVALIDO: 409,
+  ASISTENTE_NO_ENCONTRADO: 404,
+  CITA_NO_ENCONTRADA: 404,
+  SIN_CITAS_ACTIVAS: 404,
+  CITA_NO_PERTENECE: 403, // el teléfono no corresponde al Contacto Principal de esa cita
+  VARIAS_CITAS_ACTIVAS: 409,
+  HORARIO_EN_PASADO: 400,
+  CITA_YA_OCURRIO: 409,
   LIMITE_INTENTOS_ALCANZADO: 409, // legado — ya no se lanza; se deja por si llega un cliente viejo
   NOTIFICACION_FALLO: 502,
-  CALENDAR_FALLO: 502,
   NOTION_FALLO: 502,
 };
 
@@ -38,7 +46,7 @@ function esUuidCanonico(valor) {
 // ─────────────────────────────────────────────────────────────
 async function reservar(req, res) {
   const {
-    sponsor_calendario_id,
+    sponsor_calendario_id: _sponsorCalendarioId, // legado 27-ago, se ignora
     sponsor_notion_id,
     asistente_notion_id,
     inicio,
@@ -56,10 +64,10 @@ async function reservar(req, res) {
       message: 'El campo "request_id" es requerido (clave de idempotencia — el mismo valor en un reintento).',
     });
   }
-  if (!sponsor_calendario_id || !sponsor_notion_id || !asistente_notion_id) {
+  if (!sponsor_notion_id || !asistente_notion_id) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'Los campos "sponsor_calendario_id", "sponsor_notion_id" y "asistente_notion_id" son requeridos.',
+      message: 'Los campos "sponsor_notion_id" y "asistente_notion_id" son requeridos.',
     });
   }
   if (!inicio || !fin) {
@@ -74,7 +82,6 @@ async function reservar(req, res) {
 
   try {
     const resultado = await reservarCita({
-      sponsor_calendario_id,
       sponsor_notion_id,
       asistente_notion_id,
       inicio,
@@ -100,6 +107,89 @@ async function reservar(req, res) {
       error: 'Internal Server Error',
       message: 'Error al procesar la reserva. Revisa los logs.',
     });
+  }
+}
+
+function responderErrorDeCita(res, error, contexto) {
+  if (error instanceof BookingError) {
+    const cuerpo = { error: error.code, message: error.message };
+    // detalle trae datos accionables (ej. la lista de citas cuando el
+    // teléfono no alcanza para saber cuál es).
+    if (error.detalle) Object.assign(cuerpo, error.detalle);
+    return res.status(STATUS_POR_CODIGO_NEGOCIO[error.code] || 400).json(cuerpo);
+  }
+  console.error(`[CitasController] Error inesperado en ${contexto}:`, error);
+  return res.status(500).json({
+    error: 'Internal Server Error',
+    message: `Error al procesar ${contexto}. Revisa los logs.`,
+  });
+}
+
+/** telefono/whatsapp y citaId son opcionales por separado, pero uno debe venir. */
+function validarIdentificacionDeCita({ telefono, citaId }) {
+  if (!telefono && !citaId) {
+    return 'Se requiere "telefono" (WhatsApp del asistente) o "citaId".';
+  }
+  if (citaId && !esUuidCanonico(citaId)) {
+    return '"citaId" debe ser un UUID válido de Notion.';
+  }
+  if (telefono && variantesTelefono(telefono).length === 0) {
+    return '"telefono" debe ser un número de teléfono (dígitos, con o sin +52).';
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /citas/modificar-cita
+//
+// Dos caminos de identificación (Adler, 27-ago): el agente de Carlos
+// manda "telefono" y el servidor valida que la cita sea de esa persona;
+// Laura/Liz mandan "citaId" directo, sin validación cruzada. Si vienen
+// los dos y no coinciden → 403.
+// ─────────────────────────────────────────────────────────────
+async function modificar(req, res) {
+  const telefono = String(req.body?.telefono || req.body?.whatsapp || '').trim();
+  const citaId = String(req.body?.citaId || '').trim();
+  const sponsorEmpresa = String(req.body?.sponsorEmpresa || '').trim();
+  const nuevaFechaHora = String(req.body?.nuevaFechaHora || '').trim();
+
+  const errorIdentificacion = validarIdentificacionDeCita({ telefono, citaId });
+  if (errorIdentificacion) {
+    return res.status(400).json({ error: 'INVALID_INPUT', message: errorIdentificacion });
+  }
+  if (!nuevaFechaHora) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'El campo "nuevaFechaHora" es requerido en formato ISO 8601 (ej. "2026-10-07T11:30:00-06:00").',
+    });
+  }
+
+  try {
+    const resultado = await modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return responderErrorDeCita(res, error, 'la modificación de la cita');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /citas/cancelar-cita — mismos dos caminos de identificación.
+// ─────────────────────────────────────────────────────────────
+async function cancelar(req, res) {
+  const telefono = String(req.body?.telefono || req.body?.whatsapp || '').trim();
+  const citaId = String(req.body?.citaId || '').trim();
+  const sponsorEmpresa = String(req.body?.sponsorEmpresa || '').trim();
+
+  const errorIdentificacion = validarIdentificacionDeCita({ telefono, citaId });
+  if (errorIdentificacion) {
+    return res.status(400).json({ error: 'INVALID_INPUT', message: errorIdentificacion });
+  }
+
+  try {
+    const resultado = await cancelarCita({ telefono, citaId, sponsorEmpresa });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return responderErrorDeCita(res, error, 'la cancelación de la cita');
   }
 }
 
@@ -267,6 +357,8 @@ async function reintentarNotificacionesPendientes(req, res) {
 
 module.exports = {
   reservar,
+  modificar,
+  cancelar,
   disponibilidad,
   sugeridas,
   reenviarNotificacion,

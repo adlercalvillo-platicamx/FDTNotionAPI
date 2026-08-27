@@ -130,14 +130,12 @@ function crearEstadoNotion() {
 }
 
 const citasPath = path.resolve(__dirname, '../src/services/citas.service.js');
-const calendarPath = path.resolve(__dirname, '../src/services/calendar-client.service.js');
 const contactosPath = path.resolve(__dirname, '../src/services/contactos.service.js');
 const emailPath = path.resolve(__dirname, '../src/services/email.service.js');
 const bookingPath = path.resolve(__dirname, '../src/services/booking.service.js');
 
 // Limpiar si ya estaban cargados (p.ej. re-run en el mismo proceso).
 delete require.cache[citasPath];
-delete require.cache[calendarPath];
 delete require.cache[contactosPath];
 delete require.cache[emailPath];
 delete require.cache[bookingPath];
@@ -147,20 +145,6 @@ delete require.cache[bookingPath];
 const citasReal = require(citasPath);
 const estado = crearEstadoNotion();
 Object.assign(citasReal, estado.mock);
-
-require.cache[calendarPath] = {
-  id: calendarPath,
-  filename: calendarPath,
-  loaded: true,
-  exports: {
-    async createEvent() {
-      return { evento_id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-    },
-    async cancelEvent() {
-      return { ok: true };
-    },
-  },
-};
 
 // Sin emails → se omite el correo (caso 5); este test solo verifica mesas.
 require.cache[contactosPath] = {

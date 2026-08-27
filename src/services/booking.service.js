@@ -9,13 +9,11 @@
 //      (~80 citas en 2 días) esto no es un cuello de botella real.
 //   2. Notion como única fuente de verdad para decidir si un slot está
 //      libre (no se escanean N calendarios de Google por cada intento).
-//   3. Patrón "reservar primero en estado intermedio → confirmar en
-//      Calendar → confirmar en Notion", con rollback si el último paso
-//      falla.
-//   4. Calendar se toca por HTTP contra el servicio ya desplegado de
-//      Plática (calendar-client.service.js) — este repo no duplica
-//      google.service.js.
-//   5. Tras confirmar en Notion, se envía correo/.ics al sponsor y
+//   3. Patrón "reservar en estado intermedio → confirmar en Notion".
+//      Google Calendar propio se retiró el 27-ago (Adler): nadie lo
+//      consultaba, la sync con platica-google-docs-api estaba rota, y
+//      el .ics por correo ya llega al calendario personal del sponsor.
+//   4. Tras confirmar en Notion, se envía correo/.ics al sponsor y
 //      asistente. Cada envío se reintenta hasta 3 veces de inmediato
 //      (timeouts/SMTP). Si tras eso sigue fallando, la cita NO se
 //      revierte — pasa a "Confirmada sin notificar" con el motivo
@@ -37,12 +35,26 @@
 // confiables.
 
 const { Mutex } = require('async-mutex');
-const calendarClient = require('./calendar-client.service');
 const citasService = require('./citas.service');
 const contactosService = require('./contactos.service');
 const emailService = require('./email.service');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
+// Tolerancia sobre qué tan "pasado" puede estar el horario DESTINO de una
+// modificación (Adler, 27-ago). NO es un colchón de anticipación sobre la
+// cita original: esa se puede mover o cancelar 5 minutos antes sin
+// problema. Hace falta explícito porque un bloque que ya pasó aparece
+// "libre" en disponibilidad (nada lo está ocupando) y sin esta regla se
+// podría mover una cita a un horario que ya ocurrió.
+const MARGEN_MODIFICACION_MINUTOS = Number(process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5);
+// Texto pendiente de afinar con Sam. La limitación es real y no se oculta:
+// Gmail/Outlook procesan bien el .ics de actualización/cancelación, otros
+// clientes menos comunes pueden no reaccionar.
+// Va en el cuerpo del correo de modificar/cancelar (clientes de correo
+// que no aplican el .ics solos). No viaja en la respuesta HTTP: eso era
+// la advertencia del Google Calendar propio, retirado el 27-ago.
+const NOTA_CALENDARIO =
+  'Si tu calendario no se actualiza solo, puede que necesites editar o eliminar el evento manualmente.';
 // Cada envío SMTP se reintenta hasta 3 veces de inmediato (timeouts).
 // No hay tope de reintentos del endpoint: se dispara a demanda (MCP/API)
 // cuantas veces haga falta tras corregir el dato (Adler, 18-ago).
@@ -142,10 +154,13 @@ function validarDuracionYFecha(inicio, fin) {
 }
 
 class BookingError extends Error {
-  constructor(code, message) {
+  constructor(code, message, detalle) {
     super(message);
     this.name = 'BookingError';
     this.code = code;
+    // Datos que el llamador necesita para actuar (ej. la lista de citas
+    // activas cuando el teléfono no alcanza para saber cuál modificar).
+    if (detalle !== undefined) this.detalle = detalle;
   }
 }
 
@@ -257,11 +272,15 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
  * No toca Notion — es solo resiliencia a timeouts/red. Si los 3 fallan,
  * propaga el último EmailError.
  */
-async function enviarUnCorreoConReintentosInmediatos(args) {
+async function enviarUnCorreoConReintentosInmediatos({ cancelacion, ...args }) {
   let ultimoError;
   for (let intento = 1; intento <= REINTENTOS_INMEDIATOS_SMTP; intento++) {
     try {
-      await emailService.enviarConfirmacionCita(args);
+      if (cancelacion) {
+        await emailService.enviarCancelacionCita(args);
+      } else {
+        await emailService.enviarConfirmacionCita(args);
+      }
       return;
     } catch (err) {
       ultimoError = err;
@@ -274,19 +293,25 @@ async function enviarUnCorreoConReintentosInmediatos(args) {
 }
 
 /**
- * Envía hasta 2 correos de confirmación (sponsor y/o asistente) con el
- * mismo .ics (mismo UID = notionPageId). Cada correo se reintenta hasta
- * 3 veces de inmediato. Si alguno agota esos 3, propaga el EmailError —
- * el llamador decide si cuenta como intento Notion o no.
+ * Envía hasta 2 correos (sponsor y/o asistente) con el mismo .ics (mismo
+ * UID = notionPageId). Cada correo se reintenta hasta 3 veces de
+ * inmediato. Si alguno agota esos 3, propaga el EmailError — el llamador
+ * decide si cuenta como intento Notion o no.
+ *
+ * Con `cancelacion: true` el .ics va como METHOD:CANCEL / STATUS:CANCELLED
+ * sobre el mismo UID; los destinatarios son exactamente los mismos que
+ * recibieron la confirmación original (sponsor + asistente + emailsExtra).
  */
-async function enviarCorreosConfirmacion({
+async function enviarCorreosDeCita({
   notionPageId,
   notificacion,
   titulo,
+  asunto,
   inicio,
   fin,
   ubicacion,
   secuencia,
+  cancelacion,
 }) {
   const envios = [];
 
@@ -314,11 +339,13 @@ async function enviarCorreosConfirmacion({
       notionPageId,
       destinatarios: envio.destinatarios,
       titulo,
+      asunto,
       descripcion: envio.descripcion,
       inicio,
       fin,
       ubicacion,
       secuencia,
+      cancelacion,
     });
   }
 
@@ -329,25 +356,26 @@ async function enviarCorreosConfirmacion({
  * Reserva una cita 1-a-1 entre un sponsor y un asistente.
  *
  * @param {object} params
- * @param {string} params.sponsor_calendario_id - ID del Google Calendar dedicado al sponsor
+ * @param {string} [params.sponsor_calendario_id] - legado (Google Calendar propio
+ *   retirado 27-ago). Se ignora si llega, para no romper clientes que aún lo mandan.
  * @param {string} params.sponsor_notion_id     - page_id en Notion del contacto sponsor
  * @param {string} params.asistente_notion_id   - page_id en Notion del contacto asistente
  * @param {string} params.inicio                - ISO 8601, ej. "2026-10-07T10:30:00-06:00"
  * @param {string} params.fin                   - ISO 8601
- * @param {string} [params.zona_horaria]        - default 'America/Mexico_City'
+ * @param {string} [params.zona_horaria]        - legado; ya no se usa
  * @param {string} params.request_id            - clave de idempotencia, generada por quien llama
  *                                                 (el mismo valor en un reintento debe ser el mismo string)
  * @param {string} [params.titulo]
- * @param {string} [params.descripcion]         - ya no alimenta Calendar/correo (descripción auto); se conserva en la firma por compatibilidad
- * @param {string[]} [params.asistentes_email]  - emails extra (se suman a Contactos); Calendar solo usa este array del body (sin duplicar invitaciones Google)
+ * @param {string} [params.descripcion]         - ya no alimenta el correo (descripción auto); se conserva en la firma por compatibilidad
+ * @param {string[]} [params.asistentes_email]  - emails extra (se suman a Contactos)
  */
 async function reservarCita({
-  sponsor_calendario_id,
+  sponsor_calendario_id: _sponsorCalendarioId, // eslint-disable-line no-unused-vars -- legado 27-ago
   sponsor_notion_id,
   asistente_notion_id,
   inicio,
   fin,
-  zona_horaria,
+  zona_horaria, // eslint-disable-line no-unused-vars -- legado 27-ago
   request_id,
   titulo,
   descripcion, // eslint-disable-line no-unused-vars -- firma pública; descripción real = auto desde Contactos
@@ -356,8 +384,8 @@ async function reservarCita({
   if (!request_id) {
     throw new BookingError('INVALID_INPUT', '"request_id" es requerido (clave de idempotencia)');
   }
-  if (!sponsor_calendario_id || !sponsor_notion_id || !asistente_notion_id) {
-    throw new BookingError('INVALID_INPUT', 'Faltan sponsor_calendario_id, sponsor_notion_id o asistente_notion_id');
+  if (!sponsor_notion_id || !asistente_notion_id) {
+    throw new BookingError('INVALID_INPUT', 'Faltan sponsor_notion_id o asistente_notion_id');
   }
   if (!inicio || !fin) {
     throw new BookingError('INVALID_INPUT', '"inicio" y "fin" son requeridos en formato ISO 8601');
@@ -375,8 +403,8 @@ async function reservarCita({
   }
 
   // A partir de aquí, todo corre serializado. Es la sección crítica completa:
-  // verificar + reservar-en-Notion + crear-en-Calendar + confirmar — sin
-  // que ninguna otra reserva pueda intercalarse en medio.
+  // verificar + reservar-en-Notion + confirmar — sin que ninguna otra
+  // reserva pueda intercalarse en medio.
   return bookingMutex.runExclusive(async () => {
     const existenteEnLock = await citasService.buscarPorRequestId(request_id);
     let citaPendiente = null;
@@ -418,7 +446,7 @@ async function reservarCita({
       });
     }
 
-    // Si reutilizamos Sugerido/Aprobado, un fallo de Calendar no debe
+    // Si reutilizamos Sugerido/Aprobado, un fallo al confirmar no debe
     // pasar esa fila a Fallida (se perdería la aprobación). Si la fila
     // es nueva, Fallida queda para auditoría como siempre.
     const compensarReservaFallida = async (motivo) => {
@@ -444,18 +472,13 @@ async function reservarCita({
           exceptPageId: citaPendiente.id,
         });
       } catch (_) {
-        // La cita ya es real (Calendar + Confirmada). No revertir ni
-        // bloquear el correo si el archivo de una fila hermana falla.
+        // La cita ya es real (Confirmada). No revertir ni bloquear el
+        // correo si el archivo de una fila hermana falla.
       }
     };
 
-    // Resuelto ANTES de tocar Calendar: Calendar y el correo del sponsor
-    // deben mostrar la misma descripción automática (confirmado Adler,
-    // 17-ago tarde) — nunca depende de que el body haya llenado
-    // "descripcion" a mano. El correo del asistente usa otro texto
-    // (solo nombre del sponsor, sin datos de contacto).
-    //
-    // crearCitaPendiente() YA escribió la fila como "Pendiente Calendar".
+    // crearCitaPendiente() YA escribió la fila como "Pendiente Calendar"
+    // (nombre histórico del select; ya no hay paso de Google Calendar).
     // Si resolverNotificacionCita() truena, compensarReservaFallida
     // (Fallida o revertir a Aprobado/Sugerido) — no queda huérfana.
     let notificacion;
@@ -483,32 +506,8 @@ async function reservarCita({
       await compensarReservaFallida(`No se pudo escribir el título de la cita: ${tituloError.message}`);
       throw new BookingError(
         'NOTION_FALLO',
-        'No se pudo guardar el título de la cita en Notion. No se creó ningún evento de Calendar.'
+        'No se pudo guardar el título de la cita en Notion.'
       );
-    }
-
-    // Calendar sigue invitando solo por asistentes_email del body
-    // (confirmado Adler, 17-ago: la invitación real de personas vive en
-    // el ICS/correo, no en Calendar — evita duplicar notificaciones si
-    // Google también manda invitación propia por invitado agregado).
-    let evento;
-    try {
-      evento = await calendarClient.createEvent({
-        calendario_id: sponsor_calendario_id,
-        titulo: notificacion.tituloCita,
-        descripcion: notificacion.descripcionSponsor,
-        inicio,
-        fin,
-        zona_horaria: zona_horaria || 'America/Mexico_City',
-        asistentes: asistentes_email,
-        recordatorios: [
-          { tipo: 'email', minutos: 24 * 60 }, // 1 día antes
-          { tipo: 'popup', minutos: 60 }, // 1 hora antes
-        ],
-      });
-    } catch (calendarError) {
-      await compensarReservaFallida(`Error al crear evento en Calendar: ${calendarError.message}`);
-      throw new BookingError('CALENDAR_FALLO', 'No se pudo registrar la cita en Google Calendar. Intenta de nuevo.');
     }
 
     // Confirmar en Notion con reintentos acotados.
@@ -516,23 +515,19 @@ async function reservarCita({
     let ultimoError;
     for (let intento = 1; intento <= REINTENTOS; intento++) {
       try {
-        await citasService.confirmarCita({
-          notionPageId: citaPendiente.id,
-          eventoId: evento.evento_id,
-        });
+        await citasService.confirmarCita({ notionPageId: citaPendiente.id });
         await archivarSugerenciasHermanas();
 
-        // Cita real en Calendar + Notion. A partir de aquí, cualquier falla
-        // de correo NUNCA revierte la reserva — solo degrada el Estatus a
-        // "Confirmada sin notificar" para que quede visible que falta
-        // avisar. notificacion ya resuelta arriba, antes de Calendar.
+        // Cita real en Notion. A partir de aquí, cualquier falla de correo
+        // NUNCA revierte la reserva — solo degrada el Estatus a
+        // "Confirmada sin notificar" para que quede visible que falta avisar.
         const hayDestinatarios =
           Boolean(notificacion.emailSponsor) ||
           Boolean(notificacion.emailAsistente) ||
           (notificacion.emailsExtra && notificacion.emailsExtra.length > 0);
         if (hayDestinatarios) {
           try {
-            await enviarCorreosConfirmacion({
+            await enviarCorreosDeCita({
               notionPageId: citaPendiente.id,
               notificacion,
               titulo: notificacion.tituloCita,
@@ -541,8 +536,6 @@ async function reservarCita({
               ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
             });
           } catch (emailError) {
-            // Tras 3 reintentos inmediatos SMTP: queda pendiente. Alguien
-            // corrige el dato y dispara el endpoint/MCP a demanda.
             await citasService.marcarCitaConfirmadaSinNotificar({
               notionPageId: citaPendiente.id,
               motivoCategoria: emailError.categoria || 'DESCONOCIDO',
@@ -551,7 +544,6 @@ async function reservarCita({
             return {
               ya_existia: false,
               notion_page_id: citaPendiente.id,
-              evento_id: evento.evento_id,
               estado: 'Confirmada sin notificar',
               mesa: numeroMesa,
               titulo: notificacion.tituloCita,
@@ -566,7 +558,6 @@ async function reservarCita({
         return {
           ya_existia: false,
           notion_page_id: citaPendiente.id,
-          evento_id: evento.evento_id,
           estado: 'Confirmada',
           mesa: numeroMesa,
           titulo: notificacion.tituloCita,
@@ -577,97 +568,107 @@ async function reservarCita({
       }
     }
 
-    // Notion no confirmó tras agotar reintentos → compensar cancelando el
-    // evento en Calendar. Nunca queda un "slot fantasma": o queda
-    // confirmado en ambos lados, o en ninguno.
-    try {
-      await calendarClient.cancelEvent({
-        calendario_id: sponsor_calendario_id,
-        evento_id: evento.evento_id,
-        enviar_notificaciones: false,
-      });
-    } catch (_) {
-      // Si ni siquiera se puede cancelar, queda registrado como Fallida
-      // para que el cron de reconciliación lo detecte y alerte.
-    }
-
     await compensarReservaFallida(
-      `Calendar OK (evento ${evento.evento_id}) pero Notion no confirmó tras ${REINTENTOS} intentos: ${ultimoError?.message}`
+      `Notion no confirmó la cita tras ${REINTENTOS} intentos: ${ultimoError?.message}`
     );
 
     throw new BookingError(
       'NOTION_FALLO',
-      'La cita se creó en Calendar pero no se pudo confirmar en la base de datos. Se canceló y hay que reintentar.'
+      'No se pudo confirmar la cita en la base de datos. Hay que reintentar.'
     );
   });
 }
 
 /**
- * Reenvía la notificación/.ics de una cita en "Confirmada sin notificar".
+ * Reenvía el .ics pendiente de una cita. Dos casos, distintos a propósito:
+ *   - "Confirmada sin notificar" → reenvía el .ics de alta/actualización
+ *     (mismo UID, SEQUENCE nuevo, CONFIRMED). Si la cita se movió de
+ *     horario, "Fecha y Hora" en Notion ya trae el horario nuevo, así que
+ *     el reenvío avisa del cambio sin lógica extra.
+ *   - "Cancelada" + marca de cancelación pendiente en "Notas Envio Email"
+ *     → reenvía el .ics de baja (CANCELLED). Nunca se toca el Estatus:
+ *     pasarla a "Confirmada sin notificar" volvería a ocupar mesa.
+ *
  * Usada por:
  *   - POST /citas/:id/reenviar-notificacion (una cita)
  *   - POST /citas/reintentar-notificaciones-pendientes (batch, vía MCP)
  *
- * A demanda, sin tope de llamadas. Si falla, deja la cita en el mismo
- * estatus, escribe el motivo en "Notas Envio Email" y lanza BookingError
- * con el mensaje explicativo (categoria SMTP + detalle).
- *
- * No valida capacidad ni ocupación. NO entra al mutex.
+ * A demanda, sin tope de llamadas. No valida capacidad ni ocupación.
+ * NO entra al mutex.
  */
 async function reintentarNotificacion(notionPageId) {
   const cita = await citasService.obtenerCitaPorId(notionPageId);
-  const estatusActual = cita.properties?.Estatus?.select?.name;
+  const datos = citasService.datosDeCita(cita);
+  const esCancelacion = citasService.tieneCancelacionPendienteDeAviso(cita);
 
-  if (estatusActual !== 'Confirmada sin notificar') {
+  if (!esCancelacion && datos.estatus !== 'Confirmada sin notificar') {
     throw new BookingError(
       'ESTADO_INVALIDO',
-      `Esta cita está en estatus "${estatusActual}", no en "Confirmada sin notificar". No se reenvía.`
+      `Esta cita está en estatus "${datos.estatus}", no en "Confirmada sin notificar" ni cancelada con aviso pendiente. No se reenvía.`
     );
   }
 
-  const sponsorId = cita.properties?.['Contacto Match']?.relation?.[0]?.id;
-  const asistenteId = cita.properties?.['Contacto Principal']?.relation?.[0]?.id;
   const notificacion = await resolverNotificacionCita({
-    sponsorPageId: sponsorId,
-    asistentePageId: asistenteId,
+    sponsorPageId: datos.sponsorPageId,
+    asistentePageId: datos.asistentePageId,
     emailsExtra: [], // el reintento no tiene el body original de la reserva — solo Contactos
   });
-  const fechaHora = cita.properties?.['Fecha y Hora']?.date;
-  const mesa = cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.plain_text
-    || cita.properties?.['Mesa / Ubicacion']?.rich_text?.[0]?.text?.content;
 
-  const hayDestinatarios =
-    Boolean(notificacion.emailSponsor) ||
-    Boolean(notificacion.emailAsistente) ||
-    (notificacion.emailsExtra && notificacion.emailsExtra.length > 0);
-  if (!hayDestinatarios) {
+  if (!tieneDestinatarios(notificacion)) {
     throw new BookingError(
       'SIN_DESTINATARIOS',
       'Ni el sponsor ni el asistente tienen "Email" en Contactos — no hay a quién reenviar. Corrige el dato en Notion antes de reintentar.'
     );
   }
 
-  // SEQUENCE del ICS: timestamp para que cada reenvío actualice el evento
-  // en el calendario del destinatario (mismo UID = notionPageId).
-  const secuencia = Math.floor(Date.now() / 1000);
+  // SEQUENCE creciente para que cada reenvío actualice el evento en el
+  // calendario del destinatario (mismo UID = notionPageId).
+  const secuencia = siguienteSecuenciaIcs();
+  const titulo = datos.titulo || (esCancelacion ? 'Cita 1 a 1 cancelada' : 'Cita 1 a 1 confirmada');
+
+  if (esCancelacion) {
+    try {
+      await enviarCorreosDeCita({
+        notionPageId,
+        notificacion: conTextosDeCancelacion(notificacion, datos.inicio),
+        titulo,
+        asunto: `Cita cancelada — ${titulo}`,
+        inicio: datos.inicio,
+        fin: datos.fin,
+        ubicacion: datos.mesa || undefined,
+        secuencia,
+        cancelacion: true,
+      });
+      await citasService.marcarCancelacionNotificada(notionPageId);
+      return { notion_page_id: notionPageId, estado: 'Cancelada', tipo: 'cancelacion' };
+    } catch (emailError) {
+      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      await citasService.marcarCancelacionSinNotificar({
+        notionPageId,
+        motivoCategoria: categoria,
+        motivoDetalle: mensaje,
+      });
+      throw new BookingError(
+        'NOTIFICACION_FALLO',
+        `No se pudo enviar el aviso de cancelación (${categoria}): ${mensaje}`
+      );
+    }
+  }
 
   try {
-    await enviarCorreosConfirmacion({
+    await enviarCorreosDeCita({
       notionPageId,
       notificacion,
-      titulo: cita.properties?.Nombre?.title?.[0]?.plain_text
-        || cita.properties?.Nombre?.title?.[0]?.text?.content
-        || 'Cita 1 a 1 confirmada',
-      inicio: fechaHora?.start,
-      fin: fechaHora?.end,
-      ubicacion: mesa,
+      titulo,
+      inicio: datos.inicio,
+      fin: datos.fin,
+      ubicacion: datos.mesa || undefined,
       secuencia,
     });
     await citasService.confirmarNotificacionEnviada(notionPageId);
-    return { notion_page_id: notionPageId, estado: 'Confirmada' };
+    return { notion_page_id: notionPageId, estado: 'Confirmada', tipo: 'confirmacion' };
   } catch (emailError) {
-    const categoria = emailError.categoria || 'DESCONOCIDO';
-    const mensaje = emailError.message || 'Error desconocido al enviar el correo';
+    const { categoria, mensaje } = detalleErrorEmail(emailError);
     await citasService.marcarCitaConfirmadaSinNotificar({
       notionPageId,
       motivoCategoria: categoria,
@@ -680,10 +681,435 @@ async function reintentarNotificacion(notionPageId) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// MODIFICAR / CANCELAR una cita ya real (27-ago)
+//
+// Dos endpoints separados a propósito (pedido explícito de Adler), pero
+// comparten la resolución de CUÁL cita y la validación de que quien pide
+// el cambio sea dueño de esa cita.
+//
+// Notion + el .ics del correo son la única verdad (Google Calendar
+// propio retirado el 27-ago). La nota de "si tu calendario no se
+// actualiza solo" va en el cuerpo del correo, no en la respuesta HTTP.
+// ─────────────────────────────────────────────────────────────
+
+// SEQUENCE del ICS. No hay campo en Notion que lo guarde y no hace falta:
+// el timestamp en segundos siempre es mayor que el 0 del envío original.
+// El Math.max evita el único hueco real de esa idea — dos cambios de la
+// misma cita dentro del mismo segundo (modificar y cancelar seguidos)
+// darían el mismo SEQUENCE y el cliente de calendario ignoraría el
+// segundo. Vive en memoria del proceso, igual que el mutex: este servicio
+// corre en 1 sola réplica.
+let ultimaSecuenciaIcs = 0;
+function siguienteSecuenciaIcs() {
+  ultimaSecuenciaIcs = Math.max(Math.floor(Date.now() / 1000), ultimaSecuenciaIcs + 1);
+  return ultimaSecuenciaIcs;
+}
+
+function tieneDestinatarios(notificacion) {
+  return (
+    Boolean(notificacion.emailSponsor) ||
+    Boolean(notificacion.emailAsistente) ||
+    (notificacion.emailsExtra && notificacion.emailsExtra.length > 0)
+  );
+}
+
+function detalleErrorEmail(emailError) {
+  return {
+    categoria: emailError.categoria || 'DESCONOCIDO',
+    mensaje: emailError.message || 'Error desconocido al enviar el correo',
+  };
+}
+
+function normalizarEmpresa(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function citaResumida(cita) {
+  return {
+    citaId: cita.id,
+    sponsor_empresa: cita.sponsorEmpresa || cita.sponsorNombre || null,
+    inicio: cita.inicio,
+    estatus: cita.estatus,
+  };
+}
+
+/**
+ * Resuelve la cita sobre la que se va a operar y valida que quien pide el
+ * cambio pueda tocarla.
+ *
+ * - Con `telefono`: el asistente se resuelve con buscarAsistentePorWhatsApp
+ *   y la cita DEBE tener a ese contacto en "Contacto Principal". Si además
+ *   viene un `citaId` que es de otra persona, se rechaza — la validación
+ *   real es del servidor, nunca se confía en que el agente ya la hizo.
+ * - Sin `citaId`, con teléfono: si el asistente tiene una sola cita real se
+ *   usa esa; `sponsorEmpresa` desambigua ("la de Platica"); si aun así
+ *   quedan varias, se devuelve la lista para que el agente elija.
+ * - Solo con `citaId` (Laura/Liz, acceso administrativo): sin validación
+ *   cruzada.
+ */
+async function resolverCitaObjetivo({ telefono, citaId, sponsorEmpresa }) {
+  const phone = String(telefono || '').trim();
+  const id = String(citaId || '').trim();
+
+  if (!phone && !id) {
+    throw new BookingError('INVALID_INPUT', 'Se requiere "telefono" (asistente) o "citaId".');
+  }
+
+  let asistente = null;
+  if (phone) {
+    asistente = await contactosService.buscarAsistentePorWhatsApp(phone);
+    if (!asistente) {
+      throw new BookingError(
+        'ASISTENTE_NO_ENCONTRADO',
+        'No hay un asistente activo con ese número de WhatsApp.'
+      );
+    }
+  }
+
+  if (id) {
+    let pagina;
+    try {
+      pagina = await citasService.obtenerCitaPorId(id);
+    } catch (err) {
+      if (err.status === 404 || err.status === 400) {
+        throw new BookingError('CITA_NO_ENCONTRADA', `No existe una cita con el id "${id}".`);
+      }
+      throw err;
+    }
+    const cita = citasService.datosDeCita(pagina);
+    if (asistente && !sonElMismoContacto(cita.asistentePageId, asistente.id)) {
+      throw new BookingError(
+        'CITA_NO_PERTENECE',
+        'Esa cita no es de la persona que corresponde a ese número de WhatsApp. No se modifica ni se cancela.'
+      );
+    }
+    return { cita, asistente };
+  }
+
+  const citas = await citasService.listarCitasRealesPorAsistente(asistente.id);
+  if (citas.length === 0) {
+    throw new BookingError(
+      'SIN_CITAS_ACTIVAS',
+      `${asistente.nombre || 'Ese asistente'} no tiene ninguna cita confirmada que se pueda modificar o cancelar.`
+    );
+  }
+
+  const filtro = normalizarEmpresa(sponsorEmpresa);
+  const candidatas = filtro
+    ? citas.filter((c) => {
+        const empresa = normalizarEmpresa(c.sponsorEmpresa || c.sponsorNombre);
+        return empresa && (empresa.includes(filtro) || filtro.includes(empresa));
+      })
+    : citas;
+
+  if (candidatas.length === 0) {
+    throw new BookingError(
+      'SIN_CITAS_ACTIVAS',
+      `${asistente.nombre || 'Ese asistente'} no tiene una cita confirmada con "${sponsorEmpresa}".`,
+      { citas: citas.map(citaResumida) }
+    );
+  }
+  if (candidatas.length > 1) {
+    throw new BookingError(
+      'VARIAS_CITAS_ACTIVAS',
+      'Ese asistente tiene más de una cita confirmada. Vuelve a llamar con el "citaId" de la que se va a cambiar (o con "sponsorEmpresa").',
+      { citas: candidatas.map(citaResumida) }
+    );
+  }
+
+  return { cita: candidatas[0], asistente };
+}
+
+function sonElMismoContacto(a, b) {
+  const canonico = (v) => String(v || '').replace(/-/g, '').toLowerCase();
+  return Boolean(a) && Boolean(b) && canonico(a) === canonico(b);
+}
+
+function requerirCitaReal(cita, accion) {
+  if (!citasService.ESTATUS_CITA_REAL.includes(cita.estatus)) {
+    throw new BookingError(
+      'ESTADO_INVALIDO',
+      `Esta cita está en estatus "${cita.estatus}". Solo se puede ${accion} una cita confirmada.`
+    );
+  }
+}
+
+/**
+ * Regla 2 (Adler, 27-ago): una cita cuya hora ya pasó SÍ se puede mover si
+ * nadie marcó "Check-in Realizado" — es recuperar una cita que no se
+ * aprovechó. Si sí hubo check-in, la cita ya ocurrió de verdad y moverla
+ * sería reescribir historia.
+ */
+function requerirQueNoHayaOcurrido(cita, ahoraMs) {
+  const inicioMs = Date.parse(cita.inicio || '');
+  if (!Number.isFinite(inicioMs) || inicioMs >= ahoraMs) return;
+  if (!cita.checkInRealizado) return;
+  throw new BookingError(
+    'CITA_YA_OCURRIO',
+    'Esta cita ya ocurrió y tiene el check-in marcado (la persona sí llegó). No se puede mover a otro horario; si hace falta, agenda una cita nueva.'
+  );
+}
+
+/** Regla 1: el horario destino no puede estar más de MARGEN_MODIFICACION_MINUTOS en el pasado. */
+function requerirHorarioNoPasado(nuevoInicioMs, ahoraMs) {
+  const minutosEnPasado = (ahoraMs - nuevoInicioMs) / 60000;
+  if (minutosEnPasado > MARGEN_MODIFICACION_MINUTOS) {
+    throw new BookingError(
+      'HORARIO_EN_PASADO',
+      `El horario nuevo ya pasó hace ${Math.round(minutosEnPasado)} minutos. ` +
+        `Solo se acepta un margen de ${MARGEN_MODIFICACION_MINUTOS} minutos hacia atrás; elige un horario posterior.`
+    );
+  }
+}
+
+function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo }) {
+  const encabezado = (descripcion) =>
+    [
+      'Actualización: tu cita 1 a 1 en Fashion Digital Talks 2026 cambió de horario.',
+      '',
+      `Nuevo horario: ${citasService.formatearHorarioLegible(horarioNuevo)}`,
+      `Horario anterior: ${citasService.formatearHorarioLegible(horarioAnterior)}`,
+      '',
+      NOTA_CALENDARIO,
+      '',
+      descripcion,
+    ].join('\n');
+
+  return {
+    ...notificacion,
+    descripcionSponsor: encabezado(notificacion.descripcionSponsor),
+    descripcionAsistente: encabezado(notificacion.descripcionAsistente),
+  };
+}
+
+function conTextosDeCancelacion(notificacion, inicio) {
+  const horario = inicio ? citasService.formatearHorarioLegible(inicio) : 'el horario agendado';
+  const cuerpo = [
+    'Tu cita 1 a 1 en Fashion Digital Talks 2026 fue cancelada.',
+    '',
+    `Horario cancelado: ${horario}`,
+    '',
+    NOTA_CALENDARIO,
+    '',
+    '¡Nos vemos en Fashion Digital Talks 2026!',
+    'Equipo Fashion Digital Talks',
+  ].join('\n');
+
+  return {
+    ...notificacion,
+    descripcionSponsor: cuerpo,
+    descripcionAsistente: cuerpo,
+  };
+}
+
+/**
+ * Mueve una cita real a otro horario.
+ *
+ * Orden confirmado por Adler: primero se valida el horario NUEVO, y solo
+ * si está disponible se toca Notion. Si el horario nuevo no sirve, la cita
+ * original se queda exactamente como estaba.
+ *
+ * Entra al mismo mutex que reservarCita: mover una cita cambia la
+ * ocupación de un bloque igual que crearla.
+ *
+ * @param {object} params
+ * @param {string} [params.telefono]       - WhatsApp del asistente (camino del agente de Carlos)
+ * @param {string} [params.citaId]         - page_id de la cita (camino de Laura/Liz)
+ * @param {string} [params.sponsorEmpresa] - desambigua cuando el asistente tiene varias citas
+ * @param {string} params.nuevaFechaHora   - ISO 8601 del bloque destino
+ * @param {string|number|Date} [params.ahora] - solo para tests; default Date.now()
+ */
+async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora, ahora }) {
+  if (!nuevaFechaHora) {
+    throw new BookingError('INVALID_INPUT', '"nuevaFechaHora" es requerida en formato ISO 8601.');
+  }
+
+  const inicio = citasService.normalizarInicioIso(nuevaFechaHora);
+  const nuevoInicioMs = Date.parse(inicio);
+  if (!Number.isFinite(nuevoInicioMs)) {
+    throw new BookingError('INVALID_INPUT', `"nuevaFechaHora" no es una fecha ISO 8601 válida: "${nuevaFechaHora}".`);
+  }
+
+  const ahoraMs = ahora ? new Date(ahora).getTime() : Date.now();
+  const { cita } = await resolverCitaObjetivo({ telefono, citaId, sponsorEmpresa });
+  requerirCitaReal(cita, 'modificar');
+  requerirQueNoHayaOcurrido(cita, ahoraMs);
+  requerirHorarioNoPasado(nuevoInicioMs, ahoraMs);
+
+  const fin = citasService.finDeBloque(inicio);
+  validarDuracionYFecha(inicio, fin);
+
+  return bookingMutex.runExclusive(async () => {
+    const [sponsorOcupado, citasEnBloque] = await Promise.all([
+      citasService.sponsorOcupadoEnBloque({
+        sponsorPageId: cita.sponsorPageId,
+        inicio,
+        exceptPageId: cita.id,
+      }),
+      citasService.contarCitasEnBloque({ inicio, exceptPageId: cita.id }),
+    ]);
+
+    if (sponsorOcupado) {
+      throw new BookingError('SPONSOR_YA_OCUPADO', 'Ese sponsor ya tiene una cita confirmada en el horario nuevo.');
+    }
+    if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
+      throw new BookingError(
+        'CAPACIDAD_MESAS_LLENA',
+        `Ya se alcanzó el máximo de ${CAPACIDAD_MAXIMA_MESAS} mesas simultáneas en el horario nuevo.`
+      );
+    }
+
+    // Resuelto ANTES de escribir: si sponsor/asistente no se pueden leer,
+    // la cita se queda con su horario original en vez de quedar movida y
+    // sin forma de avisar.
+    const notificacion = await resolverNotificacionCita({
+      sponsorPageId: cita.sponsorPageId,
+      asistentePageId: cita.asistentePageId,
+      emailsExtra: [],
+    });
+
+    const mesa = citasEnBloque + 1;
+    const horarioAnterior = cita.inicio;
+    await citasService.reprogramarCita({
+      notionPageId: cita.id,
+      inicio,
+      fin,
+      mesa,
+      horarioOriginal: horarioAnterior,
+      horarioOriginalYaGuardado: Boolean(cita.horarioOriginal),
+    });
+
+    const respuesta = {
+      notion_page_id: cita.id,
+      estado: 'Confirmada',
+      inicio,
+      fin,
+      mesa,
+      horario_anterior: horarioAnterior,
+    };
+
+    if (!tieneDestinatarios(notificacion)) {
+      return respuesta;
+    }
+
+    try {
+      await enviarCorreosDeCita({
+        notionPageId: cita.id,
+        notificacion: conTextosDeModificacion(notificacion, {
+          horarioAnterior,
+          horarioNuevo: inicio,
+        }),
+        titulo: cita.titulo || notificacion.tituloCita,
+        asunto: `Cambio de horario — ${cita.titulo || notificacion.tituloCita}`,
+        inicio,
+        fin,
+        ubicacion: `Mesa ${mesa}`,
+        secuencia: siguienteSecuenciaIcs(),
+      });
+      return respuesta;
+    } catch (emailError) {
+      // El cambio de horario ya es real y NO se revierte. Se degrada el
+      // estatus para que el reenvío a demanda lo levante — y como el
+      // reenvío lee "Fecha y Hora" de Notion, va a mandar el horario nuevo.
+      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      await citasService.marcarCitaConfirmadaSinNotificar({
+        notionPageId: cita.id,
+        motivoCategoria: categoria,
+        motivoDetalle: `Modificación de horario sin avisar: ${mensaje}`,
+      });
+      return {
+        ...respuesta,
+        estado: 'Confirmada sin notificar',
+        notificacion_error: { categoria, mensaje },
+      };
+    }
+  });
+}
+
+/**
+ * Cancela una cita real. El bloque queda libre en cuanto el Estatus pasa a
+ * "Cancelada" — ese valor no entra en ningún conteo de capacidad ni de
+ * sponsor ocupado, así que no hace falta liberar nada a mano.
+ *
+ * La cancelación NO depende del correo: si el aviso falla, la cita sigue
+ * cancelada y queda marcada para reintento del .ics de baja.
+ */
+async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
+  const { cita } = await resolverCitaObjetivo({ telefono, citaId, sponsorEmpresa });
+
+  if (cita.estatus === 'Cancelada') {
+    return {
+      notion_page_id: cita.id,
+      estado: 'Cancelada',
+      ya_estaba_cancelada: true,
+    };
+  }
+  requerirCitaReal(cita, 'cancelar');
+
+  return bookingMutex.runExclusive(async () => {
+    const notificacion = await resolverNotificacionCita({
+      sponsorPageId: cita.sponsorPageId,
+      asistentePageId: cita.asistentePageId,
+      emailsExtra: [],
+    });
+
+    await citasService.marcarCitaCancelada({ notionPageId: cita.id });
+
+    const respuesta = {
+      notion_page_id: cita.id,
+      estado: 'Cancelada',
+      ya_estaba_cancelada: false,
+      horario_cancelado: cita.inicio,
+    };
+
+    if (!tieneDestinatarios(notificacion)) {
+      return respuesta;
+    }
+
+    const titulo = cita.titulo || notificacion.tituloCita;
+    try {
+      await enviarCorreosDeCita({
+        notionPageId: cita.id,
+        notificacion: conTextosDeCancelacion(notificacion, cita.inicio),
+        titulo,
+        asunto: `Cita cancelada — ${titulo}`,
+        inicio: cita.inicio,
+        fin: cita.fin,
+        ubicacion: cita.mesa || undefined,
+        secuencia: siguienteSecuenciaIcs(),
+        cancelacion: true,
+      });
+      return respuesta;
+    } catch (emailError) {
+      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      await citasService.marcarCancelacionSinNotificar({
+        notionPageId: cita.id,
+        motivoCategoria: categoria,
+        motivoDetalle: mensaje,
+      });
+      return {
+        ...respuesta,
+        aviso_pendiente: true,
+        notificacion_error: { categoria, mensaje },
+      };
+    }
+  });
+}
+
 module.exports = {
   reservarCita,
+  modificarCita,
+  cancelarCita,
   reintentarNotificacion,
+  resolverCitaObjetivo,
   resolverNotificacionCita,
   BookingError,
   validarDuracionYFecha,
+  MARGEN_MODIFICACION_MINUTOS,
+  NOTA_CALENDARIO,
 };
