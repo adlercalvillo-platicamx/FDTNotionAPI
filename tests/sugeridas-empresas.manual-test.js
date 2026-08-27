@@ -4,6 +4,7 @@ process.env.NOTION_CITAS_DATA_SOURCE_ID = 'fake-citas';
 
 const asistenteId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const sponsorId = '11111111-2222-3333-4444-555555555555';
+const sponsorSugeridoId = '22222222-3333-4444-5555-666666666666';
 const filtros = [];
 
 const notionPath = require.resolve('../src/utils/notion-client');
@@ -48,18 +49,25 @@ require.cache[notionPath] = {
           has_more: false,
         };
       }
-      return {
-        results: [
-          {
-            id: 'cita-sugerida',
-            properties: {
-              Estatus: { select: { name: 'Aprobado' } },
-              'Contacto Match': { relation: [{ id: sponsorId }] },
-            },
+      const filas = [
+        {
+          id: 'cita-aprobada',
+          properties: {
+            Estatus: { select: { name: 'Aprobado' } },
+            'Contacto Match': { relation: [{ id: sponsorId }] },
           },
-        ],
-        has_more: false,
-      };
+        },
+      ];
+      if (estatuses.includes('Sugerido')) {
+        filas.push({
+          id: 'cita-solo-sugerida',
+          properties: {
+            Estatus: { select: { name: 'Sugerido' } },
+            'Contacto Match': { relation: [{ id: sponsorSugeridoId }] },
+          },
+        });
+      }
+      return { results: filas, has_more: false };
     },
   },
 };
@@ -85,6 +93,14 @@ require.cache[contactosPath] = {
           whatsapp: '+52 55 1111 1111',
         };
       }
+      if (id === sponsorSugeridoId) {
+        return {
+          id,
+          nombre: 'Luis Test',
+          empresa: 'Marca Sugerida',
+          nivelPatrocinio: 'Oro',
+        };
+      }
       assert.strictEqual(id, sponsorId);
       return {
         id,
@@ -102,10 +118,13 @@ const { consultarSugeridasPorIdentificador } = require('../src/services/citas.se
 async function main() {
   const porWhatsapp = await consultarSugeridasPorIdentificador({ whatsapp: '525511111111' });
   assert.strictEqual(porWhatsapp.asistente_empresa, 'Marca Test');
-  assert.strictEqual(porWhatsapp.sugeridas[0].sponsor_empresa, 'Sponsor Test');
-  assert.strictEqual(porWhatsapp.sugeridas[0].sponsor_nombre, 'Daniela Test');
-  assert.strictEqual(porWhatsapp.sugeridas[0].estatus, 'Aprobado');
-  assert.strictEqual(porWhatsapp.sugeridas[0].sponsor_calendario_id, undefined);
+  assert.strictEqual(porWhatsapp.sugeridas.length, 2);
+  const aprobada = porWhatsapp.sugeridas.find((s) => s.estatus === 'Aprobado');
+  const pendiente = porWhatsapp.sugeridas.find((s) => s.estatus === 'Sugerido');
+  assert.strictEqual(aprobada.sponsor_empresa, 'Sponsor Test');
+  assert.strictEqual(aprobada.sponsor_nombre, 'Daniela Test');
+  assert.strictEqual(pendiente.sponsor_empresa, 'Marca Sugerida');
+  assert.strictEqual(aprobada.sponsor_calendario_id, undefined);
   assert.ok(!JSON.stringify(porWhatsapp).includes('calendarioGoogleId'));
   assert.ok(!JSON.stringify(porWhatsapp).includes('sponsor_calendario_id'));
   assert.deepStrictEqual(porWhatsapp.citasConfirmadas, [
@@ -139,8 +158,27 @@ async function main() {
     assert.deepStrictEqual(estatuses, ['Sugerido', 'Aprobado']);
   }
 
+  const nFiltrosAntesMcp = filtros.length;
+  const paraAgente = await consultarSugeridasPorIdentificador({
+    whatsapp: '525511111111',
+    soloAprobado: true,
+  });
+  assert.deepStrictEqual(
+    paraAgente.sugeridas.map((s) => s.estatus),
+    ['Aprobado']
+  );
+  assert.strictEqual(paraAgente.sugeridas[0].cita_page_id, 'cita-aprobada');
+  assert.deepStrictEqual(paraAgente.citasConfirmadas, porWhatsapp.citasConfirmadas);
+  const filtrosMcp = filtros.slice(nFiltrosAntesMcp);
+  assert.ok(filtrosMcp.some((f) => JSON.stringify(f).includes('"Aprobado"')));
+  assert.ok(
+    !filtrosMcp.some((f) => JSON.stringify(f).includes('"Sugerido"')),
+    'el camino MCP no debe pedir Sugerido a Notion'
+  );
+
   console.log('✅ sugeridas hidrata empresas por WhatsApp y page_id');
-  console.log('✅ consulta únicamente Estatus Sugerido/Aprobado para sugeridas');
+  console.log('✅ GET /citas/sugeridas (default) consulta Sugerido y Aprobado');
+  console.log('✅ soloAprobado (MCP y WhatsApp Flow) deja fuera Sugerido y no toca citasConfirmadas');
   console.log('✅ incluye citasConfirmadas y ya no expone calendarioGoogleId');
 }
 

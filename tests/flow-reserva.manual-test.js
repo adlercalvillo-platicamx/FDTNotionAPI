@@ -17,6 +17,7 @@ const citasPath = require.resolve('../src/services/citas.service');
 const jobPath = require.resolve('../src/jobs/reservar-desde-flow.job');
 
 const encolados = [];
+let ultimaListaOpts = null;
 
 require.cache[contactosPath] = {
   id: contactosPath,
@@ -36,16 +37,18 @@ require.cache[citasPath] = {
   filename: citasPath,
   loaded: true,
   exports: {
-    listarSugeridasPorAsistente: async () => [
+    listarSugeridasPorAsistente: async (id, opts = {}) => {
+      ultimaListaOpts = opts;
+      return [
       {
         cita_page_id: 'c1',
-        estatus: 'Sugerido',
+        estatus: 'Aprobado',
         sponsor_notion_id: 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee',
         sponsor_nombre: 'Sponsor Uno',
-        sponsor_calendario_id: 'cal-1',
         nivel_patrocinio: 'Oro',
       },
-    ],
+    ];
+    },
     obtenerFechasEvento: () => ['2026-10-07', '2026-10-08'],
     obtenerDisponibilidadSponsor: async ({ fecha }) => {
       if (fecha === '2026-10-07') {
@@ -126,6 +129,7 @@ async function main() {
     const r = await flow.procesarExchange(envelope({ action: 'init', phone: '5511111111' }));
     assert.strictEqual(r.screen, 'SPONSOR');
     assert.strictEqual(r.data.sponsors.length, 1);
+    assert.strictEqual(ultimaListaOpts.soloAprobado, true);
   });
 
   await ok('SPONSOR → FECHA', async () => {

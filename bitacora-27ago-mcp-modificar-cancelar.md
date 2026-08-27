@@ -45,13 +45,17 @@ en ese caso (fallar toda la tool mentiría: Notion sí se escribió).
 
 ## `consultar_sugeridas_para_asistente`
 
-- Sigue trayendo `sugeridas` (`Sugerido` / `Aprobado`).
+- Sigue trayendo `sugeridas` — la tool MCP pide **solo `Aprobado`**
+  (`soloAprobado: true`). El **WhatsApp Flow de reserva** (no el sponsor
+  Flow) usa el mismo flag en proceso. `GET /citas/sugeridas` no tiene
+  cliente HTTP activo (ver `bitacora-27ago-consumidor-sugeridas.md`) y se
+  dejó Sugerido+Aprobado.
 - Ahora también `citasConfirmadas`: `Confirmada` /
   `Confirmada sin notificar`, orden por `fechaHora`, con `mesa` y
   `checkInRealizado` — mismo `formatearCitaConfirmadaAsistente` que el
   endpoint de Carlos.
 - Sale también en `GET /citas/sugeridas` (misma función
-  `consultarSugeridasPorIdentificador`).
+  `consultarSugeridasPorIdentificador`, **sin** `soloAprobado`).
 - Se quitó `sponsor_calendario_id` / `calendarioGoogleId` del payload y
   de la descripción de la tool (rastro del Calendar propio, retirado
   el mismo día).

@@ -69,8 +69,13 @@ function tituloHora(inicioIso) {
   return m ? `${m[1]}:${m[2]}` : inicioIso;
 }
 
+// El dropdown del WhatsApp Flow de reserva (asistente) es cara al
+// usuario: solo Aprobado (Adler, 27-ago). No es el sponsor Flow.
+// GET /citas/sugeridas no lo usa este webhook; ver bitácora de consumidor.
+const SUGERIDAS_PARA_ASISTENTE = { soloAprobado: true };
+
 async function sponsorsParaFlow(asistenteId) {
-  const sugeridas = await citas.listarSugeridasPorAsistente(asistenteId);
+  const sugeridas = await citas.listarSugeridasPorAsistente(asistenteId, SUGERIDAS_PARA_ASISTENTE);
   return sugeridas
     .slice(0, MAX_DROPDOWN)
     .map((s) => ({
@@ -167,7 +172,10 @@ async function manejarAdvance(envelope) {
         slot?.motivo === 'CAPACIDAD_MESAS_LLENA' ? COPY.CAPACIDAD_MESAS_LLENA : COPY.SPONSOR_YA_OCUPADO;
       return errorPantalla(msg);
     }
-    const lista = await citas.listarSugeridasPorAsistente(asistenteId || '');
+    const lista = await citas.listarSugeridasPorAsistente(
+      asistenteId || '',
+      SUGERIDAS_PARA_ASISTENTE
+    );
     const sug = lista.find((s) => s.sponsor_notion_id === sponsorId);
     return datosPantalla('RESUMEN', {
       ...payload,
@@ -177,7 +185,7 @@ async function manejarAdvance(envelope) {
 
   if (screen === 'RESUMEN') {
     if (!sponsorId || !inicio || !asistenteId) return errorPantalla(MSG.INVALIDO);
-    const lista = await citas.listarSugeridasPorAsistente(asistenteId);
+    const lista = await citas.listarSugeridasPorAsistente(asistenteId, SUGERIDAS_PARA_ASISTENTE);
     const sug = lista.find((s) => s.sponsor_notion_id === sponsorId);
     if (!sug) return errorPantalla(MSG.SIN_SUGERIDAS);
 

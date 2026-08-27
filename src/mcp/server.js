@@ -142,6 +142,7 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
     const resultado = await citasService.consultarSugeridasPorIdentificador({
       whatsapp,
       asistentePageId: whatsapp ? undefined : asistentePageId,
+      soloAprobado: true,
     });
     return respuestaJson(resultado);
   } catch (err) {
@@ -357,7 +358,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 ya persistidas en Notion para un asistente: filas Sugerido o Aprobado (sugeridas) y, aparte, las ya reales (citasConfirmadas: Confirmada / Confirmada sin notificar, ordenadas por horario, con mesa y check-in). No recalcula matchmaking. El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente, y por cada sugerencia page_id, empresa y nombre del sponsor, para presentar Empresa asistente × Empresa sponsor. Úsala también para ver qué citas confirmadas tiene esa persona (modificar/cancelar) sin una tool aparte. No escribe nada.',
+    'Lista las citas 1a1 YA APROBADAS de un asistente (campo sugeridas: solo Estatus Aprobado) y, aparte, las ya reales (citasConfirmadas: Confirmada / Confirmada sin notificar, ordenadas por horario, con mesa y check-in). Es para que el agente hable con el asistente sobre lo que YA se le puede ofrecer — una fila Sugerido todavía no tiene aprobación humana y no debe presentarse como ofrecible. No recalcula matchmaking. El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente y del sponsor. Úsala también para ver qué citas confirmadas tiene esa persona (modificar/cancelar). No escribe nada.',
     {
       whatsapp: z
         .string()

@@ -22,6 +22,7 @@ class BookingError extends Error {
 }
 
 const llamadas = [];
+let ultimaConsultaSugeridas = null;
 const bookingPath = require.resolve('../src/services/booking.service');
 require.cache[bookingPath] = {
   id: bookingPath,
@@ -91,22 +92,25 @@ const {
 
 const citasService = require('../src/services/citas.service');
 const consultarOriginal = citasService.consultarSugeridasPorIdentificador;
-citasService.consultarSugeridasPorIdentificador = async (args) => ({
-  asistente_notion_id: 'asistente-1',
-  asistente_nombre: 'Ana',
-  asistente_empresa: 'DINUS',
-  whatsapp: args.whatsapp || null,
-  sugeridas: [{ cita_page_id: 'sug-1', estatus: 'Aprobado', sponsor_empresa: 'Platica.mx' }],
-  citasConfirmadas: [
-    {
-      sponsorNombre: 'Platica.mx',
-      fechaHora: '2026-10-07T12:00:00-06:00',
-      mesa: 'Mesa 2',
-      citaId: 'cita-ok',
-      checkInRealizado: false,
-    },
-  ],
-});
+citasService.consultarSugeridasPorIdentificador = async (args) => {
+  ultimaConsultaSugeridas = args;
+  return {
+    asistente_notion_id: 'asistente-1',
+    asistente_nombre: 'Ana',
+    asistente_empresa: 'DINUS',
+    whatsapp: args.whatsapp || null,
+    sugeridas: [{ cita_page_id: 'sug-1', estatus: 'Aprobado', sponsor_empresa: 'Platica.mx' }],
+    citasConfirmadas: [
+      {
+        sponsorNombre: 'Platica.mx',
+        fechaHora: '2026-10-07T12:00:00-06:00',
+        mesa: 'Mesa 2',
+        citaId: 'cita-ok',
+        checkInRealizado: false,
+      },
+    ],
+  };
+};
 
 function parse(result) {
   return JSON.parse(result.content[0].text);
@@ -201,21 +205,25 @@ async function ok(nombre, fn) {
     const r = await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' });
     assert.ok(!r.isError);
     const body = parse(r);
+    assert.strictEqual(ultimaConsultaSugeridas.soloAprobado, true);
     assert.ok(Array.isArray(body.sugeridas));
+    assert.ok(body.sugeridas.every((s) => s.estatus === 'Aprobado'));
     assert.ok(Array.isArray(body.citasConfirmadas));
     assert.strictEqual(body.citasConfirmadas[0].citaId, 'cita-ok');
     assert.ok(!JSON.stringify(body).includes('calendarioGoogleId'));
     assert.ok(!JSON.stringify(body).includes('sponsor_calendario_id'));
   });
 
-  await ok('la descripción de la tool ya no habla de calendarioGoogleId', async () => {
+  await ok('la descripción dice solo Aprobado, no Sugerido como ofrecible', async () => {
     const src = fs.readFileSync(path.join(__dirname, '../src/mcp/server.js'), 'utf8');
     const bloque = src.match(
       /server\.tool\(\s*'consultar_sugeridas_para_asistente'[\s\S]*?^\s{2}\);/m
     );
     assert.ok(bloque, 'debe existir la tool');
     assert.ok(bloque[0].includes('citasConfirmadas'));
+    assert.ok(bloque[0].includes('Aprobado'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
+    assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });
 
   citasService.consultarSugeridasPorIdentificador = consultarOriginal;

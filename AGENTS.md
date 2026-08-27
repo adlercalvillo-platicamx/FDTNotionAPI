@@ -44,7 +44,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | **NO exponer** `reservar_cita` como tool |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
-| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (alias `telefono=`; `asistente_notion_id=` opcional) | `consultar_sugeridas_para_asistente` (`whatsapp` preferido; incluye `citasConfirmadas`) |
+| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). El WhatsApp Flow de reserva arma el dropdown en proceso, solo `Aprobado`. | `consultar_sugeridas_para_asistente` (`whatsapp`; campo **`sugeridas`** = solo `Aprobado`; + `citasConfirmadas`) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
 | Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |

@@ -781,21 +781,27 @@ async function buscarSugerenciasPendientesPorSponsor(sponsorPageId) {
 const RANGO_SUGERIDA = { Aprobado: 2, Sugerido: 1 };
 
 /**
- * Filas Sugerido/Aprobado del asistente (Contacto Principal), hidratadas
- * con empresa y nombre del sponsor. Dedup por sponsor (Aprobado gana).
- * Ya no incluye calendario Google: esa integración se retiró el 27-ago.
+ * Filas del asistente (Contacto Principal) hidratadas con empresa y nombre
+ * del sponsor. Dedup por sponsor (Aprobado gana si llegan ambos).
+ * `soloAprobado`: MCP del agente de Carlos y el WhatsApp Flow (dropdown
+ * cara al asistente). GET /citas/sugeridas no lo usa nadie activo hoy
+ * (solo `api_reservar_cita` está registrada en Plática) y sigue pidiendo
+ * Sugerido + Aprobado hasta que haya un consumidor HTTP.
  */
-async function listarSugeridasPorAsistente(asistentePageId) {
+async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = false } = {}) {
   requireDataSourceId();
-  const filas = await queryCitasPaginado({
-    and: [
-      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
-      {
+  const filtroEstatus = soloAprobado
+    ? { property: 'Estatus', select: { equals: 'Aprobado' } }
+    : {
         or: [
           { property: 'Estatus', select: { equals: 'Sugerido' } },
           { property: 'Estatus', select: { equals: 'Aprobado' } },
         ],
-      },
+      };
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      filtroEstatus,
     ],
   });
 
@@ -804,6 +810,7 @@ async function listarSugeridasPorAsistente(asistentePageId) {
 
   for (const fila of filas) {
     const estatus = fila.properties?.Estatus?.select?.name || null;
+    if (soloAprobado && estatus !== 'Aprobado') continue;
     const sponsorId = (fila.properties?.['Contacto Match']?.relation || [])[0]?.id;
     if (!sponsorId) continue;
     const previa = porSponsor.get(sponsorId);
@@ -843,7 +850,11 @@ async function listarSugeridasPorAsistente(asistentePageId) {
  * Consulta sugeridas por WhatsApp (identificador del agente) o page_id.
  * Si hay teléfono, Notion se resuelve aquí; el cliente no necesita el UUID.
  */
-async function consultarSugeridasPorIdentificador({ whatsapp, asistentePageId } = {}) {
+async function consultarSugeridasPorIdentificador({
+  whatsapp,
+  asistentePageId,
+  soloAprobado = false,
+} = {}) {
   const phone = String(whatsapp || '').trim();
   let id = String(asistentePageId || '').trim();
   let asistente = null;
@@ -872,7 +883,7 @@ async function consultarSugeridasPorIdentificador({ whatsapp, asistentePageId } 
   }
 
   const [sugeridas, citasReales] = await Promise.all([
-    listarSugeridasPorAsistente(id),
+    listarSugeridasPorAsistente(id, { soloAprobado }),
     listarCitasRealesPorAsistente(id),
   ]);
   const citasConfirmadas = citasReales

@@ -6,9 +6,9 @@
 
 ## Flujo 1–8
 
-1. El agente consulta sugeridas con el **WhatsApp de la conversación** (`consultar_sugeridas_para_asistente` / `GET /citas/sugeridas?whatsapp=`).
+1. El agente consulta sugeridas con el **WhatsApp de la conversación** (`consultar_sugeridas_para_asistente`, solo `Aprobado`). `GET /citas/sugeridas` existe como REST pero **no está registrado** en Plática (el único API tool es `api_reservar_cita`).
 2. El asistente dice que sí → el agente envía el Flow (`PLATICA_FLOW_ID`).
-3. INIT en este backend resuelve el WhatsApp → Notion y arma el dropdown.
+3. INIT en este backend resuelve el WhatsApp → Notion y arma el dropdown **solo con filas Aprobado** (`listarSugeridasPorAsistente(..., { soloAprobado: true })`, en proceso — no llama `GET /citas/sugeridas`).
 4. Elige sponsor + hora (disponibilidad rápida).
 5–6. Al confirmar, el webhook **no espera** `reservar`; encola y muestra `RESULTADO_PENDIENTE`.
 7. Tras 201: correo/.ics **y** WhatsApp 2.2 (asistente) / 2.3 (sponsor).
@@ -26,7 +26,7 @@ Si el handler tarda, Plática manda `{ "data": { "acknowledged": true } }`. `res
 
 | Qué | Dónde |
 |---|---|
-| Sugeridas del asistente | `GET /citas/sugeridas?whatsapp=` (`X-API-Key`; alias `telefono=`; `asistente_notion_id=` si no hay teléfono) y MCP `consultar_sugeridas_para_asistente` |
+| Sugeridas del asistente | MCP `consultar_sugeridas_para_asistente` (solo `Aprobado`). El dropdown del **WhatsApp Flow de reserva** usa `listarSugeridasPorAsistente` en proceso, también solo `Aprobado`. `GET /citas/sugeridas` no tiene cliente HTTP activo en Plática. |
 | Disponibilidad | `GET /citas/disponibilidad?sponsor_notion_id=&fecha=` |
 | Reservar | `POST /citas/reservar` (cola del Flow llama la función en proceso) |
 | Data del Flow | `POST /webhooks/whatsapp-flows` — **sin** `X-API-Key`; HMAC `FLOW_WEBHOOK_SECRET` |
