@@ -13,6 +13,7 @@ const {
   generarExplicacionNatural,
   coincidenciaTextoLibre,
   empresaMencionadaEn,
+  PESOS,
 } = require('../src/services/matchmaking.service');
 
 let fallos = 0;
@@ -127,6 +128,76 @@ check('AS corto sigue protegido por mínimo de 3',
   empresaMencionadaEn('AS', 'trabajamos con as camisas') === false);
 check('Cempasúchil encuentra el nombre dentro de razón social del sponsor',
   empresaMencionadaEn('Cempasúchil', 'nos interesa Cempasúchil SA de CV') === true);
+
+console.log('\n=== 7. Exa adicional: ICP Moda/Ecommerce y Estado Web ===');
+const sponsorExa = {
+  clientesPotencialesDeseados: '',
+  clientesActuales: '',
+  puestosBuscados: [],
+  solucion: [],
+};
+const baseExa = {
+  nombre: 'Candidato Exa',
+  empresa: 'Marca Exa',
+  ticketTipo: 'Virtual',
+  area: null,
+  solucionesBuscadas: [],
+  otraSolucionBuscada: '',
+  fuenteDato: null,
+  madurezNegocioExa: null,
+  tamanoNegocio: null,
+  icpModaEcommerce: null,
+  estadoWebExa: null,
+};
+const rIcpSi = calcularScore(sponsorExa, { ...baseExa, icpModaEcommerce: 'Sí' }, 0);
+check('ICP Sí → +30', rIcpSi.score === PESOS.ICP_MODA_ECOMMERCE_SI);
+check('ICP Sí aparece en la explicación',
+  generarExplicacionNatural(baseExa, rIcpSi.senales).includes('encaja con el perfil de moda/ecommerce'));
+
+const rIcpNo = calcularScore(sponsorExa, { ...baseExa, icpModaEcommerce: 'No' }, 0);
+const rIcpVacio = calcularScore(sponsorExa, { ...baseExa }, 0);
+check('ICP No → -30', rIcpNo.score === PESOS.ICP_MODA_ECOMMERCE_NO);
+check('ICP No queda por debajo de un candidato sin el campo (resto igual)',
+  rIcpNo.score < rIcpVacio.score);
+check('ICP No aparece en la explicación',
+  generarExplicacionNatural(baseExa, rIcpNo.senales).includes('no tiene relación clara con moda/ecommerce'));
+
+const rIcpAmbiguo = calcularScore(sponsorExa, { ...baseExa, icpModaEcommerce: 'Ambiguo' }, 0);
+check('ICP Ambiguo → 0', rIcpAmbiguo.score === 0);
+check('ICP Ambiguo no se menciona en la explicación',
+  !generarExplicacionNatural(baseExa, rIcpAmbiguo.senales).includes('moda/ecommerce'));
+
+check('ICP vacío → 0, distinto de No (nunca enriquecido no penaliza)',
+  rIcpVacio.score === 0 && rIcpVacio.score !== rIcpNo.score);
+check('ICP vacío no se menciona en la explicación',
+  !generarExplicacionNatural(baseExa, rIcpVacio.senales).includes('moda/ecommerce'));
+
+const rWeb = calcularScore(sponsorExa, { ...baseExa, estadoWebExa: 'Con web' }, 0);
+check('Estado Web Con web → +10', rWeb.score === PESOS.ESTADO_WEB_CON_WEB);
+check('Con web aparece en la explicación',
+  generarExplicacionNatural(baseExa, rWeb.senales).includes('presencia web activa'));
+
+const rSinWeb = calcularScore(sponsorExa, { ...baseExa, estadoWebExa: 'Sin web' }, 0);
+check('Estado Web Sin web → 0 (no resta)', rSinWeb.score === 0);
+check('Sin web no se menciona en la explicación',
+  !generarExplicacionNatural(baseExa, rSinWeb.senales).includes('presencia web'));
+
+const rAmbos = calcularScore(sponsorExa, {
+  ...baseExa,
+  icpModaEcommerce: 'Sí',
+  estadoWebExa: 'Con web',
+  madurezNegocioExa: 'Consolidado',
+}, 0);
+check('ICP Sí + Con web + Consolidado se suman sin interferir',
+  rAmbos.score === PESOS.ICP_MODA_ECOMMERCE_SI + PESOS.ESTADO_WEB_CON_WEB + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+
+const rNoMasConsolidado = calcularScore(sponsorExa, {
+  ...baseExa,
+  icpModaEcommerce: 'No',
+  madurezNegocioExa: 'Consolidado',
+}, 0);
+check('ICP No y Madurez Consolidado son independientes (−30 + 40 = +10)',
+  rNoMasConsolidado.score === PESOS.ICP_MODA_ECOMMERCE_NO + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
 
 console.log(`\n=== RESULTADO: ${fallos === 0 ? 'todas las verificaciones pasaron' : fallos + ' FALLARON'} ===\n`);
 process.exit(fallos === 0 ? 0 : 1);

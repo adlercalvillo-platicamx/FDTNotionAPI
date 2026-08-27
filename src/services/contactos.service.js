@@ -129,7 +129,11 @@ function parsearContacto(pagina) {
     tamanoNegocio: select(p['Tamaño de Negocio']),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
+    // Entra al ranking (Capa 2) desde 27-ago: Sí +30, No −30, Ambiguo/vacío 0.
     icpModaEcommerce: select(p['ICP Moda/Ecommerce']),
+    // Select Con web / Sin web. Solo premia presencia (+10); Sin web y vacío
+    // no restan. Independiente de Madurez Negocio (Exa).
+    estadoWebExa: select(p['Estado Web (Exa)']),
     presenciaDigitalExa: texto(p['Presencia Digital (Exa)']),
   };
 }

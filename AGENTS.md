@@ -76,7 +76,7 @@ Toda escritura a `Confirmada` / `Confirmada sin notificar` de una cita real debe
 ## Matchmaking
 
 - **Bronce** no participa (error explícito). Prioridad de desempate: Cristal > Diamante > Oro. **`Citas Minimas Prometidas` es por sponsor**, no derivar cuota del nivel. `topN` = cuota + `MARGEN_CANDIDATOS` (2).
-- Capa 1: filtros duros (boleto, giro, etapa, `Categoria = Asistente` explícito, tamaño de negocio Grande/Mediana o fallback Exa Consolidado/PyME, no “Dado de Baja”, no Expo). Capa 2: ranking en [`matchmaking.service.js`](src/services/matchmaking.service.js) (pesos `PESOS`).
+- Capa 2: ranking en [`matchmaking.service.js`](src/services/matchmaking.service.js) (pesos `PESOS`). Exa en ranking: `Madurez Negocio` 40/15 (sin Tamaño declarado), `ICP Moda/Ecommerce` +30/−30 (Ambiguo/vacío = 0), `Estado Web` +10 si `Con web` (Sin web no resta). No son filtros duros.
 - Giro elegible (también VIP): Marca de moda, Retailer/tienda multimarca, Manufactura. `Quiere Citas 1a1` es **select** `Sí`/`No`/vacío — excluir solo `'No'` explícito.
 - Virtual es elegible por default (13-ago). `incluirVirtual` está **deprecado** (no-op, no usarlo en código nuevo).
 - Alias de etapa: `"Venta por redes sociales"` → `"Vendo principalmente por redes sociales"`.

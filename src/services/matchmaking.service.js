@@ -101,6 +101,11 @@ const PESOS = {
   // con MADUREZ_NEGOCIO_* — si ambos existen, gana el dato declarado.
   TAMANO_GRANDE: 40,
   TAMANO_MEDIANA: 15,
+  // 27-ago — Exa adicional, independiente de MADUREZ_NEGOCIO_* (40/15).
+  // ICP Sí/No son dato real; vacío (nunca enriquecido) y Ambiguo no mueven.
+  ICP_MODA_ECOMMERCE_SI: 30,
+  ICP_MODA_ECOMMERCE_NO: -30,
+  ESTADO_WEB_CON_WEB: 10, // Sin web / vacío: 0, no penaliza
   OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
   // Conservado como referencia histórica (23-ago-2026), pero ya no se suma
   // al score: la cuota cambia con el tiempo y no mide la calidad del par.
@@ -242,6 +247,8 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     coincidenciaTextoLibre: false,
     madurezNegocio: null, // "Temprano" | "PyME" | "Consolidado" | null
     tamanoNegocio: null, // "Grande" | "Mediana" | null (Micro/Pequeña no llegan aquí)
+    icpModaEcommerce: null, // "Sí" | "No" | "Ambiguo" | null
+    estadoWebExa: null, // "Con web" | "Sin web" | null
     cuotaPendiente,
     // Distinguir "inferido" de "sin dato" importa: el reporte que lee Laura
     // afirma cosas sobre el candidato, y decir "esta info fue inferida" cuando
@@ -296,6 +303,28 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.madurezNegocio = 'PyME';
   } else if (candidato.madurezNegocioExa === 'Temprano') {
     senales.madurezNegocio = 'Temprano'; // no suma, pero se registra
+  }
+
+  // ICP Moda/Ecommerce (Exa) — Capa 2, no filtro duro. Vacío ≠ No.
+  if (candidato.icpModaEcommerce === 'Sí') {
+    score += PESOS.ICP_MODA_ECOMMERCE_SI;
+    detalle.push('icp_moda_ecommerce: Exa confirmó encaje con moda/ecommerce');
+    senales.icpModaEcommerce = 'Sí';
+  } else if (candidato.icpModaEcommerce === 'No') {
+    score += PESOS.ICP_MODA_ECOMMERCE_NO;
+    detalle.push('icp_moda_ecommerce: Exa detectó que no encaja con moda/ecommerce');
+    senales.icpModaEcommerce = 'No';
+  } else if (candidato.icpModaEcommerce === 'Ambiguo') {
+    senales.icpModaEcommerce = 'Ambiguo';
+  }
+
+  // Estado Web (Exa) — solo premia; Sin web y vacío no restan.
+  if (candidato.estadoWebExa === 'Con web') {
+    score += PESOS.ESTADO_WEB_CON_WEB;
+    detalle.push('estado_web: presencia web activa (Exa)');
+    senales.estadoWebExa = 'Con web';
+  } else if (candidato.estadoWebExa === 'Sin web') {
+    senales.estadoWebExa = 'Sin web';
   }
 
   // MATCH DIRECTO de área — el "Area" del asistente contra "Puestos Buscados"
@@ -390,6 +419,14 @@ function generarExplicacionNatural(candidato, senales) {
     texto += ` El enriquecimiento automático identificó su negocio como consolidado.`;
   } else if (senales.madurezNegocio === 'PyME') {
     texto += ` El enriquecimiento automático identificó su negocio como una PyME establecida.`;
+  }
+  if (senales.icpModaEcommerce === 'Sí') {
+    texto += ` Exa confirmó que el negocio encaja con el perfil de moda/ecommerce del evento.`;
+  } else if (senales.icpModaEcommerce === 'No') {
+    texto += ` Exa detectó que el negocio no tiene relación clara con moda/ecommerce — candidato con menor prioridad por esta señal.`;
+  }
+  if (senales.estadoWebExa === 'Con web') {
+    texto += ` El negocio cuenta con presencia web activa.`;
   }
   if (senales.cuotaPendiente > 0) {
     texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota.`;

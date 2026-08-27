@@ -30,7 +30,13 @@ function ok(nombre, fn) {
   }
 }
 
-function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial', tamanoNegocio = undefined } = {}) {
+function paginaNotion({
+  madurezNegocioExa = undefined,
+  ticketTipo = 'Presencial',
+  tamanoNegocio = undefined,
+  icpModaEcommerce = undefined,
+  estadoWebExa = undefined,
+} = {}) {
   const props = {
     Nombre: { title: [{ plain_text: 'Test' }] },
     Empresa: { rich_text: [] },
@@ -40,6 +46,7 @@ function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial'
     'Tamano Empresa (Exa)': { rich_text: [] },
     'Modelo de Negocio (Exa)': { select: null },
     'ICP Moda/Ecommerce': { select: null },
+    'Estado Web (Exa)': { select: null },
     'Presencia Digital (Exa)': { rich_text: [] },
   };
   if (madurezNegocioExa === null) {
@@ -55,6 +62,16 @@ function paginaNotion({ madurezNegocioExa = undefined, ticketTipo = 'Presencial'
     props['Tamaño de Negocio'] = { select: { name: tamanoNegocio } };
   } else {
     props['Tamaño de Negocio'] = { select: null };
+  }
+  if (icpModaEcommerce === null) {
+    props['ICP Moda/Ecommerce'] = { select: null };
+  } else if (icpModaEcommerce !== undefined) {
+    props['ICP Moda/Ecommerce'] = { select: { name: icpModaEcommerce } };
+  }
+  if (estadoWebExa === null) {
+    props['Estado Web (Exa)'] = { select: null };
+  } else if (estadoWebExa !== undefined) {
+    props['Estado Web (Exa)'] = { select: { name: estadoWebExa } };
   }
   return { id: 'test-id', properties: props };
 }
@@ -101,6 +118,16 @@ ok('No-interferencia: Virtual + Consolidado en mismo objeto', () => {
   const c = parsearContacto(paginaNotion({ madurezNegocioExa: 'Consolidado', ticketTipo: 'Virtual' }));
   assert.strictEqual(c.ticketTipo, 'Virtual');
   assert.strictEqual(c.madurezNegocioExa, 'Consolidado');
+});
+ok('ICP Sí y Estado Web Con web se parsean', () => {
+  const c = parsearContacto(paginaNotion({ icpModaEcommerce: 'Sí', estadoWebExa: 'Con web' }));
+  assert.strictEqual(c.icpModaEcommerce, 'Sí');
+  assert.strictEqual(c.estadoWebExa, 'Con web');
+});
+ok('ICP y Estado Web vacíos → null (no undefined)', () => {
+  const c = parsearContacto(paginaNotion());
+  assert.strictEqual(c.icpModaEcommerce, null);
+  assert.strictEqual(c.estadoWebExa, null);
 });
 
 console.log('\n=== DIFF-1 contactos — Virtual elegibilidad (post-filtro) ===');
