@@ -318,6 +318,20 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(Number(campoIcs(ics, 'SEQUENCE')) > 0, 'SEQUENCE debe superar el 0 del envío original');
     assert.strictEqual(campoIcs(ics, 'DTSTART'), '20261007T180000Z', '12:00 -06:00 = 18:00Z');
     assert.ok(correos[0].subject.startsWith('Cambio de horario —'));
+
+    const textoSponsor = correos[0].text;
+    const textoAsistente = correos[1].text;
+    assert.ok(textoSponsor.includes('cambió de horario'));
+    assert.ok(!textoSponsor.includes('está confirmada'));
+    assert.ok(textoSponsor.includes('El espacio con DINUS ahora es:'));
+    assert.ok(textoSponsor.includes('Horario anterior:'));
+    assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
+    assert.ok(textoSponsor.includes('Ana Dinus'));
+    assert.ok(textoSponsor.includes('ana@dinus.test'));
+    assert.ok(textoAsistente.includes('El espacio con Platica.mx ahora es:'));
+    assert.ok(!textoAsistente.includes('Datos de contacto'));
+    assert.ok(!textoAsistente.includes('Sam Sponsor'));
+    assert.ok(!textoAsistente.includes('sponsor@platica.test'));
   });
 
   await ok('Dos modificaciones seguidas → SEQUENCE estrictamente creciente', async () => {
@@ -437,6 +451,9 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(r.tipo, 'confirmacion');
     assert.strictEqual(estatusDe('cita-mail'), 'Confirmada');
     assert.strictEqual(campoIcs(ultimoIcs(), 'DTSTART'), '20261007T180000Z');
+    assert.ok(correos[0].subject.startsWith('Cambio de horario —'));
+    assert.ok(correos[0].text.includes('cambió de horario'));
+    assert.ok(!correos[0].text.includes('está confirmada'));
   });
 
   console.log('\n=== Cancelar ===');
@@ -455,6 +472,17 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(campoIcs(ics, 'METHOD'), 'CANCEL');
     assert.strictEqual(correos[0].icalEvent.method, 'CANCEL');
     assert.ok(correos[0].subject.startsWith('Cita cancelada —'));
+
+    const textoSponsor = correos[0].text;
+    const textoAsistente = correos[1].text;
+    assert.ok(textoSponsor.includes('con DINUS fue cancelada'));
+    assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
+    assert.ok(textoSponsor.includes('Ana Dinus'));
+    assert.ok(textoSponsor.includes('ana@dinus.test'));
+    assert.ok(textoAsistente.includes('con Platica.mx fue cancelada'));
+    assert.ok(!textoAsistente.includes('Datos de contacto'));
+    assert.ok(!textoAsistente.includes('Sam Sponsor'));
+    assert.ok(!textoAsistente.includes('sponsor@platica.test'));
 
     const enBloque = await citasReal.contarCitasEnBloque({ inicio: '2026-10-07T10:30:00-06:00' });
     assert.strictEqual(enBloque, 0, 'el horario queda libre para otros');
