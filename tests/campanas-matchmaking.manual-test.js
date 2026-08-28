@@ -612,6 +612,40 @@ async function casoParametroSaneadoParaWhatsApp() {
   assert.strictEqual(payload.params[1], '*Revie* (Reseñas de clientes, Marketing por WhatsApp)');
 }
 
+// El catálogo completo del sponsor hacía que el cuerpo pasara 1024 caracteres
+// (caso real: 4 sponsors × 5 soluciones = 1035) y Meta rechazaba el envío.
+async function casoSolucionesCruzadasConLoQueBusca() {
+  configurarOferta();
+  const payload = payloadPara({
+    contacto: { ...contacto, solucionesBuscadas: ['Omnichannel', 'Pagos', 'Analitica / data'] },
+    sugerencias: [
+      { empresa: 'Blip', solucion: ['Performance marketing', 'Omnichannel', 'Pagos', 'Analitica / data'] },
+      { empresa: 'Envia.com', solucion: ['Otro'] },
+    ],
+    modoSimulacion: true,
+  });
+  assert.strictEqual(payload.params[1], '*Blip* (Omnichannel, Pagos) · *Envia.com*');
+}
+
+async function casoSugerenciasNoPasanElMargen() {
+  configurarOferta();
+  const largo = (n) => ({
+    empresa: `Empresa con nombre larguísimo número ${n}`,
+    solucion: ['Estrategia de marketing digital', 'Inteligencia artificial'],
+  });
+  const payload = payloadPara({
+    contacto,
+    sugerencias: [largo(1), largo(2), largo(3), largo(4)],
+    modoSimulacion: true,
+  });
+  assert.ok(payload.params[1].length <= 400, `midió ${payload.params[1].length}`);
+  assert.ok(payload.params[1].includes('Empresa con nombre larguísimo número 4'));
+  assert.ok(
+    !payload.params[1].includes('Inteligencia artificial'),
+    'al no caber, se recorta a una solución por sponsor'
+  );
+}
+
 async function casoCampanaPreviaBloqueaReenvio() {
   configurarOferta({ campanaPrevia: 'A - Primera oferta' });
   const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
@@ -670,6 +704,10 @@ async function main() {
   console.log('✅ Oferta única usa top 4 y 2 params: nombre y sponsors en una línea.');
   await casoParametroSaneadoParaWhatsApp();
   console.log('✅ Los params se sanean: sin saltos de línea ni espacios dobles.');
+  await casoSolucionesCruzadasConLoQueBusca();
+  console.log('✅ {{2}} solo lleva las soluciones que el asistente buscaba, sin "Otro".');
+  await casoSugerenciasNoPasanElMargen();
+  console.log('✅ {{2}} se recorta antes del margen que Meta rechaza.');
   await casoCampanaPreviaBloqueaReenvio();
   console.log('✅ Una campaña previa bloquea cualquier segundo envío automático.');
   await casoSinBloquesLibresIgualEnvia();

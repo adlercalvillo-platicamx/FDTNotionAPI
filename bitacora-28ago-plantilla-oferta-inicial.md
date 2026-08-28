@@ -9,7 +9,7 @@ Pedido de Adler: la plantilla que abre la conversación tiene que **explicar qu�
 ```
 Hola {{1}}, te escribimos del equipo de Fashion Digital Talks, el congreso internacional de eCommerce, negocios y moda en el que ya estás registrado.
 
-Tu registro incluye citas de negocios 1 a 1: reuniones privadas de 30 minutos, dentro del evento y sin costo extra, con empresas que ya resuelven los retos que traes en tu operación. Tú eliges con quién y a qué hora.
+Tu registro incluye citas de negocios 1 a 1: reuniones privadas de 30 minutos, dentro del evento y sin costo extra, con expertos de empresas que ya resuelven los retos que tienes en tu operación de acuerdo a las soluciones que buscas. Tú eliges con quién y a qué hora.
 
 👉 Según el perfil que registraste, esto es lo que encontramos para ti:
 {{2}}
@@ -25,11 +25,33 @@ Lo que cambió respecto a la plantilla anterior: voz de equipo (antes "soy Rebe"
 
 El valor de una variable de plantilla **no puede traer saltos de línea, tabs ni más de 4 espacios seguidos**; WhatsApp rechaza el envío (no la aprobación). `textoSugerencias()` unía los sponsors con `\n`, así que el primer envío real habría tronado.
 
-`{{2}}` va en un solo renglón, con negritas (que sí se renderizan aunque vengan en el parámetro):
+`{{2}}` va en un solo renglón, con negritas (que sí se renderizan aunque vengan en el parámetro). Las soluciones son las etiquetas del multi-select de Notion, no prosa escrita a mano:
 
 ```
-*Revie* (reseñas de clientes y marketing por WhatsApp) · *Platica.mx* (conversaciones para ventas y atención por WhatsApp) · *Blip* (automatización y mensajería para la experiencia de cliente)
+*Blip* (Estrategia de marketing digital, Omnichannel) · *Flow* (Pagos, Plataforma eCommerce) · *Platica.mx* (Omnichannel) · *Revie* (CRM / automatizacion, Customer experience)
 ```
+
+## Segundo hallazgo (mismo día, al verificar la cola antes del primer disparo)
+
+`textoSugerencias()` volcaba **todas** las `Solucion` del sponsor, no las que embonan con el asistente. Medido contra la cola real de 4 asistentes de prueba:
+
+| Asistente | Sponsors | `{{2}}` antes | Cuerpo | `{{2}}` ahora | Cuerpo |
+|---|---|---|---|---|---|
+| Samantha Rivas | 4 | 463 | **1035 — rechazado** | 246 | 818 |
+| Liz Melchor | 4 | 335 | 904 | 175 | 744 |
+| Adler Calvillo | 3 | 355 | 927 | 183 | 755 |
+| Luis Portugal | 2 | 144 | 715 | 79 | 650 |
+
+El tope de Meta para el cuerpo armado es **1024 caracteres**, así que a Samantha no le habría llegado nada. Además se leía como un muro de etiquetas genéricas, incluía el comodín `Otro` y a Luis le tocaba `*Envia.com* (Otro)` porque esa es la única solución marcada de ese sponsor.
+
+Arreglo (pedido de Adler, que era la intención original: "las soluciones que marcó el asistente que buscaba y que el sponsor ofrece"):
+
+- `solucionesRelevantes()` nueva: intersección de `Solucion` del sponsor con `Soluciones Buscadas` del asistente, **máximo 2**, sin `Otro`.
+- Sin intersección (registro legacy sin `Soluciones Buscadas`) cae a lo que ofrece el sponsor, para no dejar el nombre pelado. Si tras quitar `Otro` no queda nada, va solo `*Empresa*` sin paréntesis.
+- Resguardo de longitud: si `{{2}}` pasa de 400 caracteres —nombres de empresa muy largos— baja a 1 solución por sponsor y, en el peor caso, a puros nombres. Un mensaje escueto es mejor que uno que Meta rechaza en silencio.
+- `payloadPara()` ahora pasa `contacto.solucionesBuscadas` a `textoSugerencias()`.
+
+Se descartó usar `Servicios / Producto` (que sí trae prosa legible: Revie = "Plataforma de Reseñas, automatizaciones y campañas por WhatsApp para Ecommerce"): mide 80–210 caracteres por sponsor y con cuatro no cabe en el cuerpo.
 
 ## Cambios de código (`campanas-matchmaking.service.js`)
 
@@ -44,9 +66,11 @@ Los horarios los ofrece el agente en la conversación con `consultar_disponibili
 
 ## Tests
 
-`node tests/campanas-matchmaking.manual-test.js` — 8 casos, todos pasan.
+`node tests/campanas-matchmaking.manual-test.js` — 10 casos, todos pasan.
 
 Nuevos / reescritos:
+- `casoSolucionesCruzadasConLoQueBusca`: solo salen las soluciones que el asistente pidió, tope 2, y un sponsor con puro `Otro` queda como `*Envia.com*`.
+- `casoSugerenciasNoPasanElMargen`: 4 sponsors con nombres largos → `{{2}}` ≤ 400 y se recorta a 1 solución por sponsor.
 - `casoTopCuatroYParamsEstables`: 2 params, `*Empresa 1* (Solución 1)`, sin `\n` ni `\t` en `params[1]`, y `sponsorsConsultados` vacío (el disparo ya no consulta disponibilidad).
 - `casoParametroSaneadoParaWhatsApp`: `Ana\nMaría` → `Ana María`; `Marketing   por WhatsApp` → un solo espacio.
 - `casoSinBloquesLibresIgualEnvia`: con los 4 sponsors sin bloques libres ahora envía y marca (antes `sinEnviar` + `SIN_HORARIOS_SUGERIDOS`).
@@ -67,6 +91,6 @@ El snapshot local también venía atrasado una versión: le faltaba `OoYEKAW7ddA
 
 ## Pendiente
 
-1. ~~Adler crea la plantilla en Meta~~ Cerrado: `agendar_cita_inicial` aprobada. Poner ese valor en `PLATICA_TEMPLATE_OFERTA_INICIAL` en Coolify.
-2. Envío real sigue detrás de `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true` y de `marcar-cola-sin-enviar.js` (limpiar la cola acumulada antes del primer disparo real).
+1. ~~Adler crea la plantilla en Meta~~ Cerrado: `agendar_cita_inicial` aprobada y puesta en `PLATICA_TEMPLATE_OFERTA_INICIAL`. **El nombre va en minúsculas**: Meta no acepta mayúsculas en nombres de plantilla, aunque la interfaz de Plática lo muestre capitalizado.
+2. Envío real sigue detrás de `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true`. `marcar-cola-sin-enviar.js` **no se necesita para la prueba del 28-ago**: la cola `Aprobado` sin campaña son 13 filas de 4 asistentes de prueba (Samantha Rivas, Liz Melchor, Adler Calvillo, Luis Portugal), ninguno con `Última Campaña Enviada` y ningún número externo. Sí se necesitará antes del primer disparo con asistentes reales.
 3. Probar en conversación real, con la plantilla ya aprobada, que el agente no repite la explicación ni la lista al recibir la respuesta.

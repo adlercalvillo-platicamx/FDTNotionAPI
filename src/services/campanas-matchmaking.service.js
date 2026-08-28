@@ -69,6 +69,15 @@ function plantillaPara(modoSimulacion) {
 // tabs o más de 4 espacios seguidos, así que la lista de sponsors va en un solo
 // renglón separada por " · ". Los asteriscos sí se renderizan como negritas.
 const SEPARADOR_SUGERENCIAS = ' · ';
+// Se muestran las soluciones que el asistente pidió y el sponsor ofrece, no el
+// catálogo completo del sponsor: con 4 sponsors de 5 soluciones cada uno el
+// cuerpo llegaba a 1035 caracteres y Meta lo rechazaba (tope 1024).
+const MAX_SOLUCIONES_POR_SPONSOR = 2;
+// El texto fijo de agendar_cita_inicial ocupa ~570 caracteres, así que este es
+// el margen que queda para {{2}} antes de acercarse al tope de Meta.
+const MAX_LARGO_SUGERENCIAS = 400;
+// 'Otro' es el comodín del multi-select: no le dice nada al asistente.
+const SOLUCION_COMODIN = 'Otro';
 
 function limpiarParametroPlantilla(texto) {
   return String(texto ?? '')
@@ -77,20 +86,39 @@ function limpiarParametroPlantilla(texto) {
     .trim();
 }
 
-function textoSugerencias(sugerencias) {
-  return (sugerencias || [])
-    .map((sponsor) => {
-      const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
-      const solucionCruda = Array.isArray(sponsor.solucion)
-        ? sponsor.solucion.join(', ')
-        : sponsor.solucion;
-      const solucion = limpiarParametroPlantilla(solucionCruda) || 'Solución por confirmar';
-      return `*${nombre}* (${solucion})`;
-    })
-    .join(SEPARADOR_SUGERENCIAS);
+function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
+  const ofrece = (Array.isArray(sponsor.solucion) ? sponsor.solucion : [sponsor.solucion])
+    .map((solucion) => limpiarParametroPlantilla(solucion))
+    .filter((solucion) => solucion && solucion !== SOLUCION_COMODIN);
+  const busca = new Set(solucionesBuscadas || []);
+  const coincidentes = ofrece.filter((solucion) => busca.has(solucion));
+  // Registro legacy sin 'Soluciones Buscadas': no hay intersección posible, así
+  // que se muestra lo que el sponsor ofrece en vez de dejar el nombre solo.
+  return (coincidentes.length ? coincidentes : ofrece).slice(0, maxSoluciones);
 }
 
-// La plantilla lleva 2 variables: {{1}} nombre, {{2}} sponsors con su solución.
+function textoSugerencias(sugerencias, solucionesBuscadas) {
+  const armar = (maxSoluciones) =>
+    (sugerencias || [])
+      .map((sponsor) => {
+        const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
+        const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
+        return soluciones.length ? `*${nombre}* (${soluciones.join(', ')})` : `*${nombre}*`;
+      })
+      .join(SEPARADOR_SUGERENCIAS);
+
+  // Nombres de empresa muy largos podrían pasarse del margen incluso con el
+  // tope por sponsor: se recorta a una solución y, en el peor caso, a los
+  // nombres solos. Un mensaje escueto es mejor que uno que Meta rechaza.
+  for (const max of [MAX_SOLUCIONES_POR_SPONSOR, 1]) {
+    const texto = armar(max);
+    if (texto.length <= MAX_LARGO_SUGERENCIAS) return texto;
+  }
+  return armar(0);
+}
+
+// La plantilla lleva 2 variables: {{1}} nombre, {{2}} sponsors con la solución
+// que el asistente buscaba y ese sponsor ofrece.
 // Ya no manda horarios: los ofrece el agente en la conversación con
 // consultar_disponibilidad_cita, que revalida contra Notion en ese momento.
 function payloadPara({ contacto, sugerencias, modoSimulacion }) {
@@ -99,7 +127,7 @@ function payloadPara({ contacto, sugerencias, modoSimulacion }) {
     templateName: plantillaPara(modoSimulacion),
     params: [
       limpiarParametroPlantilla(contacto.nombre) || 'Asistente',
-      textoSugerencias(sugerencias),
+      textoSugerencias(sugerencias, contacto.solucionesBuscadas),
     ],
   };
 }
