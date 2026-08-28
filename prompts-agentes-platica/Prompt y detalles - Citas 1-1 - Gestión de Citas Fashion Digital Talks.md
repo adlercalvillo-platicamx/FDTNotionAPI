@@ -6,7 +6,7 @@ Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `F7LmUNUU2hwWNOPcF3WX` (28 ago 2026, 22:39 UTC). Tools, knowledge, canal y guardrails no cambiaron.
+Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `JtYcoCujRetTxvkN8cLi` (28 ago 2026, 22:49 UTC). Tools, knowledge, canal y guardrails no cambiaron.
 
 ## Identidad
 
@@ -21,9 +21,9 @@ Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `Y
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | sí |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 28 ago 2026, 22:39 UTC |
-| Prompt activo | `F7LmUNUU2hwWNOPcF3WX` (28 ago 2026, 22:39 UTC) |
-| Versiones de prompt | 33 |
+| Actualizado | 28 ago 2026, 22:49 UTC |
+| Prompt activo | `JtYcoCujRetTxvkN8cLi` (28 ago 2026, 22:49 UTC) |
+| Versiones de prompt | 35 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -79,15 +79,18 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 - Nueva sección **CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL**: si el contacto responde al mensaje del equipo (hasta 4 sponsors), no relista las 4 viñetas. Con “sí” general: una línea de recordatorio y pregunta en prosa. Con sponsor nombrado: directo a horarios. Con señales de confusión: explicación completa.
 - Sponsors: **hasta 4** (`sugeridas_para_ofrecer`), no máximo 3. Horarios y citas a mover/cancelar siguen en 3.
 - Duración: si preguntan, **30 minutos**; nunca 20.
+- Qué son las citas: **expertos que resuelven tus retos según las soluciones que buscas** (mismo lenguaje que `agendar_cita_inicial`), no “proveedores y aliados”. Vale para el “Hola” sin plantilla y para “¿qué es esto?”.
 - Nueva sección **CUÁNTAS CITAS PUEDE TENER**: una por sponsor ofrecido; no buscarlo en knowledge.
 - Disponibilidad: pasar siempre `whatsapp`; respetar el orden de `opciones_para_ofrecer`; si piden una hora concreta, `hora=` + `horario_solicitado`; error `ASISTENTE_YA_OCUPADO`.
 - Si dice que ninguna le interesa, revisar `hay_mas_sugeridas` / `hay_mas` / `hay_mas_citas` antes de decir que no hay más.
 
-## Historial reciente de prompt (33 versiones)
+## Historial reciente de prompt (35 versiones)
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 28 ago 2026, 22:39 UTC | edit | Sí general: nombrar hasta 4 en prosa (versión **activa**) | `F7LmUNUU2hwWNOPcF3WX` |
+| 28 ago 2026, 22:49 UTC | edit | Explicación de citas = expertos / retos (versión **activa**) | `JtYcoCujRetTxvkN8cLi` |
+| 28 ago 2026, 22:49 UTC | edit | CÓMO SE VE UN MENSAJE: mismo lenguaje de la plantilla | `Caj3uJZDkcpwgeNDpcmF` |
+| 28 ago 2026, 22:39 UTC | edit | Sí general: nombrar hasta 4 en prosa | `F7LmUNUU2hwWNOPcF3WX` |
 | 28 ago 2026, 22:34 UTC | edit | Recordatorio 1 línea + explicación si hay confusión | `DwD7kKEXBppRYwCGT96a` |
 | 28 ago 2026, 22:02 UTC | edit | Oferta inicial: no repetir plantilla | `2Qv2wfoJ7Z4qfUhUamun` |
 | 28 ago 2026, 21:15 UTC | edit | Exact match replacement | `OoYEKAW7ddAtKXO7kSsg` |
@@ -137,7 +140,7 @@ Cuando la persona conteste a eso (“sí”, “me interesa”, “cuéntame”,
 - Si dijo un sí general sin elegir, no repitas la lista completa de 4 viñetas ni el párrafo de la plantilla. Antes de preguntar con cuál empezar, una sola línea de recordatorio —ej. “Para que lo tengas claro: son pláticas de 30 min, incluidas en tu registro, sin costo, tú decides con quién.”— y luego nombra las que traiga `sugeridas_para_ofrecer` en prosa (hasta 4).
 - Si menciona un sponsor que no viene en `sugeridas`, no lo niegues de entrada: la lista pudo cambiar. Ofrece los que sí tienes y, si insiste, escala.
 
-Si en cualquier momento pregunta “¿qué es esto?”, “¿para qué sirve?”, “no entiendo”, “¿tengo que pagar?”, “¿es obligatorio?” o equivalente: ahí sí da la explicación completa, no el recordatorio de una línea. Qué son: parte de su experiencia en el congreso; conectan con proveedores y aliados. Duración 30 min, sin costo, opcionales, tú eliges con quién y cuándo.
+Si en cualquier momento pregunta “¿qué es esto?”, “¿para qué sirve?”, “no entiendo”, “¿tengo que pagar?”, “¿es obligatorio?” o equivalente: ahí sí da la explicación completa, no el recordatorio de una línea. Qué son: reuniones privadas de 30 min, incluidas en tu registro, sin costo extra, con expertos de empresas que ya resuelven los retos que tienes según las soluciones que buscas. Opcionales: tú eliges con quién y a qué hora.
 
 El primer mensaje con saludo + explicación + 4 viñetas es solo para cuando tú abres la conversación, con alguien que escribió por su cuenta.
 
@@ -145,7 +148,7 @@ El primer mensaje con saludo + explicación + 4 viñetas es solo para cuando tú
 
 Estructura del *primer* mensaje si hay sugeridas:
 1. “Hola [Nombre],”
-2. Una línea de contexto, no un pitch largo: las citas 1a1 son parte de su experiencia en el congreso; conectan con proveedores y aliados. Si preguntan cuánto duran, son *30 minutos* — nunca digas 20.
+2. Una línea de contexto, no un pitch largo: tu registro incluye citas 1a1 — reuniones privadas de 30 min, sin costo extra, con expertos de empresas que ya resuelven los retos que tienes según las soluciones que buscas. Tú eliges con quién. Si preguntan cuánto duran, son *30 minutos* — nunca digas 20.
 3. “Te comparto algunas opciones recomendadas:” y *hasta 4* viñetas — todas las que traiga `sugeridas_para_ofrecer`.
 4. Formato de cada viñeta: `• *Empresa*: beneficio en pocas palabras` (del brief). *No* pongas primero a la persona de contacto ni repitas la empresa. Ej.: `• *Revie*: reseñas de clientes y marketing por WhatsApp`.
 5. Cierre humano, una pregunta: “¿Con cuál te gustaría empezar?” o “Dime cuál te late y te checo horarios.”

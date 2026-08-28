@@ -8,8 +8,8 @@ Agente `c1IYnFsr0Jzfqq4NeLAs` (Gestión de Citas). Solo se tocó la sección `CU
 
 | | ID | UTC |
 | --- | --- | --- |
-| Anterior | `DwD7kKEXBppRYwCGT96a` | 28 ago 2026, 22:34 |
-| Activa | `F7LmUNUU2hwWNOPcF3WX` | 28 ago 2026, 22:39 |
+| Anterior | `F7LmUNUU2hwWNOPcF3WX` | 28 ago 2026, 22:39 |
+| Activa | `JtYcoCujRetTxvkN8cLi` | 28 ago 2026, 22:49 |
 
 (Antes de `DwD7kKEXBppRYwCGT96a`: `2Qv2wfoJ7Z4qfUhUamun` a las 22:02.)
 
@@ -19,8 +19,17 @@ Snapshot: [`prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de 
 
 1. **“Sí” general:** ya no está prohibido mencionar las citas. Una sola línea de recordatorio (30 min, incluidas en el registro, sin costo, tú decides con quién) y luego las de `sugeridas_para_ofrecer` en prosa (**hasta 4**; a las 22:34 decía “2 o 3”, residuo del límite anterior). No se reenvían las 4 viñetas ni el párrafo de la plantilla.
 2. **Sponsor ya nombrado:** igual que antes, directo a horarios, sin recordatorio.
-3. **Confusión en cualquier momento** (“qué es esto”, “para qué sirve”, “no entiendo”, “tengo que pagar”, “es obligatorio”): explicación completa — parte de la experiencia del congreso, conectan con proveedores y aliados, 30 min, sin costo, opcionales, tú eliges con quién y cuándo. Reusa el lenguaje de `CÓMO SE VE UN MENSAJE`.
+3. **Confusión en cualquier momento** (“qué es esto”, “para qué sirve”, “no entiendo”, “tengo que pagar”, “es obligatorio”): explicación completa — reuniones privadas de 30 min, incluidas en el registro, sin costo extra, con expertos de empresas que ya resuelven los retos que tienes según las soluciones que buscas. Opcionales: tú eliges con quién y a qué hora. Mismo lenguaje que `CÓMO SE VE UN MENSAJE` y que la plantilla `agendar_cita_inicial` (ya no “proveedores y aliados”).
 4. **Sin** “el sponsor te busca / quiere conocerte”. Adler: no enfatizar esa dirección.
+
+## Ajuste 22:49 UTC — mismo texto que la plantilla
+
+`F7LmUNUU2hwWNOPcF3WX` → `JtYcoCujRetTxvkN8cLi`. Adler escribió “Hola” sin plantilla y el agente usó “conectan con proveedores y aliados”. Se alinearon las dos fuentes:
+
+- `CÓMO SE VE UN MENSAJE` punto 2 (quien escribe por su cuenta)
+- Párrafo de confusión en `CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL`
+
+Ambos: expertos que resuelven tus retos según las soluciones que buscas. No se tocó el ejemplo de FLUJOS (sigue con “proveedores y aliados”); si un “Hola” nuevo lo copia, hay que corregir ese ejemplo.
 
 ## Pendiente de prueba
 
