@@ -1528,11 +1528,30 @@ function esHorarioOfrecible(inicio, ahora = new Date()) {
   return inicioMs >= ahoraMs - MARGEN_MODIFICACION_MINUTOS * 60 * 1000;
 }
 
+function fechaDeInicio(inicio) {
+  const match = String(inicio).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) throw new Error(`inicio ISO no parseable: ${inicio}`);
+  return match[1];
+}
+
+function extraerPrimero(restantes, predicado) {
+  const indice = restantes.findIndex(predicado);
+  if (indice < 0) return null;
+  return restantes.splice(indice, 1)[0];
+}
+
+function extraerMasProximo(restantes) {
+  return restantes.length ? restantes.shift() : null;
+}
+
 /**
- * Primero el más próximo; después alterna Mañana/Tarde si existe opción.
- * La alternancia cruza días porque ordena y selecciona sobre el conjunto
- * completo recibido. Solo repite periodo cuando ya no queda alternativa.
- * Descarta bloques que superaron el mismo margen temporal de modificar-cita.
+ * Primer ofrecimiento (sin fecha): 3 casillas fijas (Adler, 28-ago).
+ *   1. Día 1 (el más próximo que aún tenga bloques ofrecibles) Mañana
+ *   2. Día 1 Tarde
+ *   3. Día 2, cualquier bloque
+ * Casilla vacía → el más próximo que quede, sin repetir.
+ * Un solo día restante (el otro ya pasó, o el usuario pidió `fecha`) →
+ * colapsa a Mañana / Tarde / relleno. Nunca inventa bloques.
  */
 function seleccionarHorariosParaOferta(
   bloquesDisponibles,
@@ -1547,17 +1566,31 @@ function seleccionarHorariosParaOferta(
         esHorarioOfrecible(bloque.inicio, ahora)
     )
     .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
-  const elegidos = [];
-  while (restantes.length > 0 && elegidos.length < limite) {
-    let indice = 0;
-    if (elegidos.length > 0) {
-      const periodoAnterior = periodoDeHorario(elegidos[elegidos.length - 1].inicio);
-      const alterno = restantes.findIndex((bloque) => periodoDeHorario(bloque.inicio) !== periodoAnterior);
-      if (alterno >= 0) indice = alterno;
-    }
-    elegidos.push(restantes.splice(indice, 1)[0]);
+  const fechas = [...new Set(restantes.map((bloque) => fechaDeInicio(bloque.inicio)))].sort();
+  const slots =
+    fechas.length >= 2
+      ? [
+          extraerPrimero(
+            restantes,
+            (bloque) =>
+              fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Mañana'
+          ),
+          extraerPrimero(
+            restantes,
+            (bloque) =>
+              fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Tarde'
+          ),
+          extraerPrimero(restantes, (bloque) => fechaDeInicio(bloque.inicio) === fechas[1]),
+        ]
+      : [
+          extraerPrimero(restantes, (bloque) => periodoDeHorario(bloque.inicio) === 'Mañana'),
+          extraerPrimero(restantes, (bloque) => periodoDeHorario(bloque.inicio) === 'Tarde'),
+          extraerMasProximo(restantes),
+        ];
+  for (let i = 0; i < slots.length; i += 1) {
+    if (!slots[i]) slots[i] = extraerMasProximo(restantes);
   }
-  return elegidos;
+  return slots.filter(Boolean).slice(0, limite);
 }
 
 function formatearHorarioLegible(inicio) {

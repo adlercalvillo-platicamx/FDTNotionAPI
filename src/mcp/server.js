@@ -456,7 +456,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios REALES libres para un sponsor de cita 1a1. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat; nunca listes más. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Si se omite fecha, mira ambos días. Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
+    'Consulta horarios REALES libres para un sponsor de cita 1a1. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat; nunca listes más. Sin fecha: Día 1 Mañana, Día 1 Tarde y Día 2 (rellena casillas vacías con lo más próximo sin repetir). Con fecha: solo ese día. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
     {
       sponsorPageId: z
         .string()

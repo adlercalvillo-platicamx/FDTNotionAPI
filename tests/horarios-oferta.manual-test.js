@@ -25,21 +25,88 @@ function bloque(inicio) {
   return { inicio, disponible: true };
 }
 
-function casoAlternancia() {
+function iniciosDe(elegidos) {
+  return elegidos.map((b) => b.inicio);
+}
+
+function casoAmbosDiasCompletos() {
   const elegidos = seleccionarHorariosParaOferta([
     bloque('2026-10-07T10:30:00-06:00'),
     bloque('2026-10-07T11:00:00-06:00'),
+    bloque('2026-10-07T14:00:00-06:00'),
+    bloque('2026-10-07T14:30:00-06:00'),
+    bloque('2026-10-08T09:00:00-06:00'),
     bloque('2026-10-08T14:00:00-06:00'),
-    bloque('2026-10-08T14:30:00-06:00'),
   ]);
-  assert.deepStrictEqual(
-    elegidos.map((b) => b.inicio),
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
+    '2026-10-08T09:00:00-06:00',
+  ]);
+  assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
+}
+
+function caso1MananaDia1YaPaso() {
+  const ahora = new Date('2026-10-07T15:00:00-06:00');
+  const elegidos = seleccionarHorariosParaOferta(
     [
-      '2026-10-07T10:30:00-06:00',
-      '2026-10-08T14:00:00-06:00',
-      '2026-10-07T11:00:00-06:00',
-    ]
+      bloque('2026-10-07T10:30:00-06:00'),
+      bloque('2026-10-07T14:00:00-06:00'),
+      bloque('2026-10-07T15:00:00-06:00'),
+      bloque('2026-10-07T15:30:00-06:00'),
+      bloque('2026-10-08T09:00:00-06:00'),
+      bloque('2026-10-08T14:00:00-06:00'),
+    ],
+    3,
+    { ahora }
   );
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T15:30:00-06:00',
+    '2026-10-07T15:00:00-06:00',
+    '2026-10-08T09:00:00-06:00',
+  ]);
+  assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
+}
+
+function caso2SinDia2() {
+  const elegidos = seleccionarHorariosParaOferta([
+    bloque('2026-10-07T10:30:00-06:00'),
+    bloque('2026-10-07T11:00:00-06:00'),
+    bloque('2026-10-07T14:00:00-06:00'),
+    bloque('2026-10-07T14:30:00-06:00'),
+  ]);
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
+    '2026-10-07T11:00:00-06:00',
+  ]);
+  assert.ok(elegidos.every((b) => b.inicio.startsWith('2026-10-07')));
+}
+
+function caso3SinTardeDia1() {
+  const elegidos = seleccionarHorariosParaOferta([
+    bloque('2026-10-07T10:30:00-06:00'),
+    bloque('2026-10-08T09:00:00-06:00'),
+    bloque('2026-10-08T09:30:00-06:00'),
+    bloque('2026-10-08T14:00:00-06:00'),
+  ]);
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-08T09:30:00-06:00',
+    '2026-10-08T09:00:00-06:00',
+  ]);
+}
+
+function casoMenosDeTres() {
+  const elegidos = seleccionarHorariosParaOferta([
+    bloque('2026-10-07T10:30:00-06:00'),
+    bloque('2026-10-08T14:00:00-06:00'),
+  ]);
+  assert.strictEqual(elegidos.length, 2);
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-08T14:00:00-06:00',
+  ]);
 }
 
 function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
@@ -54,38 +121,10 @@ function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
     3,
     { ahora }
   );
-  assert.deepStrictEqual(
-    elegidos.map((b) => b.inicio),
-    [
-      '2026-10-07T11:30:00-06:00',
-      '2026-10-07T14:00:00-06:00',
-    ]
-  );
-}
-
-function casoSoloDos() {
-  const elegidos = seleccionarHorariosParaOferta([
-    bloque('2026-10-07T10:30:00-06:00'),
-    bloque('2026-10-07T14:00:00-06:00'),
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T11:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
   ]);
-  assert.strictEqual(elegidos.length, 2);
-}
-
-function casoSoloManana() {
-  const elegidos = seleccionarHorariosParaOferta([
-    bloque('2026-10-07T10:30:00-06:00'),
-    bloque('2026-10-07T11:00:00-06:00'),
-    bloque('2026-10-08T09:00:00-06:00'),
-    bloque('2026-10-08T09:30:00-06:00'),
-  ]);
-  assert.deepStrictEqual(
-    elegidos.map((b) => b.inicio),
-    [
-      '2026-10-07T10:30:00-06:00',
-      '2026-10-07T11:00:00-06:00',
-      '2026-10-08T09:00:00-06:00',
-    ]
-  );
 }
 
 function casoDisponibilidadDelSponsorTopNoCruzaConOtros() {
@@ -128,11 +167,13 @@ function casoScoreFormulaYFallbackNotas() {
   );
 }
 
-casoAlternancia();
+casoAmbosDiasCompletos();
+caso1MananaDia1YaPaso();
+caso2SinDia2();
+caso3SinTardeDia1();
+casoMenosDeTres();
 casoDescartaHorariosPasadosConMismoMargenDeModificar();
-casoSoloDos();
-casoSoloManana();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoFormatoLegible();
 casoScoreFormulaYFallbackNotas();
-console.log('✅ Selección compartida: alternancia entre días, exclusión de pasados, periodo, ocupación propia, formato y score.');
+console.log('✅ Selección compartida: casillas Día1 Mañana/Tarde + Día2, relleno, exclusión de pasados, ocupación propia, formato y score.');

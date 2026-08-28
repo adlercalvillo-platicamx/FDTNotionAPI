@@ -309,26 +309,25 @@ async function ok(nombre, fn) {
       [
         '2026-10-07T10:30:00-06:00',
         '2026-10-07T15:00:00-06:00',
-        '2026-10-07T11:30:00-06:00',
+        '2026-10-08T10:30:00-06:00',
       ],
-      'debe alternar Mañana/Tarde antes de repetir periodo'
+      'casillas: Día 1 Mañana, Día 1 Tarde, Día 2'
     );
     assert.ok(body.aviso.includes('SOLO estas 3'));
   });
 
-  await ok('cruza días para mantener alternancia en el primer ofrecimiento', async () => {
+  await ok('sin Tarde Día 1 rellena la casilla con Día 2 y no repite', async () => {
     escenarioDisponibilidad = 'cruce-dias';
     const body = parse(
       await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' })
     );
-    assert.deepStrictEqual(
-      body.opciones_para_ofrecer.map((h) => h.inicio),
-      [
-        '2026-10-07T10:30:00-06:00',
-        '2026-10-08T14:00:00-06:00',
-        '2026-10-07T11:00:00-06:00',
-      ]
-    );
+    const inicios = body.opciones_para_ofrecer.map((h) => h.inicio);
+    assert.deepStrictEqual(inicios, [
+      '2026-10-07T10:30:00-06:00',
+      '2026-10-07T11:00:00-06:00',
+      '2026-10-08T14:00:00-06:00',
+    ]);
+    assert.strictEqual(new Set(inicios).size, 3);
   });
 
   await ok('con fecha mira solo ese día y respeta el tope de 3', async () => {

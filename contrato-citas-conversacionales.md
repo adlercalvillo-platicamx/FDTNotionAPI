@@ -20,12 +20,13 @@ la grilla completa ni una lista larga.
 4. Cuando elige uno, llama `consultar_disponibilidad_cita` con el
    `sponsorPageId` exacto. Si no manda `fecha`, mira los dos días.
 5. Ofrece **solo** `opciones_para_ofrecer` (máximo 3). En el primer
-   ofrecimiento sin fecha, el backend toma el horario más próximo y alterna
-   Mañana/Tarde; puede cruzar días para mantener variedad. Si la persona pide
-   un día específico, vuelve a consultar con `fecha=YYYY-MM-DD` y se limita a
-   ese día. Si `hay_mas` y pide otras horas, vuelve a llamar con
-   `excluirInicios` = los `inicio` ya dichos. Nunca inventa horarios ni ofrece
-   bloques que ya superaron el margen temporal permitido.
+   ofrecimiento sin fecha, el backend llena 3 casillas: Día 1 Mañana, Día 1
+   Tarde y Día 2 (si una casilla no tiene cupo, rellena con lo más próximo
+   que quede, sin repetir). Si la persona pide un día específico, vuelve a
+   consultar con `fecha=YYYY-MM-DD` y se limita a ese día. Si `hay_mas` y
+   pide otras horas, vuelve a llamar con `excluirInicios` = los `inicio` ya
+   dichos. Nunca inventa horarios ni ofrece bloques que ya superaron el
+   margen temporal permitido.
 6. Antes de reservar repite sponsor, fecha y hora y pregunta explícitamente
    si confirma.
 7. Solo ante un sí inequívoco llama la API tool `reservar_cita`.
