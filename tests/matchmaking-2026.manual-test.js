@@ -2,13 +2,14 @@
 //
 // Prueba del rediseño de match directo (formato de registro 2026).
 // Cubre a propósito los casos límite, no solo el caso feliz:
-//   1. El alias "Venta por redes sociales" ↔ "Vendo principalmente por redes sociales"
+//   1. (retirado 28-ago) alias/filtro de Etapa de Negocio — ya no aplica;
+//      el caso "sponsor con etapa + candidato sin etapa" está en
+//      tests/tamano-negocio.manual-test.js
 //   2. VIP con match mediocre vs. Presencial nombrado explícitamente (oro molido)
 //   3. El comodín "Otro" NO debe contar como coincidencia
 //   4. Múltiples soluciones coincidiendo a la vez
 
 const {
-  getEtapasValidas,
   calcularScore,
   generarExplicacionNatural,
   coincidenciaTextoLibre,
@@ -23,21 +24,7 @@ function check(nombre, condicion, extra = '') {
   console.log(`[${estado}] ${nombre}${extra ? ' → ' + extra : ''}`);
 }
 
-console.log('\n=== 1. Alias de etapa (el desajuste real del schema) ===');
-const sponsorRedes = { etapaClienteBuscada: ['Venta por redes sociales'] };
-const etapas = getEtapasValidas(sponsorRedes);
-console.log('   Sponsor pide:', sponsorRedes.etapaClienteBuscada);
-console.log('   Se traduce a:', etapas);
-check('"Venta por redes sociales" se traduce al valor real del asistente',
-  etapas.includes('Vendo principalmente por redes sociales'));
-
-const sponsorLiteral = { etapaClienteBuscada: ['Escalamiento de e-commerce', 'Estrategia omnicanal avanzada'] };
-const etapasLit = getEtapasValidas(sponsorLiteral);
-check('Las etapas idénticas pasan sin cambio',
-  etapasLit.includes('Escalamiento de e-commerce') && etapasLit.includes('Estrategia omnicanal avanzada'),
-  JSON.stringify(etapasLit));
-
-check('Sponsor sin etapa especificada → null (no filtra)', getEtapasValidas({ etapaClienteBuscada: [] }) === null);
+console.log('\n=== 1. Etapa ya no es filtro (28-ago) — ver tamano-negocio.manual-test.js ===');
 
 console.log('\n=== 2. VIP mediocre vs. Presencial nombrado por el sponsor ===');
 const sponsorPagos = {

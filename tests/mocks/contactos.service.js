@@ -13,8 +13,8 @@ const CONTACTOS = [
     servicios: 'Plataforma de e-commerce y POS para retail de moda',
     ticketTipo: null,
     etapaDeNegocio: null,
-    // Este sponsor busca etapas avanzadas — Ana NO cae aquí, a propósito:
-    // es el caso donde el filtro duro descarta correctamente.
+    // Etapa ya no filtra (28-ago). El campo queda en el mock como dato de
+    // sponsor; Ana entra al pool de Carlos si pasa tamaño/madurez.
     etapaClienteBuscada: ['Escalamiento de e-commerce', 'Estrategia omnicanal avanzada'],
     solucion: ['Plataforma eCommerce'],
     puestosBuscados: ['Direccion General / Founder / CEO', 'Retail / Expansion de tiendas'],
@@ -34,8 +34,6 @@ const CONTACTOS = [
     servicios: 'Manufactura de calzado y maquila para marcas terceras',
     ticketTipo: null,
     etapaDeNegocio: null,
-    // Usa "Venta por redes sociales" — el valor que necesita ALIAS para
-    // cruzar con "Vendo principalmente por redes sociales" de Ana.
     etapaClienteBuscada: ['Venta por redes sociales'],
     solucion: ['Logistica / fulfillment'],
     puestosBuscados: ['Direccion General / Founder / CEO'],
@@ -118,10 +116,10 @@ async function obtenerContacto(pageId) {
 }
 
 async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = false }) {
+  void etapasValidas; // 28-ago: ya no filtra, igual que el service real
   return CONTACTOS.filter((c) => {
     if (c.categoria !== 'Asistente') return false;
     if (!esElegibleParaCitas(c, incluirVirtual)) return false;
-    if (etapasValidas && !etapasValidas.includes(c.etapaDeNegocio)) return false;
     return true;
   });
 }

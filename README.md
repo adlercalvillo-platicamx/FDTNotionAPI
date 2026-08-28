@@ -106,7 +106,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
 | `consultar_sugeridas_para_asistente` | Lectura | Campo **`sugeridas`**: solo filas `Aprobado`. Aparte, `citasConfirmadas`. Identificador: `whatsapp`. El WhatsApp Flow de reserva usa el mismo criterio en proceso, no este HTTP. `GET /citas/sugeridas` sigue Sugerido+Aprobado y nadie lo llama hoy. `GET /matchmaking/sugerencias-asistente` no cambió (`sugerencias`, solo Aprobado). |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
-| `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
+| `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1: Giro/Industria (Marca de moda, Retailer, Manufactura), `Quiere Citas 1a1` excluye solo `'No'`, Tamaño de Negocio / Madurez Exa. **No** filtra por `Etapa de Negocio` (28-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
 | `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
 | `sugerir_matches_global` | Escritura acotada, masiva | Matchmaking para todos los sponsors activos, detecta solapamientos y devuelve el ranking por sponsor con `explicacion`/`detalle` en cada match (19-ago: antes los solapamientos perdían la explicación). Mismo patrón dry-run. **Corregido el 10-ago** — timeout por ~130 llamadas Notion; ahora carga pares activos una sola vez (ver Bugs) |
 | `aprobar_match` | Escritura acotada | **Nueva (9 de agosto).** Marca como `Aprobado` una fila de `Citas` ya en estado `Sugerido`, dado un par (sponsorPageId, asistentePageId). Verifica que la fila exista antes de aprobar — nunca aprueba a ciegas ni crea una fila nueva. No crea ninguna cita real ni toca Calendar (eso sigue siendo exclusivo de `reservar_cita`) |
@@ -163,6 +163,8 @@ No hay suite automatizada con Jest todavía — son scripts que se corren a mano
 
 ```bash
 node tests/matchmaking.manual-test.js
+node tests/tamano-negocio.manual-test.js
+node tests/matchmaking-2026.manual-test.js
 node tests/matchmaking-global.manual-test.js
 node tests/guardar-sugerencia-individual.manual-test.js
 node tests/checklist.manual-test.js
@@ -193,7 +195,7 @@ Pruebas SMTP reales contra Coolify: destinatarios **solo** en allowlist de prueb
 
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
 - Cron de reconciliación para citas que quedan en "Pendiente Calendar" por un crash a media ejecución.
-- Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada` (ver `matchmaking-spec-fdt.md`).
+- ~~Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada`.~~ **28-ago:** etapa ya no es filtro de matchmaking (Adler). El campo sigue en Notion; no hace falta homologar catálogos para el pool.
 - ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — verificado el 22 de julio; **irrelevante desde el 27-ago** (Calendar propio retirado).
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
 - Confirmar con Laura: ¿última cita del miércoles puede ser `18:30–19:00` (toca el cierre del horario de citas) o hay que cortar antes? Mismo análisis jueves (`17:30–18:00`). Ver Caso 4c de `tests-disponibilidad`.

@@ -20,7 +20,13 @@ const sponsor = {
   empresa: 'Acme',
   nivelPatrocinio: 'Oro',
   citasMinimasPrometidas: 2,
-  etapaClienteBuscada: [],
+  etapaClienteBuscada: [
+    'Exploracion de e-commerce',
+    'Operacion basica de e-commerce',
+    'Escalamiento de e-commerce',
+    'Estrategia omnicanal avanzada',
+    'Venta por redes sociales',
+  ],
   clientesActuales: '',
   clientesPotencialesDeseados: '',
   puestosBuscados: [],
@@ -29,6 +35,7 @@ const sponsor = {
 
 const asistentes = [
   { id: 'grande', nombre: 'Grande SA', empresa: 'Grande SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE },
+  { id: 'sin-etapa', nombre: 'Sin Etapa SA', empresa: 'Sin Etapa SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE, etapaDeNegocio: null },
   { id: 'mediana', nombre: 'Mediana SA', empresa: 'Mediana SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA },
   { id: 'micro', nombre: 'Micro SA', empresa: 'Micro SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO, madurezNegocioExa: 'Consolidado' },
   { id: 'pequena', nombre: 'Pequena SA', empresa: 'Pequena SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA },
@@ -47,8 +54,18 @@ require.cache[contactosPath] = {
       if (id === sponsor.id) return sponsor;
       return asistentes.find((a) => a.id === id);
     },
-    async buscarAsistentesCandidatos() {
-      return asistentes.map((a) => ({ categoria: 'Asistente', dadoDeBaja: false, ...a }));
+    async buscarAsistentesCandidatos({ etapasValidas }) {
+      // Si matchmaking volviera a pasar etapasValidas, `sin-etapa` quedaría
+      // fuera (como Blip + Adler/Sam antes del 28-ago). El service real ya
+      // no las pasa; este mock las honraría si llegaran.
+      return asistentes
+        .map((a) => ({ categoria: 'Asistente', dadoDeBaja: false, ...a }))
+        .filter((c) => {
+          if (etapasValidas && etapasValidas.length > 0 && !etapasValidas.includes(c.etapaDeNegocio)) {
+            return false;
+          }
+          return true;
+        });
     },
   },
 };
@@ -73,18 +90,20 @@ const { sugerirMatchesParaSponsor } = require('../src/services/matchmaking.servi
 async function main() {
   const r = await sugerirMatchesParaSponsor(sponsor.id, { topN: 20, escribirEnNotion: false });
   const ids = r.sugerencias.map((s) => s.id).sort();
-  assert.deepStrictEqual(ids, ['exa-cons', 'exa-pyme', 'grande', 'mediana']);
-  assert.strictEqual(r.totalCandidatosEvaluados, 4);
+  assert.deepStrictEqual(ids, ['exa-cons', 'exa-pyme', 'grande', 'mediana', 'sin-etapa']);
+  assert.strictEqual(r.totalCandidatosEvaluados, 5);
+  assert.ok(ids.includes('sin-etapa'), 'Grande sin Etapa de Negocio entra aunque el sponsor tenga Etapa Cliente Buscada');
   assert.ok(!ids.includes('micro'));
   assert.ok(!ids.includes('pequena'));
   assert.ok(!ids.includes('exa-temp'));
   assert.ok(!ids.includes('vacio'));
   const scores = Object.fromEntries(r.sugerencias.map((s) => [s.id, s.score]));
   assert.strictEqual(scores.grande, 40);
+  assert.strictEqual(scores['sin-etapa'], 40);
   assert.strictEqual(scores.mediana, 15);
   assert.strictEqual(scores['exa-cons'], 40);
   assert.strictEqual(scores['exa-pyme'], 15);
-  console.log('✅ Micro/Pequeña/Temprano/vacío no entran; Grande/Mediana/Exa sí, con pesos 40/15.');
+  console.log('✅ Micro/Pequeña/Temprano/vacío no entran; Grande/Mediana/Exa sí; Grande sin etapa entra con sponsor tipo Blip.');
 }
 
 main().catch((err) => {

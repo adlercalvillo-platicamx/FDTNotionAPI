@@ -182,8 +182,11 @@ async function obtenerContacto(pageId) {
  * texto libre o cruzar con la tabla Citas.
  *
  * @param {object} params
- * @param {string[]|null} params.etapasValidas - valores de "Etapa de Negocio"
- *   aceptados, ya expandidos con alias (ver matchmaking.service.js). null = no filtrar.
+ * @param {string[]|null} [params.etapasValidas] - ⚠️ DEPRECADO el 28 de
+ *   agosto. Ya no se filtra por `Etapa de Negocio` / `Etapa Cliente Buscada`
+ *   (Adler: Ticketópolis dejó de capturar etapa en asistentes nuevos). El
+ *   parámetro se conserva en la firma por compatibilidad con llamadas que
+ *   todavía lo pasan; no tiene efecto. Mismo patrón que `incluirVirtual`.
  * @param {boolean} [params.incluirVirtual=false] - ⚠️ DEPRECADO el 13 de
  *   agosto. Virtual ahora es elegible por default (ver arriba), así que este
  *   parámetro ya no tiene ningún efecto — se conserva únicamente para no
@@ -215,6 +218,10 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // Virtual entra por default desde el 13 de agosto — ver comentario de la
   // función arriba. `incluirVirtual` ya no se usa aquí, se ignora
   // intencionalmente (queda solo por compatibilidad de firma).
+  // `etapasValidas` igual desde el 28 de agosto: Ticketópolis ya no llena
+  // Etapa de Negocio; no se manda ese filtro a Notion.
+  void etapasValidas;
+  void incluirVirtual;
   const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual'];
 
   // Filtro de Giro/Industria — agregado 12 de agosto, confirmado por Laura
@@ -236,12 +243,6 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     { or: tiposBoletoElegibles.map((tipo) => ({ property: 'Ticket / Tipo Asistencia', select: { equals: tipo } })) },
     { or: GIROS_ELEGIBLES_MATCHMAKING.map((giro) => ({ property: 'Giro / Industria', select: { equals: giro } })) },
   ];
-
-  if (etapasValidas && etapasValidas.length > 0) {
-    condiciones.push({
-      or: etapasValidas.map((e) => ({ property: 'Etapa de Negocio', select: { equals: e } })),
-    });
-  }
 
   const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
     method: 'POST',

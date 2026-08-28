@@ -74,6 +74,7 @@ const ASISTENTE_ANA = {
   citasMinimasPrometidas: 0,
   fuenteDato: 'Declarado',
   esVip: false,
+  madurezNegocioExa: 'Consolidado',
   matchSugerido: [],
 };
 

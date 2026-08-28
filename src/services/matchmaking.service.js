@@ -10,36 +10,31 @@
 // asistentes para que las respuestas caigan en LAS MISMAS listas controladas
 // que ya usaba el sponsor. Este archivo implementa ese match directo.
 //
-// Las 3 relaciones directas (confirmadas por Liz, sesión del 24 de julio):
-//   sponsor "Etapa Cliente Buscada"  ↔  asistente "Etapa de Negocio"
-//   sponsor "Puestos Buscados"       ↔  asistente "Area"
-//   sponsor "Solucion"               ↔  asistente "Soluciones Buscadas"
+// Ranking (Capa 2) — relaciones directas (Liz, 24 de julio):
+//   sponsor "Puestos Buscados"  ↔  asistente "Area"
+//   sponsor "Solucion"          ↔  asistente "Soluciones Buscadas"
 // Más una relación de texto libre, débil:
 //   sponsor "Clientes Potenciales Deseados" ↔ asistente "Otra Solucion Buscada"
 //
-// Ver documentación completa en 09-matchmaking-directo-2026.md
+// 28-ago — `Etapa Cliente Buscada` ↔ `Etapa de Negocio` ya NO es filtro de
+// Capa 1 (Adler). Ticketópolis dejó de capturar etapa en asistentes nuevos;
+// el pool se decide con Tamaño de Negocio / Madurez Exa, no con etapa.
+// Los campos siguen en Notion (vistas de Laura/Liz); no se leen para
+// elegibilidad. Ver documentación histórica en 09-matchmaking-directo-2026.md
 
 const notionContactos = require('./contactos.service');
 const notionCitas = require('./citas.service');
 
 // ─────────────────────────────────────────────────────────────
-// ALIAS DE ETAPA — la única traducción que sigue haciendo falta.
+// Prioridad de Nivel de Patrocinio — CONFIRMADO por Laura el 16 de julio.
+// Cristal (6 citas) > Diamante (4) > Oro (2). Bronce no participa.
+// "Principal" no existe como nivel.
 //
-// 4 de las 5 opciones son idénticas palabra por palabra entre los dos
-// formularios. La quinta NO:
-//   sponsor:   "Venta por redes sociales"
-//   asistente: "Vendo principalmente por redes sociales"
-// Sin este alias, ese caso se descartaría en silencio (sin error, solo
-// perdiendo candidatos válidos). Verificado contra el schema real de Notion
-// el 30 de julio 2026.
-//
-// Si algún día se homologan las dos listas al 100%, este mapa se puede
-// vaciar y todo sigue funcionando.
+// ⚠️ Liz aclaró el 24 de julio que la cuota real se NEGOCIA por sponsor
+// (vio un caso donde el nivel daba 6 pero Laura le dio 4). Por eso
+// "Citas Minimas Prometidas" es un campo editable por sponsor en Notion y
+// NUNCA se deriva de este mapa. Este mapa es solo para el DESEMPATE.
 // ─────────────────────────────────────────────────────────────
-const ALIAS_ETAPA_SPONSOR_A_ASISTENTE = {
-  'Venta por redes sociales': ['Vendo principalmente por redes sociales'],
-};
-
 // ─────────────────────────────────────────────────────────────
 // Prioridad de Nivel de Patrocinio — CONFIRMADO por Laura el 16 de julio.
 // Cristal (6 citas) > Diamante (4) > Oro (2). Bronce no participa.
@@ -150,25 +145,6 @@ function normalizar(texto) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, ''); // quita acentos
-}
-
-/**
- * Traduce las "Etapa Cliente Buscada" del sponsor a los valores válidos de
- * "Etapa de Negocio" del asistente, aplicando los alias donde hagan falta.
- * Regresa null si el sponsor no especificó ninguna (no se filtra por etapa).
- */
-function getEtapasValidas(sponsor) {
-  if (!sponsor.etapaClienteBuscada || sponsor.etapaClienteBuscada.length === 0) return null;
-  const set = new Set();
-  for (const etapaSponsor of sponsor.etapaClienteBuscada) {
-    const alias = ALIAS_ETAPA_SPONSOR_A_ASISTENTE[etapaSponsor];
-    if (alias) {
-      alias.forEach((a) => set.add(a));
-    } else {
-      set.add(etapaSponsor); // match literal — el caso de 4 de las 5 opciones
-    }
-  }
-  return Array.from(set);
 }
 
 /**
@@ -396,7 +372,7 @@ function generarExplicacionNatural(candidato, senales) {
 
   let texto;
   if (frases.length === 0) {
-    texto = `Se sugiere a ${empresaCandidato} porque su etapa de negocio es la que el sponsor busca, aunque sin más coincidencias específicas.`;
+    texto = `Se sugiere a ${empresaCandidato} porque cumple el perfil de tamaño de empresa de las citas 1a1, aunque sin coincidencias específicas de área o solución.`;
   } else if (frases.length === 1) {
     texto = `Se sugiere a ${empresaCandidato} porque ${frases[0]}.`;
   } else {
@@ -483,9 +459,8 @@ async function sugerirMatchesParaSponsor(
   const topNEfectivo = typeof topN === 'number' ? topN : (sponsor.citasMinimasPrometidas || 0) + MARGEN_CANDIDATOS;
 
   // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
-  // dado de baja, etapa de negocio).
-  const etapasValidas = getEtapasValidas(sponsor);
-  const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ etapasValidas, incluirVirtual })).filter(
+  // dado de baja). Etapa de negocio ya no se filtra (28-ago).
+  const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ incluirVirtual })).filter(
     (c) => esCandidatoAsistenteReal(c) && esCandidatoPorTamanoNegocio(c)
   );
 
@@ -834,14 +809,12 @@ module.exports = {
   aprobarMatch,
   compararPrioridadSponsor,
   // exportados para pruebas / depuración:
-  getEtapasValidas,
   calcularScore,
   esCandidatoPorTamanoNegocio,
   esCandidatoAsistenteReal,
   generarExplicacionNatural,
   empresaMencionadaEn,
   coincidenciaTextoLibre,
-  ALIAS_ETAPA_SPONSOR_A_ASISTENTE,
   PRIORIDAD_NIVEL_PATROCINIO,
   TAMANO_GRANDE,
   TAMANO_MEDIANA,

@@ -34,6 +34,7 @@ const candidatos = [
     solucionesBuscadas: ['Logistica / fulfillment'],
     otraSolucionBuscada: '',
     fuenteDato: 'Declarado',
+    tamanoNegocio: 'Grande - más de 250 empleados',
   },
   {
     id: 'asistente-2',
@@ -46,6 +47,7 @@ const candidatos = [
     solucionesBuscadas: [],
     otraSolucionBuscada: '',
     fuenteDato: 'Declarado',
+    tamanoNegocio: 'Grande - más de 250 empleados',
   },
 ];
 
