@@ -46,7 +46,7 @@ const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas 
 // problema. Hace falta explícito porque un bloque que ya pasó aparece
 // "libre" en disponibilidad (nada lo está ocupando) y sin esta regla se
 // podría mover una cita a un horario que ya ocurrió.
-const MARGEN_MODIFICACION_MINUTOS = Number(process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5);
+const MARGEN_MODIFICACION_MINUTOS = citasService.MARGEN_MODIFICACION_MINUTOS;
 // Texto pendiente de afinar con Sam. La limitación es real y no se oculta:
 // Gmail/Outlook procesan bien el .ics de actualización/cancelación, otros
 // clientes menos comunes pueden no reaccionar.

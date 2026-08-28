@@ -159,11 +159,14 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
   }
 }
 
-async function ejecutarConsultarDisponibilidadCita({
-  sponsorPageId,
-  fecha,
-  excluirInicios,
-} = {}) {
+async function ejecutarConsultarDisponibilidadCita(
+  {
+    sponsorPageId,
+    fecha,
+    excluirInicios,
+  } = {},
+  { ahora = new Date() } = {}
+) {
   const sponsorId = String(sponsorPageId || '').trim();
   const fechaSolicitada = String(fecha || '').trim();
   if (!sponsorId) {
@@ -188,7 +191,13 @@ async function ejecutarConsultarDisponibilidadCita({
         fecha: dia,
       });
       for (const bloque of bloques) {
-        if (!bloque.disponible || excluidos.has(bloque.inicio)) continue;
+        if (
+          !bloque.disponible ||
+          excluidos.has(bloque.inicio) ||
+          !citasService.esHorarioOfrecible(bloque.inicio, ahora)
+        ) {
+          continue;
+        }
         libres.push({
           inicio: bloque.inicio,
           fin: bloque.fin,
@@ -197,7 +206,7 @@ async function ejecutarConsultarDisponibilidadCita({
       }
     }
 
-    const opciones = citasService.seleccionarHorariosParaOferta(libres, 3).map((bloque) => ({
+    const opciones = citasService.seleccionarHorariosParaOferta(libres, 3, { ahora }).map((bloque) => ({
       inicio: bloque.inicio,
       fin: bloque.fin,
       horario_legible: bloque.horario_legible,

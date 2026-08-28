@@ -42,6 +42,27 @@ function casoAlternancia() {
   );
 }
 
+function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
+  const ahora = new Date('2026-10-07T11:05:01-06:00');
+  const elegidos = seleccionarHorariosParaOferta(
+    [
+      bloque('2026-10-07T10:30:00-06:00'),
+      bloque('2026-10-07T11:00:00-06:00'),
+      bloque('2026-10-07T11:30:00-06:00'),
+      bloque('2026-10-07T14:00:00-06:00'),
+    ],
+    3,
+    { ahora }
+  );
+  assert.deepStrictEqual(
+    elegidos.map((b) => b.inicio),
+    [
+      '2026-10-07T11:30:00-06:00',
+      '2026-10-07T14:00:00-06:00',
+    ]
+  );
+}
+
 function casoSoloDos() {
   const elegidos = seleccionarHorariosParaOferta([
     bloque('2026-10-07T10:30:00-06:00'),
@@ -108,9 +129,10 @@ function casoScoreFormulaYFallbackNotas() {
 }
 
 casoAlternancia();
+casoDescartaHorariosPasadosConMismoMargenDeModificar();
 casoSoloDos();
 casoSoloManana();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoFormatoLegible();
 casoScoreFormulaYFallbackNotas();
-console.log('✅ Horarios del sponsor top: alternancia, borde corto, periodo, ocupación propia, formato y score.');
+console.log('✅ Selección compartida: alternancia entre días, exclusión de pasados, periodo, ocupación propia, formato y score.');

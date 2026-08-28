@@ -25,6 +25,12 @@ const {
 } = require('../utils/estado-envio-campana');
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
+// Mismo margen que usa modificar-cita para rechazar un destino pasado.
+// Vive aquí porque la selección compartida alimenta tanto la disponibilidad
+// conversacional como (si la plantilla final los incluye) la oferta inicial.
+const MARGEN_MODIFICACION_MINUTOS = Number(
+  process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5
+);
 
 // Contacto ficticio "Bloqueo de Agenda (Programa del Evento)" — las filas
 // Confirmada sin notificar que lo tienen en Contacto Principal ocupan al
@@ -1515,13 +1521,31 @@ function periodoDeHorario(inicio) {
   return minutos < minutosCorteOferta() ? 'Mañana' : 'Tarde';
 }
 
+function esHorarioOfrecible(inicio, ahora = new Date()) {
+  const inicioMs = new Date(inicio).getTime();
+  const ahoraMs = ahora instanceof Date ? ahora.getTime() : new Date(ahora).getTime();
+  if (!Number.isFinite(inicioMs) || !Number.isFinite(ahoraMs)) return false;
+  return inicioMs >= ahoraMs - MARGEN_MODIFICACION_MINUTOS * 60 * 1000;
+}
+
 /**
  * Primero el más próximo; después alterna Mañana/Tarde si existe opción.
- * La alternancia es preferencia: si no existe, toma el siguiente cronológico.
+ * La alternancia cruza días porque ordena y selecciona sobre el conjunto
+ * completo recibido. Solo repite periodo cuando ya no queda alternativa.
+ * Descarta bloques que superaron el mismo margen temporal de modificar-cita.
  */
-function seleccionarHorariosParaOferta(bloquesDisponibles, limite = 3) {
+function seleccionarHorariosParaOferta(
+  bloquesDisponibles,
+  limite = 3,
+  { ahora = new Date() } = {}
+) {
   const restantes = [...(bloquesDisponibles || [])]
-    .filter((bloque) => bloque?.disponible !== false && bloque?.inicio)
+    .filter(
+      (bloque) =>
+        bloque?.disponible !== false &&
+        bloque?.inicio &&
+        esHorarioOfrecible(bloque.inicio, ahora)
+    )
     .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
   const elegidos = [];
   while (restantes.length > 0 && elegidos.length < limite) {
@@ -1635,6 +1659,8 @@ module.exports = {
   cargarIndiceCitasConfirmadas,
   bloquesDisponiblesParaSponsor,
   seleccionarHorariosParaOferta,
+  esHorarioOfrecible,
+  MARGEN_MODIFICACION_MINUTOS,
   formatearHorarioLegible,
   periodoDeHorario,
   finDeBloque,

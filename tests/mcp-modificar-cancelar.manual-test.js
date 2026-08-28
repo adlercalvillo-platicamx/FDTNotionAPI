@@ -23,6 +23,7 @@ class BookingError extends Error {
 
 const llamadas = [];
 let ultimaConsultaSugeridas = null;
+let escenarioDisponibilidad = 'variado';
 const bookingPath = require.resolve('../src/services/booking.service');
 require.cache[bookingPath] = {
   id: bookingPath,
@@ -117,6 +118,38 @@ const obtenerFechasOriginal = citasService.obtenerFechasEvento;
 citasService.obtenerFechasEvento = () => ['2026-10-07', '2026-10-08'];
 citasService.obtenerDisponibilidadSponsor = async ({ sponsorPageId, fecha }) => {
   assert.strictEqual(sponsorPageId, 'sponsor-1');
+  if (escenarioDisponibilidad === 'cruce-dias') {
+    if (fecha === '2026-10-07') {
+      return [
+        {
+          inicio: `${fecha}T10:30:00-06:00`,
+          fin: `${fecha}T11:00:00-06:00`,
+          disponible: true,
+          motivo: null,
+        },
+        {
+          inicio: `${fecha}T11:00:00-06:00`,
+          fin: `${fecha}T11:30:00-06:00`,
+          disponible: true,
+          motivo: null,
+        },
+      ];
+    }
+    return [
+      {
+        inicio: `${fecha}T14:00:00-06:00`,
+        fin: `${fecha}T14:30:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+      {
+        inicio: `${fecha}T14:30:00-06:00`,
+        fin: `${fecha}T15:00:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+    ];
+  }
   const manana = {
     inicio: `${fecha}T10:30:00-06:00`,
     fin: `${fecha}T11:00:00-06:00`,
@@ -262,6 +295,7 @@ async function ok(nombre, fn) {
 
   console.log('\n=== consultar_disponibilidad_cita ===');
   await ok('sin fecha consulta ambos días y ofrece máximo 3 horarios libres', async () => {
+    escenarioDisponibilidad = 'variado';
     const r = await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' });
     assert.ok(!r.isError);
     const body = parse(r);
@@ -270,10 +304,35 @@ async function ok(nombre, fn) {
     assert.strictEqual(body.hay_mas, true);
     assert.strictEqual(body.total_libres, 6);
     assert.ok(body.opciones_para_ofrecer.every((h) => h.inicio && h.fin && h.horario_legible));
+    assert.deepStrictEqual(
+      body.opciones_para_ofrecer.map((h) => h.inicio),
+      [
+        '2026-10-07T10:30:00-06:00',
+        '2026-10-07T15:00:00-06:00',
+        '2026-10-07T11:30:00-06:00',
+      ],
+      'debe alternar Mañana/Tarde antes de repetir periodo'
+    );
     assert.ok(body.aviso.includes('SOLO estas 3'));
   });
 
+  await ok('cruza días para mantener alternancia en el primer ofrecimiento', async () => {
+    escenarioDisponibilidad = 'cruce-dias';
+    const body = parse(
+      await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' })
+    );
+    assert.deepStrictEqual(
+      body.opciones_para_ofrecer.map((h) => h.inicio),
+      [
+        '2026-10-07T10:30:00-06:00',
+        '2026-10-08T14:00:00-06:00',
+        '2026-10-07T11:00:00-06:00',
+      ]
+    );
+  });
+
   await ok('con fecha mira solo ese día y respeta el tope de 3', async () => {
+    escenarioDisponibilidad = 'variado';
     const r = await ejecutarConsultarDisponibilidadCita({
       sponsorPageId: 'sponsor-1',
       fecha: '2026-10-08',
@@ -285,7 +344,26 @@ async function ok(nombre, fn) {
     assert.strictEqual(body.total_libres, 3);
   });
 
+  await ok('consulta en vivo no ofrece bloques del mismo día que ya pasaron', async () => {
+    escenarioDisponibilidad = 'variado';
+    const r = await ejecutarConsultarDisponibilidadCita(
+      {
+        sponsorPageId: 'sponsor-1',
+        fecha: '2026-10-07',
+      },
+      { ahora: new Date('2026-10-07T12:05:01-06:00') }
+    );
+    const body = parse(r);
+    assert.deepStrictEqual(
+      body.opciones_para_ofrecer.map((h) => h.inicio),
+      ['2026-10-07T15:00:00-06:00']
+    );
+    assert.strictEqual(body.total_libres, 1);
+    assert.strictEqual(body.hay_mas, false);
+  });
+
   await ok('excluirInicios pide el siguiente lote', async () => {
+    escenarioDisponibilidad = 'variado';
     const primero = parse(
       await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' })
     );
