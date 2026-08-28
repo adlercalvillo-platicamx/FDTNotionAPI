@@ -24,9 +24,14 @@ const { z } = require('zod');
 const checklistService = require('../services/checklist.service');
 const matchmakingService = require('../services/matchmaking.service');
 const citasService = require('../services/citas.service');
+const contactosService = require('../services/contactos.service');
 const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 const { modificarCita, cancelarCita } = require('../services/booking.service');
+
+const LIMITE_SUGERIDAS_PARA_OFRECER = 4;
+const LIMITE_HORARIOS_PARA_OFRECER = 3;
+const LIMITE_CITAS_PARA_OFRECER = 3;
 
 function respuestaJson(payload, isError = false) {
   const result = {
@@ -147,12 +152,12 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
     const citasConfirmadas = resultado.citasConfirmadas || [];
     return respuestaJson({
       ...resultado,
-      sugeridas_para_ofrecer: sugeridas.slice(0, 3),
-      hay_mas_sugeridas: sugeridas.length > 3,
-      citas_para_ofrecer: citasConfirmadas.slice(0, 3),
-      hay_mas_citas: citasConfirmadas.length > 3,
+      sugeridas_para_ofrecer: sugeridas.slice(0, LIMITE_SUGERIDAS_PARA_OFRECER),
+      hay_mas_sugeridas: sugeridas.length > LIMITE_SUGERIDAS_PARA_OFRECER,
+      citas_para_ofrecer: citasConfirmadas.slice(0, LIMITE_CITAS_PARA_OFRECER),
+      hay_mas_citas: citasConfirmadas.length > LIMITE_CITAS_PARA_OFRECER,
       aviso:
-        'En el chat ofrece máximo 3 nombres a la vez (sugeridas_para_ofrecer o citas_para_ofrecer). Si pide más, usa las siguientes de la lista completa. No leas IDs en voz alta.',
+        'En el chat ofrece máximo 4 sponsors (sugeridas_para_ofrecer). Citas ya confirmadas: máximo 3 (citas_para_ofrecer). Si hay_mas_* y pide más, usa las siguientes de la lista completa. No leas IDs en voz alta.',
     });
   } catch (err) {
     return respuestaJson({ error: err.message, code: err.code }, true);
@@ -164,11 +169,15 @@ async function ejecutarConsultarDisponibilidadCita(
     sponsorPageId,
     fecha,
     excluirInicios,
+    whatsapp,
+    asistentePageId,
   } = {},
   { ahora = new Date() } = {}
 ) {
   const sponsorId = String(sponsorPageId || '').trim();
   const fechaSolicitada = String(fecha || '').trim();
+  const tel = String(whatsapp || '').trim();
+  const asistenteDirecto = String(asistentePageId || '').trim();
   if (!sponsorId) {
     return respuestaJson(
       {
@@ -178,8 +187,28 @@ async function ejecutarConsultarDisponibilidadCita(
       true
     );
   }
+  if (!tel && !asistenteDirecto) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Pasa whatsapp (preferido) o asistentePageId para no ofrecer un horario que el asistente ya tiene ocupado.',
+      },
+      true
+    );
+  }
 
   try {
+    let asistenteId = asistenteDirecto;
+    if (!asistenteId) {
+      const contacto = await contactosService.buscarAsistentePorWhatsApp(tel);
+      if (!contacto?.id) {
+        const err = new Error('No se encontró un asistente con ese WhatsApp.');
+        err.code = 'CONTACTO_NO_RESUELTO';
+        throw err;
+      }
+      asistenteId = contacto.id;
+    }
+
     const fechas = fechaSolicitada ? [fechaSolicitada] : citasService.obtenerFechasEvento();
     const excluidos = new Set(
       (Array.isArray(excluirInicios) ? excluirInicios : []).map((v) => String(v || '').trim()).filter(Boolean)
@@ -189,6 +218,7 @@ async function ejecutarConsultarDisponibilidadCita(
       const bloques = await citasService.obtenerDisponibilidadSponsor({
         sponsorPageId: sponsorId,
         fecha: dia,
+        asistentePageId: asistenteId,
       });
       for (const bloque of bloques) {
         if (
@@ -206,11 +236,13 @@ async function ejecutarConsultarDisponibilidadCita(
       }
     }
 
-    const opciones = citasService.seleccionarHorariosParaOferta(libres, 3, { ahora }).map((bloque) => ({
-      inicio: bloque.inicio,
-      fin: bloque.fin,
-      horario_legible: bloque.horario_legible,
-    }));
+    const opciones = citasService
+      .seleccionarHorariosParaOferta(libres, LIMITE_HORARIOS_PARA_OFRECER, { ahora })
+      .map((bloque) => ({
+        inicio: bloque.inicio,
+        fin: bloque.fin,
+        horario_legible: bloque.horario_legible,
+      }));
 
     return respuestaJson({
       sponsor_notion_id: sponsorId,
@@ -218,7 +250,7 @@ async function ejecutarConsultarDisponibilidadCita(
       hay_mas: libres.length > opciones.length,
       total_libres: libres.length,
       aviso:
-        'Ofrece SOLO estas 3 opciones en el chat. Si pide otras horas, vuelve a llamar con excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque.',
+        'Ofrece SOLO estas 3 opciones en el chat, en el mismo orden. Si pide otras horas, vuelve a llamar con excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque (sponsor y asistente).',
     });
   } catch (err) {
     return respuestaJson(
@@ -439,7 +471,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 YA APROBADAS de un asistente (sugeridas: solo Aprobado) y las ya reales (citasConfirmadas). En el chat ofrece máximo 3 a la vez: usa sugeridas_para_ofrecer o citas_para_ofrecer; si hay_mas_* y pide más, nombra las siguientes 3 de la lista completa. Una fila Sugerido no se ofrece. Úsala también para reagendar o cancelar (citaId y sponsor_notion_id de citasConfirmadas). No recalcula matchmaking. Identificador: WhatsApp de la conversación. No escribe nada.',
+    'Lista las citas 1a1 YA APROBADAS de un asistente (sugeridas: solo Aprobado) y las ya reales (citasConfirmadas). En el chat ofrece máximo 4 sponsors a la vez: usa sugeridas_para_ofrecer; si hay_mas_sugeridas y pide más, nombra las siguientes de la lista completa. Citas confirmadas: máximo 3 (citas_para_ofrecer). Una fila Sugerido no se ofrece. Úsala también para reagendar o cancelar (citaId y sponsor_notion_id de citasConfirmadas). No recalcula matchmaking. Identificador: WhatsApp de la conversación. No escribe nada.',
     {
       whatsapp: z
         .string()
@@ -456,11 +488,19 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios REALES libres para un sponsor de cita 1a1. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat; nunca listes más. Sin fecha: Día 1 Mañana, Día 1 Tarde y Día 2 (rellena casillas vacías con lo más próximo sin repetir). Con fecha: solo ese día. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
+    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat en el mismo orden; nunca listes más ni reordenes. Sin fecha: Día 1 Mañana, Día 1 Tarde y Día 2 (rellena casillas vacías con lo más próximo sin repetir). Con fecha: solo ese día. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
     {
       sponsorPageId: z
         .string()
         .describe('page_id exacto del sponsor, copiado de consultar_sugeridas_para_asistente o de citasConfirmadas.'),
+      whatsapp: z
+        .string()
+        .optional()
+        .describe('WhatsApp del asistente de esta conversación. Obligatorio si no pasas asistentePageId.'),
+      asistentePageId: z
+        .string()
+        .optional()
+        .describe('page_id del asistente. Solo si no hay teléfono.'),
       fecha: z
         .string()
         .optional()

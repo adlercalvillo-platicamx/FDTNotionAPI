@@ -15,6 +15,7 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   INVALID_INPUT: 400,
   HORARIO_NO_CONFIGURADO: 503,
   SPONSOR_YA_OCUPADO: 409,
+  ASISTENTE_YA_OCUPADO: 409,
   CAPACIDAD_MESAS_LLENA: 409,
   CONTACTO_NO_RESUELTO: 409,
   SIN_DESTINATARIOS: 400,
@@ -203,7 +204,7 @@ async function cancelar(req, res) {
 // verificación final y autoritativa.
 // ─────────────────────────────────────────────────────────────
 async function disponibilidad(req, res) {
-  const { sponsor_notion_id, fecha } = req.query;
+  const { sponsor_notion_id, fecha, asistente_notion_id } = req.query;
 
   if (!sponsor_notion_id) {
     return res.status(400).json({
@@ -223,11 +224,19 @@ async function disponibilidad(req, res) {
       message: 'El parámetro "fecha" es requerido (formato "2026-10-07" o "2026-10-08").',
     });
   }
+  const asistenteId = String(asistente_notion_id || '').trim();
+  if (asistenteId && !esUuidCanonico(asistenteId)) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'asistente_notion_id debe ser un UUID válido',
+    });
+  }
 
   try {
     const bloques = await obtenerDisponibilidadSponsor({
       sponsorPageId: sponsor_notion_id,
       fecha,
+      asistentePageId: asistenteId || undefined,
     });
 
     return res.status(200).json({

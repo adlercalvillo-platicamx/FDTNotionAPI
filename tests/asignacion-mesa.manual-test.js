@@ -32,10 +32,11 @@ function crearEstadoNotion() {
 
   return {
     porId,
-    seedConfirmada({ id, sponsor, inicio, mesa, requestId }) {
+    seedConfirmada({ id, sponsor, inicio, mesa, requestId, asistente }) {
       const page = {
         id,
         sponsor,
+        asistente: asistente || null,
         inicio,
         estatus: 'Confirmada',
         mesa,
@@ -76,6 +77,20 @@ function crearEstadoNotion() {
         }
         return false;
       },
+      async asistenteOcupadoEnBloque({ asistentePageId, inicio, exceptPageId }) {
+        if (!asistentePageId) return false;
+        for (const page of porId.values()) {
+          if (page.id === exceptPageId) continue;
+          if (
+            page.estatus === 'Confirmada' &&
+            page.asistente === asistentePageId &&
+            page.inicio === inicio
+          ) {
+            return true;
+          }
+        }
+        return false;
+      },
       async contarCitasEnBloque({ inicio }) {
         let n = 0;
         for (const page of porId.values()) {
@@ -83,12 +98,13 @@ function crearEstadoNotion() {
         }
         return n;
       },
-      async crearCitaPendiente({ requestId, sponsorPageId, inicio, mesa }) {
+      async crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, mesa }) {
         seq += 1;
         const id = `cita-mock-${seq}`;
         const page = {
           id,
           sponsor: sponsorPageId,
+          asistente: asistentePageId,
           inicio,
           estatus: 'Pendiente Calendar',
           mesa: mesa ?? null,
@@ -265,6 +281,47 @@ function baseParams(overrides = {}) {
     const mesas = [a.mesa, b.mesa].sort((x, y) => x - y);
     assert.deepStrictEqual(mesas, [1, 2], `mesas=${JSON.stringify(mesas)}`);
     assert.notStrictEqual(a.mesa, b.mesa);
+  });
+
+  console.log('\n=== Asistente no puede solapar horarios ===');
+  await ok('mismo asistente, mismo bloque, otro sponsor → ASISTENTE_YA_OCUPADO', async () => {
+    const bloque = '2026-10-07T16:00:00-06:00';
+    const fin = '2026-10-07T16:30:00-06:00';
+    const r1 = await reservarCita(
+      baseParams({
+        sponsor: 's-luis-a',
+        asistente_notion_id: 'asistente-luis',
+        request_id: 'req-luis-a',
+        inicio: bloque,
+        fin,
+      })
+    );
+    assert.strictEqual(r1.estado, 'Confirmada');
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: 's-luis-b',
+            asistente_notion_id: 'asistente-luis',
+            request_id: 'req-luis-b',
+            inicio: bloque,
+            fin,
+          })
+        ),
+      (e) => e instanceof BookingError && e.code === 'ASISTENTE_YA_OCUPADO'
+    );
+  });
+  await ok('mismo asistente, bloques distintos → ambas Confirmada', async () => {
+    const r2 = await reservarCita(
+      baseParams({
+        sponsor: 's-luis-c',
+        asistente_notion_id: 'asistente-luis',
+        request_id: 'req-luis-c',
+        inicio: '2026-10-07T16:30:00-06:00',
+        fin: '2026-10-07T17:00:00-06:00',
+      })
+    );
+    assert.strictEqual(r2.estado, 'Confirmada');
   });
 
   console.log('\n=== Capacidad (regresión) ===');

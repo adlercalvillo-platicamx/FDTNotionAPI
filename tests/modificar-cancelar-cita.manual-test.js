@@ -168,6 +168,16 @@ Object.assign(citasReal, {
         p.properties['Fecha y Hora'].date.start === inicio
     );
   },
+  async asistenteOcupadoEnBloque({ asistentePageId, inicio, exceptPageId }) {
+    if (!asistentePageId) return false;
+    return [...paginas.values()].some(
+      (p) =>
+        p.id !== exceptPageId &&
+        esCitaReal(p) &&
+        p.properties['Contacto Principal'].relation[0].id === asistentePageId &&
+        p.properties['Fecha y Hora'].date.start === inicio
+    );
+  },
   async contarCitasEnBloque({ inicio, exceptPageId }) {
     return [...paginas.values()].filter(
       (p) => p.id !== exceptPageId && esCitaReal(p) && p.properties['Fecha y Hora'].date.start === inicio
@@ -385,6 +395,33 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     );
     assert.strictEqual(inicioDe('cita-a'), '2026-10-07T10:30:00-06:00', 'la cita no se movió');
     assert.strictEqual(correos.length, 0, 'no se manda correo si no hubo cambio');
+  });
+
+  await ok('horario nuevo donde el asistente ya tiene otra cita → ASISTENTE_YA_OCUPADO', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-a',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+      sponsor: SPONSOR_PLATICA,
+    });
+    crearPagina({
+      id: 'cita-b',
+      inicio: '2026-10-07T12:00:00-06:00',
+      fin: '2026-10-07T12:30:00-06:00',
+      sponsor: SPONSOR_OTRO,
+    });
+    await assert.rejects(
+      () =>
+        modificarCita({
+          citaId: 'cita-a',
+          nuevaFechaHora: '2026-10-07T12:00:00-06:00',
+          ahora: AHORA_ANTES_DEL_EVENTO,
+        }),
+      (e) => e instanceof BookingError && e.code === 'ASISTENTE_YA_OCUPADO'
+    );
+    assert.strictEqual(inicioDe('cita-a'), '2026-10-07T10:30:00-06:00');
+    assert.strictEqual(correos.length, 0);
   });
 
   await ok('11 mesas llenas en el horario nuevo → CAPACIDAD_MESAS_LLENA, sin tocar Notion', async () => {

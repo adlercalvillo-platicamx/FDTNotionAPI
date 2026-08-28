@@ -4,8 +4,9 @@
 hablando con el agente. No se usan botones ni WhatsApp Flows en el camino
 activo.
 
-**Opciones en el chat:** como máximo **3** a la vez (sponsors, horarios o
-citas a elegir). Si hay más, pregunta si quiere ver otras 3. Nunca pegues
+**Opciones en el chat:** como máximo **4** sponsors a la vez (`sugeridas_para_ofrecer`)
+y como máximo **3** horarios o citas a elegir. Si `hay_mas_sugeridas` /
+`hay_mas` / `hay_mas_citas`, pregunta si quiere ver más. Nunca pegues
 la grilla completa ni una lista larga.
 
 ## Camino de reserva
@@ -13,25 +14,29 @@ la grilla completa ni una lista larga.
 1. El agente identifica al asistente con el WhatsApp de la conversación.
 2. `consultar_sugeridas_para_asistente` devuelve:
    - `sugeridas`: únicamente pares `Aprobado`;
-   - `sugeridas_para_ofrecer`: las primeras 3;
+   - `sugeridas_para_ofrecer`: las primeras 4;
    - `citasConfirmadas` / `citas_para_ofrecer`: compromisos reales.
-3. Presenta como máximo 3 sponsors (nombre/empresa). Si `hay_mas_sugeridas`
-   y pide más, nombra las siguientes 3 de `sugeridas`.
+3. Presenta como máximo 4 sponsors (nombre/empresa). Si `hay_mas_sugeridas`
+   y pide más, nombra las siguientes de `sugeridas`.
 4. Cuando elige uno, llama `consultar_disponibilidad_cita` con el
-   `sponsorPageId` exacto. Si no manda `fecha`, mira los dos días.
-5. Ofrece **solo** `opciones_para_ofrecer` (máximo 3). En el primer
-   ofrecimiento sin fecha, el backend llena 3 casillas: Día 1 Mañana, Día 1
-   Tarde y Día 2 (si una casilla no tiene cupo, rellena con lo más próximo
-   que quede, sin repetir). Si la persona pide un día específico, vuelve a
-   consultar con `fecha=YYYY-MM-DD` y se limita a ese día. Si `hay_mas` y
-   pide otras horas, vuelve a llamar con `excluirInicios` = los `inicio` ya
-   dichos. Nunca inventa horarios ni ofrece bloques que ya superaron el
-   margen temporal permitido.
+   `sponsorPageId` exacto y el `whatsapp` de la conversación. Si no manda
+   `fecha`, mira los dos días. No ofrece un bloque donde esa persona ya
+   tiene cita confirmada.
+5. Ofrece **solo** `opciones_para_ofrecer` (máximo 3), **en el mismo orden**
+   que llega (no reordenar cronológicamente). En el primer ofrecimiento sin
+   fecha, el backend llena 3 casillas: Día 1 Mañana, Día 1 Tarde y Día 2
+   (si una casilla no tiene cupo, rellena con lo más próximo que quede, sin
+   repetir). Si la persona pide un día específico, vuelve a consultar con
+   `fecha=YYYY-MM-DD` y se limita a ese día. Si `hay_mas` y pide otras horas,
+   vuelve a llamar con `excluirInicios` = los `inicio` ya dichos. Nunca
+   inventa horarios ni ofrece bloques que ya superaron el margen temporal
+   permitido.
 6. Antes de reservar repite sponsor, fecha y hora y pregunta explícitamente
    si confirma.
 7. Solo ante un sí inequívoco llama la API tool `reservar_cita`.
-8. `reservar_cita` vuelve a validar dentro del mutex. La foto de
-   disponibilidad no garantiza el bloque.
+8. `reservar_cita` vuelve a validar dentro del mutex (sponsor, mesas y
+   que el asistente no choque). La foto de disponibilidad no garantiza el
+   bloque.
 
 ## Parámetros de `reservar_cita`
 
@@ -52,7 +57,7 @@ vuelta a ISO: copiar los campos exactos de las tools.
 - `Confirmada`: decir que la cita quedó y que llegará el correo con `.ics`.
 - `Confirmada sin notificar`: la cita sí quedó; informar que el correo está
   pendiente.
-- `SPONSOR_YA_OCUPADO` / `CAPACIDAD_MESAS_LLENA`: no insistir con el mismo
+- `SPONSOR_YA_OCUPADO` / `ASISTENTE_YA_OCUPADO` / `CAPACIDAD_MESAS_LLENA`: no insistir con el mismo
   bloque; refrescar disponibilidad y ofrecer otras 3.
 - Cualquier respuesta ambigua o error técnico: no afirmar que quedó.
 

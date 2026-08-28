@@ -135,10 +135,15 @@ function construirIndiceCitasConfirmadas(filasMapeadas) {
   const indice = new Map();
   for (const fila of filasMapeadas) {
     if (!fila.inicio) continue;
-    if (!indice.has(fila.inicio)) indice.set(fila.inicio, { count: 0, sponsorIds: new Set() });
+    if (!indice.has(fila.inicio)) {
+      indice.set(fila.inicio, { count: 0, sponsorIds: new Set(), asistenteIds: new Set() });
+    }
     const entrada = indice.get(fila.inicio);
     if (!esFilaBloqueoAgenda(fila.asistentePageId)) entrada.count += 1;
     if (fila.sponsorId) entrada.sponsorIds.add(fila.sponsorId);
+    if (fila.asistentePageId && !esFilaBloqueoAgenda(fila.asistentePageId)) {
+      entrada.asistenteIds.add(pageIdCanonico(fila.asistentePageId));
+    }
   }
   return indice;
 }
@@ -197,6 +202,35 @@ async function sponsorOcupadoEnBloque({ sponsorPageId, inicio, exceptPageId }) {
             ],
           },
           { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+          { property: 'Fecha y Hora', date: { equals: inicio } },
+        ],
+      },
+    }),
+  });
+  return (data.results || []).some((fila) => !esMismaPagina(fila.id, exceptPageId));
+}
+
+/**
+ * El asistente (Contacto Principal) ya tiene una cita Confirmada /
+ * Confirmada sin notificar en ese mismo bloque — no puede solaparse
+ * con otro sponsor. `exceptPageId` es para modificar-cita (no chocar
+ * consigo misma).
+ */
+async function asistenteOcupadoEnBloque({ asistentePageId, inicio, exceptPageId }) {
+  if (!asistentePageId) return false;
+  requireDataSourceId();
+  const data = await notionFetch(`/data_sources/${CITAS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: {
+        and: [
+          {
+            or: [
+              { property: 'Estatus', select: { equals: 'Confirmada' } },
+              { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
+            ],
+          },
+          { property: 'Contacto Principal', relation: { contains: asistentePageId } },
           { property: 'Fecha y Hora', date: { equals: inicio } },
         ],
       },
@@ -1434,12 +1468,15 @@ function finDeBloque(inicioIso) {
   return `${fecha}T${h}:${min}:00${zona}`;
 }
 
-function armarBloqueDisponibilidad({ inicio, sponsorOcupado, citasEnBloque }) {
+function armarBloqueDisponibilidad({ inicio, sponsorOcupado, citasEnBloque, asistenteOcupado }) {
   const mesas_ocupadas = citasEnBloque;
   const mesas_libres = Math.max(0, CAPACIDAD_MAXIMA_MESAS - citasEnBloque);
   const fin = finDeBloque(inicio);
   if (sponsorOcupado) {
     return { inicio, fin, disponible: false, motivo: 'SPONSOR_YA_OCUPADO', mesas_ocupadas, mesas_libres };
+  }
+  if (asistenteOcupado) {
+    return { inicio, fin, disponible: false, motivo: 'ASISTENTE_YA_OCUPADO', mesas_ocupadas, mesas_libres };
   }
   if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
     return { inicio, fin, disponible: false, motivo: 'CAPACIDAD_MESAS_LLENA', mesas_ocupadas, mesas_libres };
@@ -1484,17 +1521,24 @@ function obtenerFechasEvento() {
  * La oferta inicial usa solo el sponsor de mayor score; no hay cruce entre varios.
  * La reserva real vuelve a validar bajo mutex; esto sigue siendo una foto.
  */
-function bloquesDisponiblesParaSponsor({ sponsorPageId, indiceConfirmadas }) {
+function bloquesDisponiblesParaSponsor({ sponsorPageId, indiceConfirmadas, asistentePageId }) {
   if (!sponsorPageId) return [];
   const indice = indiceConfirmadas || new Map();
+  const asistenteCanonico = asistentePageId ? pageIdCanonico(asistentePageId) : null;
   const disponibles = [];
   for (const fecha of obtenerFechasEvento()) {
     requireHorarioConfigurado(fecha);
     for (const inicio of generarBloquesParaFecha(fecha)) {
-      const entrada = indice.get(inicio) || { count: 0, sponsorIds: new Set() };
+      const entrada = indice.get(inicio) || {
+        count: 0,
+        sponsorIds: new Set(),
+        asistenteIds: new Set(),
+      };
+      const idsAsistente = entrada.asistenteIds || new Set();
       const bloque = armarBloqueDisponibilidad({
         inicio,
         sponsorOcupado: entrada.sponsorIds.has(sponsorPageId),
+        asistenteOcupado: Boolean(asistenteCanonico && idsAsistente.has(asistenteCanonico)),
         citasEnBloque: entrada.count,
       });
       if (bloque.disponible) disponibles.push(bloque);
@@ -1614,7 +1658,7 @@ function formatearHorarioLegible(inicio) {
  * @param {string} params.fecha - "2026-10-07" o "2026-10-08"
  * @returns {Promise<Array<{inicio: string, disponible: boolean, motivo: string|null}>>}
  */
-async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
+async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePageId }) {
   requireDataSourceId();
 
   const fechasValidas = obtenerFechasEvento();
@@ -1634,6 +1678,13 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
     return armarBloqueDisponibilidad({
       inicio,
       sponsorOcupado: enBloque.some((c) => c.sponsorId === sponsorPageId),
+      asistenteOcupado: Boolean(
+        asistentePageId &&
+          enBloque.some(
+            (c) =>
+              esMismaPagina(c.asistentePageId, asistentePageId) && !esFilaBloqueoAgenda(c.asistentePageId)
+          )
+      ),
       citasEnBloque: enBloque.filter((c) => !esFilaBloqueoAgenda(c.asistentePageId)).length,
     });
   });
@@ -1642,6 +1693,7 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha }) {
 module.exports = {
   contarCitasEnBloque,
   sponsorOcupadoEnBloque,
+  asistenteOcupadoEnBloque,
   buscarPorRequestId,
   crearCitaPendiente,
   actualizarTituloCita,

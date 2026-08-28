@@ -192,7 +192,8 @@ async function dispararCampanasAprobadas({
       // Si el top está lleno, se recorre el resto de las ofrecidas por score.
       const { horarios, sponsorHorarios } = elegirHorariosDeSugerencias(
         filasOfrecidas,
-        indiceConfirmadas
+        indiceConfirmadas,
+        asistentePageId
       );
       const idsOfrecidas = filasOfrecidas.map((fila) => fila.id);
       const idsOmitidas = filas
@@ -281,11 +282,12 @@ async function dispararCampanasAprobadas({
   return resumen;
 }
 
-function elegirHorariosDeSugerencias(filasOfrecidas, indiceConfirmadas) {
+function elegirHorariosDeSugerencias(filasOfrecidas, indiceConfirmadas, asistentePageId) {
   for (const fila of filasOfrecidas || []) {
     const bloques = citasService.bloquesDisponiblesParaSponsor({
       sponsorPageId: fila.sponsorPageId,
       indiceConfirmadas,
+      asistentePageId,
     });
     const horarios = citasService.seleccionarHorariosParaOferta(bloques);
     if (horarios.length > 0) {

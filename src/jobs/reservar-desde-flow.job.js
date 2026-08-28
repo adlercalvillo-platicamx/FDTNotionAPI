@@ -11,6 +11,7 @@ const enVuelo = new Set();
 const COPY = {
   SPONSOR_YA_OCUPADO:
     'Ese horario con ese sponsor ya no está disponible. Elige otro horario o otro sponsor.',
+  ASISTENTE_YA_OCUPADO: 'Ya tienes una cita en ese horario. Elige otra hora.',
   CAPACIDAD_MESAS_LLENA: 'Ya no hay lugar en ese horario. Elige otra hora.',
   DEFAULT: 'Hubo un error técnico al agendar. Inténtalo de nuevo.',
 };

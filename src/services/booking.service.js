@@ -426,13 +426,20 @@ async function reservarCita({
       citaPendiente = existenteEnLock;
     }
 
-    const [sponsorOcupado, citasEnBloque] = await Promise.all([
+    const [sponsorOcupado, asistenteOcupado, citasEnBloque] = await Promise.all([
       citasService.sponsorOcupadoEnBloque({ sponsorPageId: sponsor_notion_id, inicio }),
+      citasService.asistenteOcupadoEnBloque({ asistentePageId: asistente_notion_id, inicio }),
       citasService.contarCitasEnBloque({ inicio }),
     ]);
 
     if (sponsorOcupado) {
       throw new BookingError('SPONSOR_YA_OCUPADO', 'Este sponsor ya tiene una cita confirmada en ese horario.');
+    }
+    if (asistenteOcupado) {
+      throw new BookingError(
+        'ASISTENTE_YA_OCUPADO',
+        'Ese asistente ya tiene una cita confirmada en ese mismo horario.'
+      );
     }
     if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
       throw new BookingError(
@@ -998,9 +1005,14 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
   validarDuracionYFecha(inicio, fin);
 
   return bookingMutex.runExclusive(async () => {
-    const [sponsorOcupado, citasEnBloque] = await Promise.all([
+    const [sponsorOcupado, asistenteOcupado, citasEnBloque] = await Promise.all([
       citasService.sponsorOcupadoEnBloque({
         sponsorPageId: cita.sponsorPageId,
+        inicio,
+        exceptPageId: cita.id,
+      }),
+      citasService.asistenteOcupadoEnBloque({
+        asistentePageId: cita.asistentePageId,
         inicio,
         exceptPageId: cita.id,
       }),
@@ -1009,6 +1021,12 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
 
     if (sponsorOcupado) {
       throw new BookingError('SPONSOR_YA_OCUPADO', 'Ese sponsor ya tiene una cita confirmada en el horario nuevo.');
+    }
+    if (asistenteOcupado) {
+      throw new BookingError(
+        'ASISTENTE_YA_OCUPADO',
+        'Ese asistente ya tiene otra cita confirmada en el horario nuevo.'
+      );
     }
     if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
       throw new BookingError(

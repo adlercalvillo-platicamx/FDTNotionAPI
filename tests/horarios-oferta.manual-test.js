@@ -19,6 +19,7 @@ const {
   seleccionarHorariosParaOferta,
   formatearHorarioLegible,
   scoreDeFilaCita,
+  armarBloqueDisponibilidad,
 } = require('../src/services/citas.service');
 
 function bloque(inicio) {
@@ -145,6 +146,45 @@ function casoDisponibilidadDelSponsorTopNoCruzaConOtros() {
   assert.ok(!delTop.some((b) => b.inicio === llena), 'capacidad de 11 mesas sigue bloqueando');
 }
 
+function casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque() {
+  const ocupadoAsistente = '2026-10-07T11:00:00-06:00';
+  const libreOtro = '2026-10-07T14:00:00-06:00';
+  const asistente = 'asistente-luis';
+  const indice = new Map([
+    [
+      ocupadoAsistente,
+      {
+        count: 1,
+        sponsorIds: new Set(['sponsor-a']),
+        asistenteIds: new Set([asistente.replace(/-/g, '')]),
+      },
+    ],
+  ]);
+  const paraB = bloquesDisponiblesParaSponsor({
+    sponsorPageId: 'sponsor-b',
+    indiceConfirmadas: indice,
+    asistentePageId: asistente,
+  });
+  assert.ok(!paraB.some((b) => b.inicio === ocupadoAsistente), 'no ofrece el bloque donde el asistente ya tiene cita');
+  assert.ok(paraB.some((b) => b.inicio === libreOtro), 'sí ofrece un bloque que no se traslapa');
+
+  const ocupado = armarBloqueDisponibilidad({
+    inicio: ocupadoAsistente,
+    sponsorOcupado: false,
+    asistenteOcupado: true,
+    citasEnBloque: 1,
+  });
+  assert.strictEqual(ocupado.disponible, false);
+  assert.strictEqual(ocupado.motivo, 'ASISTENTE_YA_OCUPADO');
+
+  const elegidos = seleccionarHorariosParaOferta([
+    bloque('2026-10-07T10:30:00-06:00'),
+    bloque('2026-10-07T14:00:00-06:00'),
+    bloque('2026-10-08T09:00:00-06:00'),
+  ]);
+  assert.ok(!iniciosDe(elegidos).includes(ocupadoAsistente));
+}
+
 function casoFormatoLegible() {
   assert.strictEqual(
     formatearHorarioLegible('2026-10-07T10:30:00-06:00'),
@@ -174,6 +214,7 @@ caso3SinTardeDia1();
 casoMenosDeTres();
 casoDescartaHorariosPasadosConMismoMargenDeModificar();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
+casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque();
 casoFormatoLegible();
 casoScoreFormulaYFallbackNotas();
 console.log('✅ Selección compartida: casillas Día1 Mañana/Tarde + Día2, relleno, exclusión de pasados, ocupación propia, formato y score.');

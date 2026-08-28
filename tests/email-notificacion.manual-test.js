@@ -75,6 +75,20 @@ function crearHarness({
       }
       return false;
     },
+    async asistenteOcupadoEnBloque({ asistentePageId, inicio, exceptPageId }) {
+      if (!asistentePageId) return false;
+      for (const page of porId.values()) {
+        if (page.id === exceptPageId) continue;
+        if (
+          ['Confirmada', 'Confirmada sin notificar'].includes(page.estatus) &&
+          page.asistente === asistentePageId &&
+          page.inicio === inicio
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
     async contarCitasEnBloque({ inicio }) {
       let n = 0;
       for (const page of porId.values()) {
@@ -602,6 +616,9 @@ function baseParams(overrides = {}) {
         return null;
       },
       async sponsorOcupadoEnBloque() {
+        return false;
+      },
+      async asistenteOcupadoEnBloque() {
         return false;
       },
       async contarCitasEnBloque() {

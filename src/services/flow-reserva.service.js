@@ -89,8 +89,12 @@ function datosFecha() {
   return fechas.map((id) => ({ id, title: tituloFecha(id) }));
 }
 
-async function datosHorario(sponsorId, fecha) {
-  const bloques = await citas.obtenerDisponibilidadSponsor({ sponsorPageId: sponsorId, fecha });
+async function datosHorario(sponsorId, fecha, asistenteId) {
+  const bloques = await citas.obtenerDisponibilidadSponsor({
+    sponsorPageId: sponsorId,
+    fecha,
+    asistentePageId: asistenteId,
+  });
   return bloques
     .filter((b) => b.disponible)
     .map((b) => ({ id: b.inicio, title: tituloHora(b.inicio) }));
@@ -151,7 +155,7 @@ async function manejarAdvance(envelope) {
 
   if (screen === 'FECHA') {
     if (!sponsorId || !fecha) return errorPantalla(MSG.INVALIDO);
-    const horarios = await conTimeout(datosHorario(sponsorId, fecha));
+    const horarios = await conTimeout(datosHorario(sponsorId, fecha, asistenteId));
     if (!horarios.length) return errorPantalla(MSG.SIN_HORARIOS);
     return datosPantalla('HORARIO', {
       ...payload,
@@ -164,12 +168,20 @@ async function manejarAdvance(envelope) {
   if (screen === 'HORARIO') {
     if (!sponsorId || !fecha || !inicio) return errorPantalla(MSG.INVALIDO);
     const bloques = await conTimeout(
-      citas.obtenerDisponibilidadSponsor({ sponsorPageId: sponsorId, fecha })
+      citas.obtenerDisponibilidadSponsor({
+        sponsorPageId: sponsorId,
+        fecha,
+        asistentePageId: asistenteId,
+      })
     );
     const slot = bloques.find((b) => b.inicio === inicio);
     if (!slot || !slot.disponible) {
       const msg =
-        slot?.motivo === 'CAPACIDAD_MESAS_LLENA' ? COPY.CAPACIDAD_MESAS_LLENA : COPY.SPONSOR_YA_OCUPADO;
+        slot?.motivo === 'CAPACIDAD_MESAS_LLENA'
+          ? COPY.CAPACIDAD_MESAS_LLENA
+          : slot?.motivo === 'ASISTENTE_YA_OCUPADO'
+            ? COPY.ASISTENTE_YA_OCUPADO
+            : COPY.SPONSOR_YA_OCUPADO;
       return errorPantalla(msg);
     }
     const lista = await citas.listarSugeridasPorAsistente(
@@ -228,7 +240,9 @@ async function manejarBack(envelope) {
   }
   if (screen === 'RESUMEN') {
     if (!payload.sponsor_id || !payload.fecha) return errorPantalla(MSG.INVALIDO);
-    const horarios = await conTimeout(datosHorario(payload.sponsor_id, payload.fecha));
+    const horarios = await conTimeout(
+      datosHorario(payload.sponsor_id, payload.fecha, payload.asistente_notion_id)
+    );
     return datosPantalla('HORARIO', { ...payload, horarios });
   }
   return { data: payload };
