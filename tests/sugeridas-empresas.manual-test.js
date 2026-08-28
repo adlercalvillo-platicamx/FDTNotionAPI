@@ -130,6 +130,7 @@ async function main() {
   assert.deepStrictEqual(porWhatsapp.citasConfirmadas, [
     {
       sponsorNombre: 'Sponsor Test',
+      sponsor_notion_id: sponsorId,
       fechaHora: '2026-10-07T12:00:00-06:00',
       mesa: 'Mesa 3',
       citaId: 'cita-confirmada',

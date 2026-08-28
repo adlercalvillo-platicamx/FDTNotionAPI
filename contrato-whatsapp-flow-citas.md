@@ -1,5 +1,10 @@
 # Contrato — WhatsApp Flow de reserva (asistente) ↔ fdt-notion-api
 
+> **LEGADO desde 27-ago-2026.** Laura pidió que el agendamiento sea 100%
+> conversacional, sin botones ni Flows. El contrato activo es
+> [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md).
+> Este archivo queda únicamente para rollback.
+
 **Actor:** el **asistente**. El sponsor no llena este Flow; recibe aviso 2.3 + correo/.ics.
 
 **E / F** (abandono, cancelación posterior) son flujos WhatsApp 2.10 / 2.8–2.11, no este formulario.

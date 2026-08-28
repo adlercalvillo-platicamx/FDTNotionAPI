@@ -88,6 +88,7 @@ const {
   ejecutarModificarCita,
   ejecutarCancelarCita,
   ejecutarConsultarSugeridasParaAsistente,
+  ejecutarConsultarDisponibilidadCita,
 } = require('../src/mcp/server');
 
 const citasService = require('../src/services/citas.service');
@@ -110,6 +111,37 @@ citasService.consultarSugeridasPorIdentificador = async (args) => {
       },
     ],
   };
+};
+const obtenerDisponibilidadOriginal = citasService.obtenerDisponibilidadSponsor;
+const obtenerFechasOriginal = citasService.obtenerFechasEvento;
+citasService.obtenerFechasEvento = () => ['2026-10-07', '2026-10-08'];
+citasService.obtenerDisponibilidadSponsor = async ({ sponsorPageId, fecha }) => {
+  assert.strictEqual(sponsorPageId, 'sponsor-1');
+  const manana = {
+    inicio: `${fecha}T10:30:00-06:00`,
+    fin: `${fecha}T11:00:00-06:00`,
+    disponible: true,
+    motivo: null,
+  };
+  const mediodia = {
+    inicio: `${fecha}T11:30:00-06:00`,
+    fin: `${fecha}T12:00:00-06:00`,
+    disponible: true,
+    motivo: null,
+  };
+  const tarde = {
+    inicio: `${fecha}T15:00:00-06:00`,
+    fin: `${fecha}T15:30:00-06:00`,
+    disponible: true,
+    motivo: null,
+  };
+  const ocupado = {
+    inicio: `${fecha}T11:00:00-06:00`,
+    fin: `${fecha}T11:30:00-06:00`,
+    disponible: false,
+    motivo: 'SPONSOR_YA_OCUPADO',
+  };
+  return [manana, ocupado, mediodia, tarde];
 };
 
 function parse(result) {
@@ -210,6 +242,8 @@ async function ok(nombre, fn) {
     assert.ok(body.sugeridas.every((s) => s.estatus === 'Aprobado'));
     assert.ok(Array.isArray(body.citasConfirmadas));
     assert.strictEqual(body.citasConfirmadas[0].citaId, 'cita-ok');
+    assert.strictEqual(body.sugeridas_para_ofrecer.length, 1);
+    assert.strictEqual(body.hay_mas_sugeridas, false);
     assert.ok(!JSON.stringify(body).includes('calendarioGoogleId'));
     assert.ok(!JSON.stringify(body).includes('sponsor_calendario_id'));
   });
@@ -226,7 +260,55 @@ async function ok(nombre, fn) {
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });
 
+  console.log('\n=== consultar_disponibilidad_cita ===');
+  await ok('sin fecha consulta ambos días y ofrece máximo 3 horarios libres', async () => {
+    const r = await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' });
+    assert.ok(!r.isError);
+    const body = parse(r);
+    assert.ok(!body.disponibilidad, 'no debe devolver la grilla completa');
+    assert.strictEqual(body.opciones_para_ofrecer.length, 3);
+    assert.strictEqual(body.hay_mas, true);
+    assert.strictEqual(body.total_libres, 6);
+    assert.ok(body.opciones_para_ofrecer.every((h) => h.inicio && h.fin && h.horario_legible));
+    assert.ok(body.aviso.includes('SOLO estas 3'));
+  });
+
+  await ok('con fecha mira solo ese día y respeta el tope de 3', async () => {
+    const r = await ejecutarConsultarDisponibilidadCita({
+      sponsorPageId: 'sponsor-1',
+      fecha: '2026-10-08',
+    });
+    const body = parse(r);
+    assert.ok(body.opciones_para_ofrecer.every((h) => h.inicio.startsWith('2026-10-08')));
+    assert.strictEqual(body.opciones_para_ofrecer.length, 3);
+    assert.strictEqual(body.hay_mas, false);
+    assert.strictEqual(body.total_libres, 3);
+  });
+
+  await ok('excluirInicios pide el siguiente lote', async () => {
+    const primero = parse(
+      await ejecutarConsultarDisponibilidadCita({ sponsorPageId: 'sponsor-1' })
+    );
+    const r = await ejecutarConsultarDisponibilidadCita({
+      sponsorPageId: 'sponsor-1',
+      excluirInicios: primero.opciones_para_ofrecer.map((h) => h.inicio),
+    });
+    const body = parse(r);
+    assert.strictEqual(body.opciones_para_ofrecer.length, 3);
+    assert.strictEqual(body.hay_mas, false);
+    const yaOfrecidos = new Set(primero.opciones_para_ofrecer.map((h) => h.inicio));
+    assert.ok(body.opciones_para_ofrecer.every((h) => !yaOfrecidos.has(h.inicio)));
+  });
+
+  await ok('sin sponsorPageId → INVALID_INPUT', async () => {
+    const r = await ejecutarConsultarDisponibilidadCita({});
+    assert.strictEqual(r.isError, true);
+    assert.strictEqual(parse(r).error, 'INVALID_INPUT');
+  });
+
   citasService.consultarSugeridasPorIdentificador = consultarOriginal;
+  citasService.obtenerDisponibilidadSponsor = obtenerDisponibilidadOriginal;
+  citasService.obtenerFechasEvento = obtenerFechasOriginal;
   if (fallos) process.exit(1);
   console.log('\n=== Resultado: TODOS PASARON ===\n');
 })().catch((err) => {

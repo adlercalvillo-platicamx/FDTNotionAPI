@@ -17,7 +17,7 @@ Pruebas: scripts a mano (`node tests/….js`), no Jest. Ver [`.cursor/rules/test
 
 Health sin auth: `GET /health`. `POST /webhooks/whatsapp-flows` usa HMAC (`FLOW_WEBHOOK_SECRET`), no `X-API-Key`. El resto exige `X-API-Key` = `API_SECRET_KEY`.
 
-Contrato del Flow de reserva (asistente): [`contrato-whatsapp-flow-citas.md`](contrato-whatsapp-flow-citas.md). JSON de pantallas: [`flows/reserva-asistente.json`](flows/reserva-asistente.json). El webhook se **despliega** aquí y se **registra** en Plática.
+Contrato activo de reserva: [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md). El contrato y JSON del WhatsApp Flow quedan solo como rollback legado; el Agente 2 no debe mandar botones ni Flows.
 
 ## Layout
 
@@ -42,17 +42,17 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Checklist consultar / barrido | GET `/checklist/consultar`, POST `/checklist/revisar-pendientes` | `consultar_checklist`, `revisar_checklists_pendientes` |
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
-| Reservar cita real | **POST `/citas/reservar`** | **NO exponer** `reservar_cita` como tool |
+| Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). El WhatsApp Flow de reserva arma el dropdown en proceso, solo `Aprobado`. | `consultar_sugeridas_para_asistente` (`whatsapp`; campo **`sugeridas`** = solo `Aprobado`; + `citasConfirmadas`) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
-| Disponibilidad (foto) | GET `/citas/disponibilidad` | — |
-| Data WhatsApp Flow | POST `/webhooks/whatsapp-flows` (HMAC) | — |
+| Disponibilidad (foto) | GET `/citas/disponibilidad` | `consultar_disponibilidad_cita` (máx. 3 en `opciones_para_ofrecer`; `hay_mas` + `excluirInicios` para las siguientes) |
+| Data WhatsApp Flow (legado) | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron) |
 | Disparar oferta inicial aprobada | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (hasta 4 sponsors; 3 horarios del sponsor top) |
 | Recordatorio del evento | POST `/matchmaking/enviar-recordatorio-evento` (`X-API-Key`; simulación por default; cron diario seguro) | — |
 
-`GET /citas/disponibilidad` usa una query de citas confirmadas del día (misma regla 11 mesas / sponsor). Sin env de horario → **503**. No sustituye a `reservar`. El Flow nunca confirma en pantalla; encola `reservarCita` y avisa por WhatsApp.
+`GET /citas/disponibilidad` y `consultar_disponibilidad_cita` usan una query de citas confirmadas del día (misma regla 11 mesas / sponsor). Sin env de horario → **503**. El MCP no lista toda la grilla: el agente ofrece **como máximo 3** horarios (o 3 sponsors, o 3 citas a cancelar/mover). No sustituyen a `reservar`/`modificar_cita`: el agente repite sponsor/fecha/hora, pide confirmación explícita y solo entonces escribe. El Flow ya no está en el camino activo.
 
 La generación periódica de sugerencias es externa al proceso: cron HTTP cada 6h a `POST /matchmaking/sugerir-todos` con `X-API-Key`. Nunca usar ese cron para enviar WhatsApp. La oferta inicial única requiere disparo humano y permanece en simulación hasta aprobar `PLATICA_TEMPLATE_OFERTA_INICIAL` y sus variables en Meta. Solo se envía a quien no tenga `Última Campaña Enviada`; A/B/C1/C2 y reactivaciones son legado no usado. Los 3 horarios del mensaje salen de **un solo sponsor** (el de mayor score con ≥1 bloque; si el top está lleno se recorre el resto por score), con corte configurable `CITAS_CORTE_MANANA_TARDE` (default 14:00); la grilla real sigue siendo la de booking (hoy 30 min). El recordatorio-reactivación del evento es `POST /matchmaking/enviar-recordatorio-evento` (cron diario en Coolify; el endpoint no hace nada hasta 14 días antes del primer día de `CITAS_FECHAS_EVENTO`). Limpiar la cola acumulada antes del primer envío real es `scripts/one-shots/marcar-cola-sin-enviar.js` (`soloMarcar`); pide `--confirmar` y después escribir el título real de Citas. No hay endpoint ni tool MCP para eso.
 

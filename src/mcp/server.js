@@ -5,11 +5,10 @@
 // services/ ya probados por la API REST (checklist.service.js,
 // matchmaking.service.js, booking.service.js).
 //
-// Estado (27 ago 2026): 11 herramientas MCP — las 9 previas más
-// modificar_cita y cancelar_cita (misma lógica que POST /citas/modificar-cita
-// y POST /citas/cancelar-cita). consultar_sugeridas_para_asistente también
-// trae citasConfirmadas. El campo "Match Sugerido" del sponsor quedó en
-// desuso el 9 de agosto.
+// Estado (27 ago 2026): 12 herramientas MCP — incluye disponibilidad
+// conversacional, modificar_cita y cancelar_cita. consultar_sugeridas_para_asistente
+// también trae citasConfirmadas. El campo "Match Sugerido" del sponsor quedó
+// en desuso el 9 de agosto.
 // reservar_cita sigue sin exponerse aquí — ver nota abajo.
 //
 // reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
@@ -144,9 +143,82 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
       asistentePageId: whatsapp ? undefined : asistentePageId,
       soloAprobado: true,
     });
-    return respuestaJson(resultado);
+    const sugeridas = resultado.sugeridas || [];
+    const citasConfirmadas = resultado.citasConfirmadas || [];
+    return respuestaJson({
+      ...resultado,
+      sugeridas_para_ofrecer: sugeridas.slice(0, 3),
+      hay_mas_sugeridas: sugeridas.length > 3,
+      citas_para_ofrecer: citasConfirmadas.slice(0, 3),
+      hay_mas_citas: citasConfirmadas.length > 3,
+      aviso:
+        'En el chat ofrece máximo 3 nombres a la vez (sugeridas_para_ofrecer o citas_para_ofrecer). Si pide más, usa las siguientes de la lista completa. No leas IDs en voz alta.',
+    });
   } catch (err) {
     return respuestaJson({ error: err.message, code: err.code }, true);
+  }
+}
+
+async function ejecutarConsultarDisponibilidadCita({
+  sponsorPageId,
+  fecha,
+  excluirInicios,
+} = {}) {
+  const sponsorId = String(sponsorPageId || '').trim();
+  const fechaSolicitada = String(fecha || '').trim();
+  if (!sponsorId) {
+    return respuestaJson(
+      {
+        error: 'INVALID_INPUT',
+        message: 'El campo "sponsorPageId" es requerido.',
+      },
+      true
+    );
+  }
+
+  try {
+    const fechas = fechaSolicitada ? [fechaSolicitada] : citasService.obtenerFechasEvento();
+    const excluidos = new Set(
+      (Array.isArray(excluirInicios) ? excluirInicios : []).map((v) => String(v || '').trim()).filter(Boolean)
+    );
+    const libres = [];
+    for (const dia of fechas) {
+      const bloques = await citasService.obtenerDisponibilidadSponsor({
+        sponsorPageId: sponsorId,
+        fecha: dia,
+      });
+      for (const bloque of bloques) {
+        if (!bloque.disponible || excluidos.has(bloque.inicio)) continue;
+        libres.push({
+          inicio: bloque.inicio,
+          fin: bloque.fin,
+          horario_legible: horarioLegible(bloque.inicio),
+        });
+      }
+    }
+
+    const opciones = citasService.seleccionarHorariosParaOferta(libres, 3).map((bloque) => ({
+      inicio: bloque.inicio,
+      fin: bloque.fin,
+      horario_legible: bloque.horario_legible,
+    }));
+
+    return respuestaJson({
+      sponsor_notion_id: sponsorId,
+      opciones_para_ofrecer: opciones,
+      hay_mas: libres.length > opciones.length,
+      total_libres: libres.length,
+      aviso:
+        'Ofrece SOLO estas 3 opciones en el chat. Si pide otras horas, vuelve a llamar con excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque.',
+    });
+  } catch (err) {
+    return respuestaJson(
+      {
+        error: err.code || (err.status === 503 ? 'HORARIO_NO_CONFIGURADO' : 'ERROR'),
+        message: err.message,
+      },
+      true
+    );
   }
 }
 
@@ -358,7 +430,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 YA APROBADAS de un asistente (campo sugeridas: solo Estatus Aprobado) y, aparte, las ya reales (citasConfirmadas: Confirmada / Confirmada sin notificar, ordenadas por horario, con mesa y check-in). Es para que el agente hable con el asistente sobre lo que YA se le puede ofrecer — una fila Sugerido todavía no tiene aprobación humana y no debe presentarse como ofrecible. No recalcula matchmaking. El identificador principal es el WhatsApp de la conversación. Incluye empresa y nombre del asistente y del sponsor. Úsala también para ver qué citas confirmadas tiene esa persona (modificar/cancelar). No escribe nada.',
+    'Lista las citas 1a1 YA APROBADAS de un asistente (sugeridas: solo Aprobado) y las ya reales (citasConfirmadas). En el chat ofrece máximo 3 a la vez: usa sugeridas_para_ofrecer o citas_para_ofrecer; si hay_mas_* y pide más, nombra las siguientes 3 de la lista completa. Una fila Sugerido no se ofrece. Úsala también para reagendar o cancelar (citaId y sponsor_notion_id de citasConfirmadas). No recalcula matchmaking. Identificador: WhatsApp de la conversación. No escribe nada.',
     {
       whatsapp: z
         .string()
@@ -374,8 +446,27 @@ function crearServidorMcp() {
   );
 
   server.tool(
+    'consultar_disponibilidad_cita',
+    'Consulta horarios REALES libres para un sponsor de cita 1a1. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat; nunca listes más. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Si se omite fecha, mira ambos días. Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
+    {
+      sponsorPageId: z
+        .string()
+        .describe('page_id exacto del sponsor, copiado de consultar_sugeridas_para_asistente o de citasConfirmadas.'),
+      fecha: z
+        .string()
+        .optional()
+        .describe('Día YYYY-MM-DD. Si se omite, consulta todos los días del evento.'),
+      excluirInicios: z
+        .array(z.string())
+        .optional()
+        .describe('ISO de horarios que ya ofreciste, para pedir las siguientes 3 opciones.'),
+    },
+    async (args) => ejecutarConsultarDisponibilidadCita(args)
+  );
+
+  server.tool(
     'modificar_cita',
-    'Cambia el horario de una cita 1a1 YA CONFIRMADA de Fashion Digital Talks 2026 a un horario nuevo. Identifica la cita exacta con citaId (si ya se conoce) o con telefono del asistente; si ese teléfono tiene varias citas activas, la tool NO elige una: responde VARIAS_CITAS_ACTIVAS con la lista (citaId, sponsor, horario) para que preguntes cuál es y vuelvas a llamar con citaId o sponsorEmpresa. Valida disponibilidad del horario nuevo (grilla, 11 mesas, sponsor ocupado) antes de tocar Notion y envía el .ics actualizado por correo. SOLO usar cuando el usuario ya confirmó explícitamente, en la conversación, que quiere mover ESA cita específica a ESE horario específico — nunca inferirlo de un comentario ambiguo como "mejor en la tarde" o "a ver si se puede cambiar". Más sensible que aprobar_match: genera correos reales y mueve un compromiso ya agendado.',
+    'Cambia el horario de una cita 1a1 YA CONFIRMADA. Antes consulta consultar_disponibilidad_cita con el sponsor_notion_id de esa cita y ofrece SOLO las 3 opciones_para_ofrecer. Identifica la cita con citaId o telefono; si hay varias, VARIAS_CITAS_ACTIVAS — pregunta cuál (máximo 3 nombres) y vuelve con citaId o sponsorEmpresa. nuevaFechaHora = el inicio ISO de la opción elegida, nunca inventado. SOLO cuando confirmó explícitamente mover ESA cita a ESE horario. El .ics se envía por correo.',
     {
       telefono: z
         .string()
@@ -399,7 +490,7 @@ function crearServidorMcp() {
 
   server.tool(
     'cancelar_cita',
-    'Cancela una cita 1a1 YA CONFIRMADA de Fashion Digital Talks 2026. Identifica la cita exacta con citaId o telefono del asistente; si hay varias citas activas, responde VARIAS_CITAS_ACTIVAS con la lista y NO elige una — pregunta cuál es y vuelve a llamar con citaId o sponsorEmpresa. Envía el .ics de baja por correo y libera el horario. SOLO usar cuando el usuario ya confirmó explícitamente que quiere cancelar ESA cita específica — nunca inferirlo de frases ambiguas como "ya no va a poder" o "se le complicó" sin una confirmación directa de que se debe cancelar. Más sensible que aprobar_match: genera correos reales y deshace un compromiso ya agendado.',
+    'Cancela una cita 1a1 YA CONFIRMADA. Identifica con citaId o telefono; si hay varias, VARIAS_CITAS_ACTIVAS — ofrece máximo 3 en el chat, pregunta cuál y vuelve con citaId o sponsorEmpresa. SOLO cuando confirmó explícitamente cancelar ESA cita. No inferirlo de "ya no va a poder" sin un sí claro. Envía el .ics de baja por correo y libera el horario.',
     {
       telefono: z
         .string()
@@ -426,4 +517,5 @@ module.exports = {
   ejecutarModificarCita,
   ejecutarCancelarCita,
   ejecutarConsultarSugeridasParaAsistente,
+  ejecutarConsultarDisponibilidadCita,
 };
