@@ -18,7 +18,7 @@ const { reintentarConBackoff, INTENTOS_MAXIMOS } = require('../utils/reintentar-
 
 const OFERTA_INICIAL = 'Oferta inicial';
 const TEMPLATE_ENV_OFERTA = 'PLATICA_TEMPLATE_OFERTA_INICIAL';
-const TEMPLATE_SIMULACION = 'PENDIENTE_PLANTILLA_OFERTA_INICIAL';
+const TEMPLATE_SIMULACION = 'agendar_cita_inicial';
 const TEMPLATE_ENV_RECORDATORIO = 'PLATICA_TEMPLATE_RECORDATORIO_EVENTO';
 const TEMPLATE_SIMULACION_RECORDATORIO = 'PENDIENTE_PLANTILLA_RECORDATORIO_EVENTO';
 // Confirmado por Adler: 14 días antes del evento. El endpoint es seguro

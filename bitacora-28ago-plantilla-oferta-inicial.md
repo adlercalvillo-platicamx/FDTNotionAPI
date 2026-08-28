@@ -38,7 +38,7 @@ El valor de una variable de plantilla **no puede traer saltos de línea, tabs ni
 - `payloadPara()`: 2 params (`[nombre, sugerencias]`). Antes 5, con horario 1–3.
 - **Se retiró el filtro `SIN_HORARIOS_SUGERIDOS`** (decisión de Adler). Antes, si ninguno de los hasta 4 sponsors tenía un bloque libre en ese instante, no se enviaba ni se marcaba: gente con buenos matches se quedaba sin oferta. Ahora tener sponsors sugeridos basta.
 - Como consecuencia se borró `elegirHorariosDeSugerencias()` (y su export) y la carga de `cargarIndiceCitasConfirmadas()` en el disparo: ya no hay query paginada a Notion por corrida. El fallback por score del 26-ago queda sin efecto porque no hay horarios en el mensaje.
-- `TEMPLATE_SIMULACION` pasó de `oferta_inicial_con_horarios` a `PENDIENTE_PLANTILLA_OFERTA_INICIAL`, mismo patrón que el recordatorio: si falta el env, el payload simulado deja claro que no es un nombre real.
+- `TEMPLATE_SIMULACION` (fallback si falta el env, solo en simulación) es `agendar_cita_inicial`, el nombre aprobado en Meta el 28-ago. El envío real sigue exigiendo `PLATICA_TEMPLATE_OFERTA_INICIAL` en Coolify.
 
 Los horarios los ofrece el agente en la conversación con `consultar_disponibilidad_cita`, que revalida contra Notion en ese momento. Antes se mandaban horarios calculados al momento del disparo, que podían estar ocupados cuando la persona contestara.
 
@@ -67,6 +67,6 @@ El snapshot local también venía atrasado una versión: le faltaba `OoYEKAW7ddA
 
 ## Pendiente
 
-1. Adler crea la plantilla en Meta y pasa el nombre exacto → `PLATICA_TEMPLATE_OFERTA_INICIAL` en Coolify.
+1. ~~Adler crea la plantilla en Meta~~ Cerrado: `agendar_cita_inicial` aprobada. Poner ese valor en `PLATICA_TEMPLATE_OFERTA_INICIAL` en Coolify.
 2. Envío real sigue detrás de `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true` y de `marcar-cola-sin-enviar.js` (limpiar la cola acumulada antes del primer disparo real).
 3. Probar en conversación real, con la plantilla ya aprobada, que el agente no repite la explicación ni la lista al recibir la respuesta.
