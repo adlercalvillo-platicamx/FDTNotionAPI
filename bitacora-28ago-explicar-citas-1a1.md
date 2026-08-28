@@ -8,14 +8,16 @@ Agente `c1IYnFsr0Jzfqq4NeLAs` (Gestión de Citas). Solo se tocó la sección `CU
 
 | | ID | UTC |
 | --- | --- | --- |
-| Anterior | `2Qv2wfoJ7Z4qfUhUamun` | 28 ago 2026, 22:02 |
-| Activa | `DwD7kKEXBppRYwCGT96a` | 28 ago 2026, 22:34 |
+| Anterior | `DwD7kKEXBppRYwCGT96a` | 28 ago 2026, 22:34 |
+| Activa | `F7LmUNUU2hwWNOPcF3WX` | 28 ago 2026, 22:39 |
+
+(Antes de `DwD7kKEXBppRYwCGT96a`: `2Qv2wfoJ7Z4qfUhUamun` a las 22:02.)
 
 Snapshot: [`prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md`](prompts-agentes-platica/Prompt%20y%20detalles%20-%20Citas%201-1%20-%20Gesti%C3%B3n%20de%20Citas%20Fashion%20Digital%20Talks.md).
 
 ## Qué cambió
 
-1. **“Sí” general:** ya no está prohibido mencionar las citas. Una sola línea de recordatorio (30 min, incluidas en el registro, sin costo, tú decides con quién) y luego 2 o 3 sponsors en prosa. No se reenvían las 4 viñetas ni el párrafo de la plantilla.
+1. **“Sí” general:** ya no está prohibido mencionar las citas. Una sola línea de recordatorio (30 min, incluidas en el registro, sin costo, tú decides con quién) y luego las de `sugeridas_para_ofrecer` en prosa (**hasta 4**; a las 22:34 decía “2 o 3”, residuo del límite anterior). No se reenvían las 4 viñetas ni el párrafo de la plantilla.
 2. **Sponsor ya nombrado:** igual que antes, directo a horarios, sin recordatorio.
 3. **Confusión en cualquier momento** (“qué es esto”, “para qué sirve”, “no entiendo”, “tengo que pagar”, “es obligatorio”): explicación completa — parte de la experiencia del congreso, conectan con proveedores y aliados, 30 min, sin costo, opcionales, tú eliges con quién y cuándo. Reusa el lenguaje de `CÓMO SE VE UN MENSAJE`.
 4. **Sin** “el sponsor te busca / quiere conocerte”. Adler: no enfatizar esa dirección.

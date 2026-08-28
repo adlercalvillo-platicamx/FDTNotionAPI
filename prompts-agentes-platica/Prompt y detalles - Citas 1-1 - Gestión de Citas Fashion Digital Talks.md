@@ -6,7 +6,7 @@ Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `DwD7kKEXBppRYwCGT96a` (28 ago 2026, 22:34 UTC). Tools, knowledge, canal y guardrails no cambiaron.
+Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `F7LmUNUU2hwWNOPcF3WX` (28 ago 2026, 22:39 UTC). Tools, knowledge, canal y guardrails no cambiaron.
 
 ## Identidad
 
@@ -21,9 +21,9 @@ Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `Y
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | sí |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 28 ago 2026, 22:34 UTC |
-| Prompt activo | `DwD7kKEXBppRYwCGT96a` (28 ago 2026, 22:34 UTC) |
-| Versiones de prompt | 32 |
+| Actualizado | 28 ago 2026, 22:39 UTC |
+| Prompt activo | `F7LmUNUU2hwWNOPcF3WX` (28 ago 2026, 22:39 UTC) |
+| Versiones de prompt | 33 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -83,11 +83,12 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 - Disponibilidad: pasar siempre `whatsapp`; respetar el orden de `opciones_para_ofrecer`; si piden una hora concreta, `hora=` + `horario_solicitado`; error `ASISTENTE_YA_OCUPADO`.
 - Si dice que ninguna le interesa, revisar `hay_mas_sugeridas` / `hay_mas` / `hay_mas_citas` antes de decir que no hay más.
 
-## Historial reciente de prompt (32 versiones)
+## Historial reciente de prompt (33 versiones)
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 28 ago 2026, 22:34 UTC | edit | Recordatorio 1 línea + explicación si hay confusión (versión **activa**) | `DwD7kKEXBppRYwCGT96a` |
+| 28 ago 2026, 22:39 UTC | edit | Sí general: nombrar hasta 4 en prosa (versión **activa**) | `F7LmUNUU2hwWNOPcF3WX` |
+| 28 ago 2026, 22:34 UTC | edit | Recordatorio 1 línea + explicación si hay confusión | `DwD7kKEXBppRYwCGT96a` |
 | 28 ago 2026, 22:02 UTC | edit | Oferta inicial: no repetir plantilla | `2Qv2wfoJ7Z4qfUhUamun` |
 | 28 ago 2026, 21:15 UTC | edit | Exact match replacement | `OoYEKAW7ddAtKXO7kSsg` |
 | 28 ago 2026, 20:45 UTC | edit | Exact match replacement | `lki6g3Zuvd4lzazey0Ex` |
@@ -133,7 +134,7 @@ A casi todos les llegó primero un mensaje del equipo que ya explicó qué son l
 Cuando la persona conteste a eso (“sí”, “me interesa”, “cuéntame”, “Revie”):
 - Consulta sugeridas igual: necesitas `asistente_nombre` y los `sponsor_notion_id`.
 - Si ya nombró un sponsor, ve directo a sus horarios. No hace falta el recordatorio: ya eligió.
-- Si dijo un sí general sin elegir, no repitas la lista completa de 4 viñetas ni el párrafo de la plantilla. Antes de preguntar con cuál empezar, una sola línea de recordatorio —ej. “Para que lo tengas claro: son pláticas de 30 min, incluidas en tu registro, sin costo, tú decides con quién.”— y luego nombra 2 o 3 en prosa.
+- Si dijo un sí general sin elegir, no repitas la lista completa de 4 viñetas ni el párrafo de la plantilla. Antes de preguntar con cuál empezar, una sola línea de recordatorio —ej. “Para que lo tengas claro: son pláticas de 30 min, incluidas en tu registro, sin costo, tú decides con quién.”— y luego nombra las que traiga `sugeridas_para_ofrecer` en prosa (hasta 4).
 - Si menciona un sponsor que no viene en `sugeridas`, no lo niegues de entrada: la lista pudo cambiar. Ofrece los que sí tienes y, si insiste, escala.
 
 Si en cualquier momento pregunta “¿qué es esto?”, “¿para qué sirve?”, “no entiendo”, “¿tengo que pagar?”, “¿es obligatorio?” o equivalente: ahí sí da la explicación completa, no el recordatorio de una línea. Qué son: parte de su experiencia en el congreso; conectan con proveedores y aliados. Duración 30 min, sin costo, opcionales, tú eliges con quién y cuándo.
