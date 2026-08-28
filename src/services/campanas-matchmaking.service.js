@@ -18,7 +18,7 @@ const { reintentarConBackoff, INTENTOS_MAXIMOS } = require('../utils/reintentar-
 
 const OFERTA_INICIAL = 'Oferta inicial';
 const TEMPLATE_ENV_OFERTA = 'PLATICA_TEMPLATE_OFERTA_INICIAL';
-const TEMPLATE_SIMULACION = 'oferta_inicial_con_horarios';
+const TEMPLATE_SIMULACION = 'PENDIENTE_PLANTILLA_OFERTA_INICIAL';
 const TEMPLATE_ENV_RECORDATORIO = 'PLATICA_TEMPLATE_RECORDATORIO_EVENTO';
 const TEMPLATE_SIMULACION_RECORDATORIO = 'PENDIENTE_PLANTILLA_RECORDATORIO_EVENTO';
 // Confirmado por Adler: 14 días antes del evento. El endpoint es seguro
@@ -65,31 +65,41 @@ function plantillaPara(modoSimulacion) {
   throw new Error(`Falta ${TEMPLATE_ENV_OFERTA}; no se puede enviar ${OFERTA_INICIAL}`);
 }
 
-function textoSugerencias(sugerencias) {
-  return sugerencias
-    .map((sponsor, indice) => {
-      const nombre = sponsor.empresa || sponsor.nombre || 'Sponsor';
-      const solucion = Array.isArray(sponsor.solucion)
-        ? sponsor.solucion.join(', ')
-        : sponsor.solucion || 'Solución por confirmar';
-      return `${indice + 1}. ${nombre} — ${solucion || 'Solución por confirmar'}`;
-    })
-    .join('\n');
+// WhatsApp rechaza el envío si el valor de una variable trae saltos de línea,
+// tabs o más de 4 espacios seguidos, así que la lista de sponsors va en un solo
+// renglón separada por " · ". Los asteriscos sí se renderizan como negritas.
+const SEPARADOR_SUGERENCIAS = ' · ';
+
+function limpiarParametroPlantilla(texto) {
+  return String(texto ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
 }
 
-function payloadPara({ contacto, sugerencias, horarios, modoSimulacion }) {
-  const horariosLegibles = horarios.map((bloque) =>
-    citasService.formatearHorarioLegible(bloque.inicio)
-  );
+function textoSugerencias(sugerencias) {
+  return (sugerencias || [])
+    .map((sponsor) => {
+      const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
+      const solucionCruda = Array.isArray(sponsor.solucion)
+        ? sponsor.solucion.join(', ')
+        : sponsor.solucion;
+      const solucion = limpiarParametroPlantilla(solucionCruda) || 'Solución por confirmar';
+      return `*${nombre}* (${solucion})`;
+    })
+    .join(SEPARADOR_SUGERENCIAS);
+}
+
+// La plantilla lleva 2 variables: {{1}} nombre, {{2}} sponsors con su solución.
+// Ya no manda horarios: los ofrece el agente en la conversación con
+// consultar_disponibilidad_cita, que revalida contra Notion en ese momento.
+function payloadPara({ contacto, sugerencias, modoSimulacion }) {
   return {
     phone: contacto.whatsapp,
     templateName: plantillaPara(modoSimulacion),
     params: [
-      contacto.nombre || 'Asistente',
+      limpiarParametroPlantilla(contacto.nombre) || 'Asistente',
       textoSugerencias(sugerencias),
-      horariosLegibles[0] || '',
-      horariosLegibles[1] || '',
-      horariosLegibles[2] || '',
     ],
   };
 }
@@ -125,9 +135,6 @@ async function dispararCampanasAprobadas({
 
   const candidatas = await citasService.buscarCitasAprobadasSinCampana();
   const grupos = agruparPorAsistente(candidatas);
-  const indiceConfirmadas = soloMarcar
-    ? null
-    : await citasService.cargarIndiceCitasConfirmadas();
   const resumen = {
     modoSimulacion: simulando,
     soloMarcar: Boolean(soloMarcar),
@@ -188,32 +195,15 @@ async function dispararCampanasAprobadas({
       for (const fila of filasOfrecidas) {
         sugerencias.push(await contactosService.obtenerContacto(fila.sponsorPageId));
       }
-      // Un solo sponsor aporta horarios: el de mayor score con ≥1 bloque.
-      // Si el top está lleno, se recorre el resto de las ofrecidas por score.
-      const { horarios, sponsorHorarios } = elegirHorariosDeSugerencias(
-        filasOfrecidas,
-        indiceConfirmadas,
-        asistentePageId
-      );
       const idsOfrecidas = filasOfrecidas.map((fila) => fila.id);
       const idsOmitidas = filas
         .filter((fila) => !idsOfrecidas.includes(fila.id))
         .map((fila) => fila.id);
 
-      if (horarios.length === 0) {
-        resumen.sinEnviar += 1;
-        resumen.detalle.push({
-          asistentePageId,
-          filas: filas.map((f) => f.id),
-          ofrecidas: idsOfrecidas,
-          omitidas: idsOmitidas,
-          sponsorHorarios: null,
-          motivo: 'SIN_HORARIOS_SUGERIDOS',
-        });
-        continue;
-      }
-
-      const payload = payloadPara({ contacto, sugerencias, horarios, modoSimulacion: simulando });
+      // La oferta ya no lleva horarios, así que tener sponsors sugeridos basta
+      // para enviarla. Antes se saltaba a quien no tuviera un bloque libre en
+      // ese instante (SIN_HORARIOS_SUGERIDOS) y esa gente nunca recibía nada.
+      const payload = payloadPara({ contacto, sugerencias, modoSimulacion: simulando });
       if (simulando) {
         resumen.simuladosOfertaInicial += 1;
         resumen.detalle.push({
@@ -221,7 +211,6 @@ async function dispararCampanasAprobadas({
           filas: filas.map((f) => f.id),
           ofrecidas: idsOfrecidas,
           omitidas: idsOmitidas,
-          sponsorHorarios,
           campana: OFERTA_INICIAL,
           payload,
           simulado: true,
@@ -270,7 +259,6 @@ async function dispararCampanasAprobadas({
         filas: ids,
         ofrecidas: idsOfrecidas,
         omitidas: idsOmitidas,
-        sponsorHorarios,
         campana: OFERTA_INICIAL,
         simulado: false,
       });
@@ -280,21 +268,6 @@ async function dispararCampanasAprobadas({
   }
 
   return resumen;
-}
-
-function elegirHorariosDeSugerencias(filasOfrecidas, indiceConfirmadas, asistentePageId) {
-  for (const fila of filasOfrecidas || []) {
-    const bloques = citasService.bloquesDisponiblesParaSponsor({
-      sponsorPageId: fila.sponsorPageId,
-      indiceConfirmadas,
-      asistentePageId,
-    });
-    const horarios = citasService.seleccionarHorariosParaOferta(bloques);
-    if (horarios.length > 0) {
-      return { horarios, sponsorHorarios: fila.sponsorPageId };
-    }
-  }
-  return { horarios: [], sponsorHorarios: null };
 }
 
 function plantillaRecordatorio(modoSimulacion) {
@@ -492,7 +465,6 @@ module.exports = {
   agruparPorAsistente,
   textoSugerencias,
   payloadPara,
-  elegirHorariosDeSugerencias,
   contactoYaInteractuo,
   dispararCampanasAprobadas,
   enviarRecordatorioEvento,

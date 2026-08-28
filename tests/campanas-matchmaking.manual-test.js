@@ -586,20 +586,30 @@ async function casoTopCuatroYParamsEstables() {
   assert.deepStrictEqual(resultado.detalle[0].ofrecidas, ['cita-1', 'cita-2', 'cita-3', 'cita-4']);
   assert.deepStrictEqual(resultado.detalle[0].omitidas, ['cita-5']);
   const payload = resultado.detalle[0].payload;
-  assert.strictEqual(payload.params.length, 5);
-  assert.ok(payload.params[1].includes('Empresa 1 — Solución 1'));
-  assert.ok(payload.params[1].includes('Empresa 4 — Solución 4'));
+  assert.strictEqual(payload.params.length, 2, 'la plantilla lleva solo nombre y sugerencias');
+  assert.strictEqual(payload.params[0], 'Ana');
+  assert.ok(payload.params[1].includes('*Empresa 1* (Solución 1)'));
+  assert.ok(payload.params[1].includes('*Empresa 4* (Solución 4)'));
   assert.ok(!payload.params[1].includes('Empresa 5'));
+  assert.ok(
+    !/[\r\n\t]/.test(payload.params[1]),
+    'WhatsApp rechaza saltos de línea dentro de una variable'
+  );
+  assert.deepStrictEqual(sponsorsConsultados, [], 'la oferta ya no consulta disponibilidad');
   assert.ok(!JSON.stringify(resultado).match(/C1|C2|Reactivaci[oó]n/));
-  const payloadDosHorarios = payloadPara({
-    contacto,
-    sugerencias: [sponsors['sponsor-1']],
-    horarios: horariosDisponibles.slice(0, 2),
-    modoSimulacion: true,
-  });
-  assert.strictEqual(payloadDosHorarios.params[4], '', 'horario 3 debe conservar posición vacía');
   assert.strictEqual(envios.length, 0);
   assert.strictEqual(filasMarcadas.length, 0);
+}
+
+async function casoParametroSaneadoParaWhatsApp() {
+  configurarOferta();
+  const payload = payloadPara({
+    contacto: { ...contacto, nombre: 'Ana\nMaría' },
+    sugerencias: [{ empresa: 'Revie', solucion: ['Reseñas\nde clientes', 'Marketing   por WhatsApp'] }],
+    modoSimulacion: true,
+  });
+  assert.strictEqual(payload.params[0], 'Ana María');
+  assert.strictEqual(payload.params[1], '*Revie* (Reseñas de clientes, Marketing por WhatsApp)');
 }
 
 async function casoCampanaPreviaBloqueaReenvio() {
@@ -611,14 +621,16 @@ async function casoCampanaPreviaBloqueaReenvio() {
   assert.strictEqual(filasMarcadas.length, 0);
 }
 
-async function casoCeroHorariosNoMarca() {
+async function casoSinBloquesLibresIgualEnvia() {
   configurarOferta({ conHorarios: false });
+  horariosPorSponsor = { 'sponsor-1': [], 'sponsor-2': [], 'sponsor-3': [], 'sponsor-4': [] };
   const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
-  assert.strictEqual(resultado.sinEnviar, 1);
-  assert.strictEqual(resultado.detalle[0].motivo, 'SIN_HORARIOS_SUGERIDOS');
-  assert.strictEqual(llamadasEnviarPlantilla, 0);
-  assert.strictEqual(actualizacionesContacto.length, 0);
-  assert.strictEqual(filasMarcadas.length, 0);
+  assert.strictEqual(resultado.sinEnviar, 0);
+  assert.strictEqual(resultado.enviadosOfertaInicial, 1);
+  assert.strictEqual(llamadasEnviarPlantilla, 1);
+  assert.deepStrictEqual(sponsorsConsultados, []);
+  assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
+  assert.strictEqual(actualizacionesContacto[0].campana, OFERTA_INICIAL);
 }
 
 async function casoEnvioRealMarcaTodoElGrupo() {
@@ -653,117 +665,15 @@ async function casoSoloMarcarTodaLaCola() {
   assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
 }
 
-async function casoHorariosSalenDelSponsorTop() {
-  configurarOferta();
-  horariosPorSponsor = {
-    'sponsor-1': [
-      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
-      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
-      { inicio: '2026-10-08T09:00:00-06:00', disponible: true },
-    ],
-    'sponsor-2': [{ inicio: '2026-10-08T17:30:00-06:00', disponible: true }],
-    'sponsor-3': [{ inicio: '2026-10-08T17:00:00-06:00', disponible: true }],
-    'sponsor-4': [{ inicio: '2026-10-07T18:30:00-06:00', disponible: true }],
-  };
-  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
-  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1']);
-  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-1');
-  assert.deepStrictEqual(resultado.detalle[0].payload.params.slice(2), [
-    'legible:2026-10-07T10:30:00-06:00',
-    'legible:2026-10-07T14:00:00-06:00',
-    'legible:2026-10-08T09:00:00-06:00',
-  ]);
-  assert.ok(!resultado.detalle[0].payload.params.includes('legible:2026-10-08T17:30:00-06:00'));
-}
-
-async function casoTopConPocosHorariosIgualEnvia() {
-  configurarOferta();
-  horariosPorSponsor = {
-    'sponsor-1': [
-      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
-      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
-    ],
-    'sponsor-2': [
-      { inicio: '2026-10-07T11:00:00-06:00', disponible: true },
-      { inicio: '2026-10-07T11:30:00-06:00', disponible: true },
-      { inicio: '2026-10-07T12:00:00-06:00', disponible: true },
-    ],
-  };
-  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
-  assert.strictEqual(resultado.simuladosOfertaInicial, 1);
-  assert.strictEqual(resultado.detalle[0].payload.params[4], '');
-  assert.strictEqual(resultado.detalle[0].payload.params[2], 'legible:2026-10-07T10:30:00-06:00');
-  assert.ok(!resultado.detalle[0].payload.params[2].includes('11:00'));
-}
-
-async function casoFallbackAlSegundoSponsor() {
-  configurarOferta();
-  horariosPorSponsor = {
-    'sponsor-1': [],
-    'sponsor-2': [
-      { inicio: '2026-10-07T10:30:00-06:00', disponible: true },
-      { inicio: '2026-10-07T14:00:00-06:00', disponible: true },
-    ],
-    'sponsor-3': [{ inicio: '2026-10-08T09:00:00-06:00', disponible: true }],
-    'sponsor-4': [{ inicio: '2026-10-08T09:30:00-06:00', disponible: true }],
-  };
-  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
-  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2']);
-  assert.strictEqual(resultado.simuladosOfertaInicial, 1);
-  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-2');
-  assert.strictEqual(resultado.detalle[0].payload.params[2], 'legible:2026-10-07T10:30:00-06:00');
-  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 1 — Solución 1'));
-  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 4 — Solución 4'));
-}
-
-async function casoFallbackAlTercerSponsor() {
-  configurarOferta();
-  horariosPorSponsor = {
-    'sponsor-1': [],
-    'sponsor-2': [],
-    'sponsor-3': [{ inicio: '2026-10-08T09:00:00-06:00', disponible: true }],
-    'sponsor-4': [{ inicio: '2026-10-08T17:30:00-06:00', disponible: true }],
-  };
-  const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
-  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2', 'sponsor-3']);
-  assert.strictEqual(resultado.detalle[0].sponsorHorarios, 'sponsor-3');
-  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 1'));
-  assert.ok(resultado.detalle[0].payload.params[1].includes('Empresa 4'));
-}
-
-async function casoTodosLosSugeridosSinHorarios() {
-  configurarOferta();
-  horariosPorSponsor = {
-    'sponsor-1': [],
-    'sponsor-2': [],
-    'sponsor-3': [],
-    'sponsor-4': [],
-  };
-  const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
-  assert.deepStrictEqual(sponsorsConsultados, ['sponsor-1', 'sponsor-2', 'sponsor-3', 'sponsor-4']);
-  assert.strictEqual(resultado.sinEnviar, 1);
-  assert.strictEqual(resultado.detalle[0].motivo, 'SIN_HORARIOS_SUGERIDOS');
-  assert.strictEqual(llamadasEnviarPlantilla, 0);
-  assert.strictEqual(filasMarcadas.length, 0);
-}
-
 async function main() {
   await casoTopCuatroYParamsEstables();
-  console.log('✅ Oferta única usa top 4, empresa/solución y 5 params planos estables.');
-  await casoHorariosSalenDelSponsorTop();
-  console.log('✅ Los 3 horarios salen del sponsor de mayor score, no de los demás.');
-  await casoTopConPocosHorariosIgualEnvia();
-  console.log('✅ Top con 1–2 bloques envía igual; no rellena con agenda de otros sponsors.');
-  await casoFallbackAlSegundoSponsor();
-  console.log('✅ Si el top no tiene huecos, los horarios salen del segundo por score.');
-  await casoFallbackAlTercerSponsor();
-  console.log('✅ El fallback recorre más de un nivel hasta encontrar un bloque.');
-  await casoTodosLosSugeridosSinHorarios();
-  console.log('✅ Si los 4 sugeridos están llenos, no se envía ni se marca.');
+  console.log('✅ Oferta única usa top 4 y 2 params: nombre y sponsors en una línea.');
+  await casoParametroSaneadoParaWhatsApp();
+  console.log('✅ Los params se sanean: sin saltos de línea ni espacios dobles.');
   await casoCampanaPreviaBloqueaReenvio();
   console.log('✅ Una campaña previa bloquea cualquier segundo envío automático.');
-  await casoCeroHorariosNoMarca();
-  console.log('✅ Cero horarios en todos los sugeridos no envía ni marca filas/contacto.');
+  await casoSinBloquesLibresIgualEnvia();
+  console.log('✅ Sin bloques libres se envía igual: la plantilla ya no lleva horarios.');
   await casoEnvioRealMarcaTodoElGrupo();
   console.log('✅ Envío real conserva send-state y marca incluso las filas omitidas del mensaje.');
   casoEnCursoRecienteNoEsCandidata();
