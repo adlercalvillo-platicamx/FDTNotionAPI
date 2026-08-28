@@ -326,6 +326,7 @@ async function casoAprobadasYConfirmadasNoSeMezclan() {
   );
   assert.deepStrictEqual(resultado.citasConfirmadas[0], {
     sponsorNombre: 'Empresa Bajo',
+    sponsor_notion_id: 'sponsor-bajo',
     fechaHora: '2026-10-07T12:00:00-06:00',
     mesa: 'Mesa 3',
     citaId: 'conf-1',

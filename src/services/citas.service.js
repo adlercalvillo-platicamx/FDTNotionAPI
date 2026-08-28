@@ -921,6 +921,7 @@ function formatearSugerenciaAprobada(fila, sponsor) {
 function formatearCitaConfirmadaAsistente(cita) {
   return {
     sponsorNombre: cita.sponsorEmpresa || cita.sponsorNombre || 'Sponsor',
+    sponsor_notion_id: cita.sponsorPageId || null,
     fechaHora: cita.inicio || null,
     mesa: cita.mesa || null,
     citaId: cita.id,

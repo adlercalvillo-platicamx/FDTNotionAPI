@@ -34,7 +34,7 @@ src/
 │   ├── campanas-matchmaking.service.js # Oferta inicial única: hasta 4 sponsors + 3 horarios; simulación por default
 │   └── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 ├── mcp/
-│   ├── server.js                     # 11 herramientas MCP — capa delgada sobre services/
+│   ├── server.js                     # 12 herramientas MCP — capa delgada sobre services/
 │   └── mount.js                      # Monta POST /mcp en modo stateless (Streamable HTTP)
 └── utils/
     └── notion-client.js              # Cliente REST de Notion (nunca MCP para escrituras)
@@ -75,7 +75,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | GET | `/citas/sugeridas?whatsapp=...` | Solo lectura. Identifica al asistente por teléfono (alias `telefono=`). `asistente_notion_id=` queda como fallback. Filas `Sugerido`/`Aprobado` hidratadas **y** `citasConfirmadas`. **Ningún cliente HTTP activo en Plática** (27-ago: el catálogo solo tiene `api_reservar_cita`; el agente usa MCP; el WhatsApp Flow de reserva no pega esta ruta). Sin match → `404 CONTACTO_NO_RESUELTO`. |
 | GET | `/matchmaking/sugerencias-asistente?telefono=...` | **Nueva (26 de agosto).** Solo lectura para el agente de Carlos: filas `Aprobado` del asistente (alias `whatsapp=` / `contactoId=`). No filtra por `Campaña Enviada`; ese checkbox viaja en cada ítem. Desde el 27-ago también trae `citasConfirmadas` (`Confirmada` / `Confirmada sin notificar`, orden cronológico). `sugerencias` no cambió de schema. Lista vacía si no hay aprobadas. `X-API-Key`. |
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). **No reemplaza** `POST /citas/reservar`. `Confirmada` / `Confirmada sin notificar` ocupan al sponsor; las filas de bloqueo de conferencia no restan de las 11 mesas. Sin horario en env → `503`. |
-| POST | `/webhooks/whatsapp-flows` | Data API del Flow de reserva del asistente. **Sin** `X-API-Key`; firma HMAC. Registrado en Plática (`whatsapp.flows.exchanges`). |
+| POST | `/webhooks/whatsapp-flows` | **Legado/rollback desde 27-ago.** Data API del Flow anterior. Sigue desplegado con HMAC, pero el Agente 2 ya no lo usa. |
 | POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score y 3 horarios del sponsor top. **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de **todas** las citas `Confirmada sin notificar` y (desde 27-ago) de las `Cancelada` cuyo aviso de baja nunca salió. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
@@ -99,12 +99,13 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 
 Además de los endpoints REST de arriba, este servicio expone un servidor **MCP** (Model Context Protocol) en `POST /mcp` — mismo `X-API-Key` que el resto de rutas, mismo `authMiddleware`. Transporte Streamable HTTP, modo stateless (`sessionIdGenerator: undefined`).
 
-Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **11** tools MCP (`modificar_cita` y `cancelar_cita` desde el 27-ago) + `reservar_cita` como API REST en Plática, no en este servidor MCP.
+Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` que usan las rutas REST. Es una capa de presentación delgada (`src/mcp/server.js`), pensada para que un agente conversacional (el agente de Plática) invoque esta lógica en lenguaje natural sin tener que reimplementar reglas de negocio en su prompt. Hoy son **12** tools MCP, incluyendo disponibilidad conversacional, + `reservar_cita` como API REST en Plática, no en este servidor MCP.
 
 | Herramienta | Tipo | Qué hace |
 |---|---|---|
 | `consultar_checklist` | Lectura | Qué le falta a un sponsor/speaker por nombre aproximado. Desde el 13-ago el `contacto` del return incluye `calendarioGoogleId` (multi-calendario) — vacío/`null` si el sponsor aún no tiene calendario |
 | `consultar_sugeridas_para_asistente` | Lectura | Campo **`sugeridas`**: solo filas `Aprobado`. Aparte, `citasConfirmadas`. Identificador: `whatsapp`. El WhatsApp Flow de reserva usa el mismo criterio en proceso, no este HTTP. `GET /citas/sugeridas` sigue Sugerido+Aprobado y nadie lo llama hoy. `GET /matchmaking/sugerencias-asistente` no cambió (`sugerencias`, solo Aprobado). |
+| `consultar_disponibilidad_cita` | Lectura | Recibe el `sponsorPageId` y devuelve como máximo 3 bloques libres en `opciones_para_ofrecer` (ISO + horario legible). Si `hay_mas`, otra llamada con `excluirInicios`. Sin `fecha`, mira ambos días. Foto; `reservar_cita` / `modificar_cita` revalidan dentro del mutex. |
 | `revisar_checklists_pendientes` | Lectura + escribe estado | Barrido completo de checklist de todos los activos |
 | `sugerir_matches_para_sponsor` | Escritura acotada | Matchmaking para un sponsor específico. `escribirEnNotion` default `false` (dry-run) — con `true`, crea una fila `Sugerido` en `Citas` por candidato. Capa 1 incluye filtro de Giro/Industria (solo Marca de moda, Retailer, Manufactura) y excluye Presencial solo si `Quiere Citas 1a1 = 'No'` (12-ago). El objeto `sponsor` del return incluye `calendarioGoogleId` desde el 13-ago |
 | `guardar_sugerencia_individual` | Escritura acotada | **Nueva (19 de agosto).** Guarda únicamente el par sponsor-asistente elegido de un dry-run individual o global. Recalcula elegibilidad, score y explicación en backend; crea una sola fila `Sugerido`. Si el usuario pide varias, una llamada por par — no volver a correr `sugerir_matches_*` con `escribirEnNotion: true` (eso guarda el bloque completo). |
@@ -123,7 +124,7 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 
 **Google Calendar propio se retiró el 27-ago (Adler).** Nadie del equipo lo consultaba; Notion ya era adonde todos iban, y el `.ics` cubre el calendario personal del sponsor. `calendar-client.service.js` ya no existe. Los campos `Google Event ID` (Citas) y `Calendario Google ID` (Contactos) quedan en el schema por historial; el código nuevo no los escribe ni los exige. `sponsor_calendario_id` en `POST /citas/reservar` se ignora si llega, para no romper clientes viejos.
 
-**`reservar_cita` deliberadamente NO se expone como herramienta MCP.** Crea una cita real en Notion y manda correo, y la regla de negocio del cliente exige aprobación humana antes de ofrecerla — una herramienta que el agente pudiera invocar por una interpretación equivocada en conversación contradice esa regla directamente. En su lugar, `POST /citas/reservar` se conectó como herramienta de **API REST** directamente en la plataforma de Plática, con la instrucción explícita de invocarse solo tras aprobación humana.
+**Citas conversacionales (Laura, 27-ago):** el asistente agenda, reagenda y cancela hablando, sin botones ni WhatsApp Flow. Al ofrecer opciones (sponsors, horarios o citas a elegir) el agente nombra **como máximo 3**. Reserva: `consultar_sugeridas_para_asistente` → `consultar_disponibilidad_cita` → confirmación → API tool `reservar_cita`. Reagendar: mismas 3 horas + `modificar_cita`. Cancelar: desambiguar si hay varias + `cancelar_cita`. `reservar_cita` sigue fuera del MCP. Ver [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md).
 
 ## Variables de entorno
 Ver `.env.example`. Resumen:
