@@ -27,7 +27,11 @@ la grilla completa ni una lista larga.
    fecha, el backend llena 3 casillas: Día 1 Mañana, Día 1 Tarde y Día 2
    (si una casilla no tiene cupo, rellena con lo más próximo que quede, sin
    repetir). Si la persona pide un día específico, vuelve a consultar con
-   `fecha=YYYY-MM-DD` y se limita a ese día. Si `hay_mas` y pide otras horas,
+   `fecha=YYYY-MM-DD` y se limita a ese día. Si pide una **hora concreta**
+   (ej. las 15:00), vuelve a llamar con `hora=15:00` (y `fecha` si dijo el
+   día): esa hora entra en las 3 si está libre; `horario_solicitado` dice
+   si sí o no. No negar una hora solo porque no salió en las casillas (el
+   primer bloque de tarde es 14:00). Si `hay_mas` y pide otras horas,
    vuelve a llamar con `excluirInicios` = los `inicio` ya dichos. Nunca
    inventa horarios ni ofrece bloques que ya superaron el margen temporal
    permitido.

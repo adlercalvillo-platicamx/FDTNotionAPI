@@ -185,6 +185,24 @@ function casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque() {
   assert.ok(!iniciosDe(elegidos).includes(ocupadoAsistente));
 }
 
+function casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14() {
+  const dia7 = [];
+  for (const h of ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30']) {
+    dia7.push(bloque(`2026-10-07T${h}:00-06:00`));
+  }
+  const sinPedido = seleccionarHorariosParaOferta(dia7);
+  assert.deepStrictEqual(iniciosDe(sinPedido), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
+    '2026-10-07T11:00:00-06:00',
+  ]);
+  assert.ok(!iniciosDe(sinPedido).includes('2026-10-07T15:00:00-06:00'));
+
+  const conPedido = seleccionarHorariosParaOferta(dia7, 3, { priorizarHora: '15:00' });
+  assert.strictEqual(conPedido[0].inicio, '2026-10-07T15:00:00-06:00');
+  assert.strictEqual(new Set(iniciosDe(conPedido)).size, 3);
+}
+
 function casoFormatoLegible() {
   assert.strictEqual(
     formatearHorarioLegible('2026-10-07T10:30:00-06:00'),
@@ -215,6 +233,7 @@ casoMenosDeTres();
 casoDescartaHorariosPasadosConMismoMargenDeModificar();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque();
+casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14();
 casoFormatoLegible();
 casoScoreFormulaYFallbackNotas();
 console.log('✅ Selección compartida: casillas Día1 Mañana/Tarde + Día2, relleno, exclusión de pasados, ocupación propia, formato y score.');

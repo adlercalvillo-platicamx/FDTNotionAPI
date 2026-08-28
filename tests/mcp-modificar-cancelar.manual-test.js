@@ -200,6 +200,34 @@ citasService.obtenerDisponibilidadSponsor = async ({ sponsorPageId, fecha, asist
       },
     ];
   }
+  if (escenarioDisponibilidad === 'con-14-y-15') {
+    return [
+      {
+        inicio: `${fecha}T10:30:00-06:00`,
+        fin: `${fecha}T11:00:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+      {
+        inicio: `${fecha}T11:00:00-06:00`,
+        fin: `${fecha}T11:30:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+      {
+        inicio: `${fecha}T14:00:00-06:00`,
+        fin: `${fecha}T14:30:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+      {
+        inicio: `${fecha}T15:00:00-06:00`,
+        fin: `${fecha}T15:30:00-06:00`,
+        disponible: true,
+        motivo: null,
+      },
+    ];
+  }
   const manana = {
     inicio: `${fecha}T10:30:00-06:00`,
     fin: `${fecha}T11:00:00-06:00`,
@@ -467,6 +495,30 @@ async function ok(nombre, fn) {
       '2026-10-07T14:00:00-06:00',
       '2026-10-08T10:30:00-06:00',
     ]);
+  });
+
+  await ok('las 15:00 están libres pero las casillas no las eligen si hay 14:00', async () => {
+    escenarioDisponibilidad = 'con-14-y-15';
+    const body = parse(
+      await ejecutarConsultarDisponibilidadCita(argsDispo({ fecha: '2026-10-07' }))
+    );
+    const inicios = body.opciones_para_ofrecer.map((h) => h.inicio);
+    assert.ok(!inicios.includes('2026-10-07T15:00:00-06:00'));
+    assert.ok(inicios.includes('2026-10-07T14:00:00-06:00'));
+    assert.ok(!body.horario_solicitado);
+  });
+
+  await ok('hora=15:00 mete ese bloque en las opciones y lo marca disponible', async () => {
+    escenarioDisponibilidad = 'con-14-y-15';
+    const body = parse(
+      await ejecutarConsultarDisponibilidadCita(
+        argsDispo({ fecha: '2026-10-07', hora: '15:00' })
+      )
+    );
+    assert.strictEqual(body.opciones_para_ofrecer[0].inicio, '2026-10-07T15:00:00-06:00');
+    assert.strictEqual(body.horario_solicitado.length, 1);
+    assert.strictEqual(body.horario_solicitado[0].disponible, true);
+    assert.ok(body.aviso.includes('SÍ está libre'));
   });
 
   await ok('sin asistente ni whatsapp → INVALID_INPUT', async () => {

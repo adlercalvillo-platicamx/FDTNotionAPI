@@ -171,6 +171,7 @@ async function ejecutarConsultarDisponibilidadCita(
     excluirInicios,
     whatsapp,
     asistentePageId,
+    hora,
   } = {},
   { ahora = new Date() } = {}
 ) {
@@ -213,7 +214,9 @@ async function ejecutarConsultarDisponibilidadCita(
     const excluidos = new Set(
       (Array.isArray(excluirInicios) ? excluirInicios : []).map((v) => String(v || '').trim()).filter(Boolean)
     );
+    const horaPedida = citasService.normalizarHoraPedido(hora);
     const libres = [];
+    const horarioSolicitado = [];
     for (const dia of fechas) {
       const bloques = await citasService.obtenerDisponibilidadSponsor({
         sponsorPageId: sponsorId,
@@ -221,6 +224,18 @@ async function ejecutarConsultarDisponibilidadCita(
         asistentePageId: asistenteId,
       });
       for (const bloque of bloques) {
+        if (horaPedida && citasService.horaDeInicio(bloque.inicio) === horaPedida) {
+          horarioSolicitado.push({
+            inicio: bloque.inicio,
+            fin: bloque.fin,
+            disponible:
+              Boolean(bloque.disponible) &&
+              !excluidos.has(bloque.inicio) &&
+              citasService.esHorarioOfrecible(bloque.inicio, ahora),
+            motivo: bloque.motivo,
+            horario_legible: horarioLegible(bloque.inicio),
+          });
+        }
         if (
           !bloque.disponible ||
           excluidos.has(bloque.inicio) ||
@@ -237,20 +252,28 @@ async function ejecutarConsultarDisponibilidadCita(
     }
 
     const opciones = citasService
-      .seleccionarHorariosParaOferta(libres, LIMITE_HORARIOS_PARA_OFRECER, { ahora })
+      .seleccionarHorariosParaOferta(libres, LIMITE_HORARIOS_PARA_OFRECER, {
+        ahora,
+        priorizarHora: horaPedida,
+      })
       .map((bloque) => ({
         inicio: bloque.inicio,
         fin: bloque.fin,
         horario_legible: bloque.horario_legible,
       }));
 
+    const pedidoLibre = horarioSolicitado.some((s) => s.disponible);
     return respuestaJson({
       sponsor_notion_id: sponsorId,
       opciones_para_ofrecer: opciones,
+      horario_solicitado: horaPedida ? horarioSolicitado : undefined,
       hay_mas: libres.length > opciones.length,
       total_libres: libres.length,
-      aviso:
-        'Ofrece SOLO estas 3 opciones en el chat, en el mismo orden. Si pide otras horas, vuelve a llamar con excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque (sponsor y asistente).',
+      aviso: horaPedida
+        ? pedidoLibre
+          ? `El usuario pidió las ${horaPedida}. Esa hora SÍ está libre (horario_solicitado.disponible=true) y ya va en opciones_para_ofrecer. Dilo explícitamente; no la niegues porque no salía en las casillas. Ofrece como máximo estas 3.`
+          : `El usuario pidió las ${horaPedida}. Esa hora NO está libre (mira horario_solicitado). Dilo así y ofrece SOLO las alternativas de opciones_para_ofrecer. No inventes otra hora.`
+        : 'Ofrece SOLO estas 3 opciones en el chat, en el mismo orden. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con hora=15:00 (y fecha si dijo el día). Si pide otras horas, excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque (sponsor y asistente).',
     });
   } catch (err) {
     return respuestaJson(
@@ -488,7 +511,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada. Devuelve como máximo 3 opciones (campo opciones_para_ofrecer) para decirlas en el chat en el mismo orden; nunca listes más ni reordenes. Sin fecha: Día 1 Mañana, Día 1 Tarde y Día 2 (rellena casillas vacías con lo más próximo sin repetir). Con fecha: solo ese día. Si hay_mas=true y pide otras horas, vuelve a llamar con excluirInicios iguales a los inicio ya ofrecidos. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Es una foto: reservar_cita y modificar_cita revalidan el bloque. También úsala al reagendar.',
+    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada. Devuelve como máximo 3 opciones (opciones_para_ofrecer) en el mismo orden; nunca listes más ni reordenes. Sin fecha: casillas Día 1 Mañana / Día 1 Tarde / Día 2. Con fecha: solo ese día. Si el usuario pide una hora concreta (ej. las 15:00), PASA hora=15:00 y fecha si dijo el día — no niegues esa hora solo porque no salía en las 3 casillas; mira horario_solicitado. Si hay_mas=true y pide otras horas, excluirInicios. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Foto: reservar_cita / modificar_cita revalidan. También al reagendar.',
     {
       sponsorPageId: z
         .string()
@@ -505,6 +528,10 @@ function crearServidorMcp() {
         .string()
         .optional()
         .describe('Día YYYY-MM-DD. Si se omite, consulta todos los días del evento.'),
+      hora: z
+        .string()
+        .optional()
+        .describe('Hora concreta que pidió (HH:MM, ej. "15:00"). Si está libre, entra en las 3 opciones. Si no, horario_solicitado.disponible=false.'),
       excluirInicios: z
         .array(z.string())
         .optional()
