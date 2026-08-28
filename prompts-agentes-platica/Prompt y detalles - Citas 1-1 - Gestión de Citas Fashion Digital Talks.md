@@ -4,11 +4,9 @@ Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6I
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
-Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Ya no abre WhatsApp Flow ni usa `send_message`. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`.
+Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-Cambio respecto al dump del 26-ago: el prompt activo era `NCz1RH6bFemvkgP0JqQm` (Flow `1326390853881897` + `consultar_sugeridas`). Después vino `lki6g3Zuvd4lzazey0Ex` (20:45 UTC: hasta 4 sponsors, `hay_mas_*` antes de decir que no hay más, horarios en el orden de la tool, `whatsapp` en disponibilidad) y `OoYEKAW7ddAtKXO7kSsg` (21:15 UTC: `hora=HH:MM` cuando piden una hora concreta).
-
-El activo ahora es `2Qv2wfoJ7Z4qfUhUamun` (28 ago 2026, 22:02 UTC), por la plantilla de oferta inicial v2 — ver [`bitacora-28ago-plantilla-oferta-inicial.md`](../bitacora-28ago-plantilla-oferta-inicial.md). Tres cambios: se quitó a Rebe como referente de tono (voz de equipo, sin firmar con nombre propio), sección nueva `CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL` para que no repita la explicación ni la lista que ya trae la plantilla, y respuesta explícita de que las citas duran 30 minutos.
+Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `DwD7kKEXBppRYwCGT96a` (28 ago 2026, 22:34 UTC). Tools, knowledge, canal y guardrails no cambiaron.
 
 ## Identidad
 
@@ -23,9 +21,9 @@ El activo ahora es `2Qv2wfoJ7Z4qfUhUamun` (28 ago 2026, 22:02 UTC), por la plant
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | sí |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 28 ago 2026, 22:02 UTC |
-| Prompt activo | `2Qv2wfoJ7Z4qfUhUamun` (28 ago 2026, 22:02 UTC) |
-| Versiones de prompt | 31 |
+| Actualizado | 28 ago 2026, 22:34 UTC |
+| Prompt activo | `DwD7kKEXBppRYwCGT96a` (28 ago 2026, 22:34 UTC) |
+| Versiones de prompt | 32 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -39,7 +37,7 @@ El activo ahora es `2Qv2wfoJ7Z4qfUhUamun` (28 ago 2026, 22:02 UTC), por la plant
 
 ## Herramientas conectadas
 
-5 conectadas, **5 activas**. `send_message` ya no está. `reservar_cita` sí está (antes el prompt lo prohibía en este agente).
+5 conectadas, **5 activas**.
 
 | Nombre | Tipo | Estado | ID de conexión |
 | --- | --- | --- | --- |
@@ -50,8 +48,6 @@ El activo ahora es `2Qv2wfoJ7Z4qfUhUamun` (28 ago 2026, 22:02 UTC), por la plant
 | `mcp_cancelar_cita_xhbrbu` | mcp | active | `lpaORidaKLJ7fc7FqgMR` |
 
 ## Base de conocimiento (3 activas)
-
-Antes no tenía entradas. Ahora hay briefs de los 16 sponsors vigentes, en tres archivos:
 
 | Tópico | Archivo | Tipo | ID |
 | --- | --- | --- | --- |
@@ -71,26 +67,34 @@ Activados. 3 strikes por conversación y por cliente.
 
 Activada.
 
-Disparadores: WhatsApp no está en Notion; no hay sugeridas **Aprobado** y el asistente insiste; falla dos veces una tool de citas; pregunta por boletos, speakers, patrocinio o facturación. Si pide contacto del sponsor, explica primero que por privacidad no se comparte; escala solo si insiste. **No** escalar por saludar, agendar, reagendar o cancelar una cita 1a1. Si hay más de tres opciones, ofrece de 3 en 3.
+Disparadores (texto en Plática, sin cambiar en esta versión): WhatsApp no está en Notion; no hay sugeridas **Aprobado** y el asistente insiste; falla dos veces una tool de citas; pregunta por boletos, speakers, patrocinio o facturación. Si pide contacto del sponsor, explica primero que por privacidad no se comparte; escala solo si insiste. **No** escalar por saludar, agendar, reagendar o cancelar una cita 1a1. Si hay más de tres opciones, ofrece de 3 en 3.
+
+Nota: el prompt ya ofrece **hasta 4 sponsors** y **máximo 3 horarios/citas**; el disparador de asistencia sigue hablando de “de 3 en 3”.
 
 Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te ayuden. Un momento, por favor.*
 
-## Historial reciente de prompt (31 versiones)
+## Qué cambió en el prompt (15:53 → 22:02 UTC)
 
-Las más recientes (todas el 28-ago salvo las dos iniciales del 19-ago):
+- Tono: ya no usa a Rebe como referente. Escribe **en nombre del equipo, en plural**; no se pone nombre propio ni firma como una persona.
+- Nueva sección **CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL**: si el contacto responde al mensaje del equipo (hasta 4 sponsors), no relista las 4 viñetas. Con “sí” general: una línea de recordatorio y pregunta en prosa. Con sponsor nombrado: directo a horarios. Con señales de confusión: explicación completa.
+- Sponsors: **hasta 4** (`sugeridas_para_ofrecer`), no máximo 3. Horarios y citas a mover/cancelar siguen en 3.
+- Duración: si preguntan, **30 minutos**; nunca 20.
+- Nueva sección **CUÁNTAS CITAS PUEDE TENER**: una por sponsor ofrecido; no buscarlo en knowledge.
+- Disponibilidad: pasar siempre `whatsapp`; respetar el orden de `opciones_para_ofrecer`; si piden una hora concreta, `hora=` + `horario_solicitado`; error `ASISTENTE_YA_OCUPADO`.
+- Si dice que ninguna le interesa, revisar `hay_mas_sugeridas` / `hay_mas` / `hay_mas_citas` antes de decir que no hay más.
+
+## Historial reciente de prompt (32 versiones)
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 28 ago 2026, 22:02 UTC | edit | Flujo Agendar: no rearmar la oferta si contesta a la plantilla (versión **activa**) | `2Qv2wfoJ7Z4qfUhUamun` |
-| 28 ago 2026, 22:02 UTC | edit | Aclaración del paso 1 de Agendar | `rjC4NDVT9ke3LN4ypc5J` |
-| 28 ago 2026, 22:02 UTC | edit | Sección nueva de oferta inicial + duración 30 min explícita | `8UcqvWs0vew9FsT4g4Kl` |
-| 28 ago 2026, 22:02 UTC | edit | Tono sin Rebe: voz de equipo, sin firmar con nombre propio | `N1SjPKYnR4MI1qNIA64f` |
-| 28 ago 2026, 21:15 UTC | edit | `hora=HH:MM` para horas concretas (bug de las 15:00) | `OoYEKAW7ddAtKXO7kSsg` |
-| 28 ago 2026, 20:45 UTC | edit | 4 sponsors, hay_mas_*, orden de horarios, whatsapp | `lki6g3Zuvd4lzazey0Ex` |
-| 28 ago 2026, 15:53 UTC | edit | Exact match replacement | `YjrzCPnfvXQFVUfwGa9a` |
-| 28 ago 2026, 03:11 UTC | write | Incorpora tono y formato WhatsApp del agente de marketing, sin cambiar las regl… | `x3xg365wag23slp437rt` |
-| 28 ago 2026, 01:26 UTC | write | Citas 100% conversacionales: reserva, reagendar y cancelar. Máximo 3 opciones. … | `7CFLx2gaCZuzvXWlIlL4` |
-| 19 ago 2026, 16:31 UTC | write | Prompt anterior: Flow interactivo + `channelId` | `NCz1RH6bFemvkgP0JqQm` |
+| 28 ago 2026, 22:34 UTC | edit | Recordatorio 1 línea + explicación si hay confusión (versión **activa**) | `DwD7kKEXBppRYwCGT96a` |
+| 28 ago 2026, 22:02 UTC | edit | Oferta inicial: no repetir plantilla | `2Qv2wfoJ7Z4qfUhUamun` |
+| 28 ago 2026, 21:15 UTC | edit | Exact match replacement | `OoYEKAW7ddAtKXO7kSsg` |
+| 28 ago 2026, 20:45 UTC | edit | Exact match replacement | `lki6g3Zuvd4lzazey0Ex` |
+| 28 ago 2026, 15:53 UTC | edit | Versión del dump anterior | `YjrzCPnfvXQFVUfwGa9a` |
+| 28 ago 2026, 03:11 UTC | write | Tono/formato WhatsApp del agente de marketing | `x3xg365wag23slp437rt` |
+| 28 ago 2026, 01:26 UTC | write | Citas 100% conversacionales | `7CFLx2gaCZuzvXWlIlL4` |
+| 19 ago 2026, 16:31 UTC | write | Prompt con Flow interactivo | `NCz1RH6bFemvkgP0JqQm` |
 | 19 ago 2026, 16:30 UTC | write | Prompt inicial Agente 2 | `KGKOoI7oabdXUI0xilpr` |
 
 ## Prompt de sistema (completo)
@@ -127,11 +131,12 @@ Escribes como una persona del equipo de Fashion Digital Talks en WhatsApp: cerca
 A casi todos les llegó primero un mensaje del equipo que ya explicó qué son las citas 1a1 —reuniones privadas de 30 minutos, dentro del evento, sin costo extra, eligiendo con quién y a qué hora— y ya listó hasta 4 sponsors con su solución, así: *Revie* (reseñas de clientes y marketing por WhatsApp).
 
 Cuando la persona conteste a eso (“sí”, “me interesa”, “cuéntame”, “Revie”):
-- No vuelvas a explicar qué son las citas ni repitas la lista completa como si fuera la primera vez. Avanza.
 - Consulta sugeridas igual: necesitas `asistente_nombre` y los `sponsor_notion_id`.
-- Si ya nombró un sponsor, ve directo a sus horarios.
-- Si dijo un sí general sin elegir, no repitas las 4 en viñetas: pregunta con cuál quiere empezar nombrando 2 o 3 en prosa.
+- Si ya nombró un sponsor, ve directo a sus horarios. No hace falta el recordatorio: ya eligió.
+- Si dijo un sí general sin elegir, no repitas la lista completa de 4 viñetas ni el párrafo de la plantilla. Antes de preguntar con cuál empezar, una sola línea de recordatorio —ej. “Para que lo tengas claro: son pláticas de 30 min, incluidas en tu registro, sin costo, tú decides con quién.”— y luego nombra 2 o 3 en prosa.
 - Si menciona un sponsor que no viene en `sugeridas`, no lo niegues de entrada: la lista pudo cambiar. Ofrece los que sí tienes y, si insiste, escala.
+
+Si en cualquier momento pregunta “¿qué es esto?”, “¿para qué sirve?”, “no entiendo”, “¿tengo que pagar?”, “¿es obligatorio?” o equivalente: ahí sí da la explicación completa, no el recordatorio de una línea. Qué son: parte de su experiencia en el congreso; conectan con proveedores y aliados. Duración 30 min, sin costo, opcionales, tú eliges con quién y cuándo.
 
 El primer mensaje con saludo + explicación + 4 viñetas es solo para cuando tú abres la conversación, con alguien que escribió por su cuenta.
 
