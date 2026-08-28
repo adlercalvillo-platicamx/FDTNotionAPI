@@ -6,7 +6,7 @@ Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `JtYcoCujRetTxvkN8cLi` (28 ago 2026, 22:49 UTC). Tools, knowledge, canal y guardrails no cambiaron.
+Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `YjrzCPnfvXQFVUfwGa9a`. Luego `2Qv2wfoJ7Z4qfUhUamun` (22:02 UTC, oferta inicial). El activo ahora es `grIyFz9PHRvrwtQ2UUwS` (28 ago 2026, 22:54 UTC). Tools, knowledge, canal y guardrails no cambiaron.
 
 ## Identidad
 
@@ -21,9 +21,9 @@ Cambio respecto al dump de las 15:53 UTC del mismo día: el prompt activo era `Y
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | sí |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 28 ago 2026, 22:49 UTC |
-| Prompt activo | `JtYcoCujRetTxvkN8cLi` (28 ago 2026, 22:49 UTC) |
-| Versiones de prompt | 35 |
+| Actualizado | 28 ago 2026, 22:54 UTC |
+| Prompt activo | `grIyFz9PHRvrwtQ2UUwS` (28 ago 2026, 22:54 UTC) |
+| Versiones de prompt | 36 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -84,11 +84,12 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 - Disponibilidad: pasar siempre `whatsapp`; respetar el orden de `opciones_para_ofrecer`; si piden una hora concreta, `hora=` + `horario_solicitado`; error `ASISTENTE_YA_OCUPADO`.
 - Si dice que ninguna le interesa, revisar `hay_mas_sugeridas` / `hay_mas` / `hay_mas_citas` antes de decir que no hay más.
 
-## Historial reciente de prompt (35 versiones)
+## Historial reciente de prompt (36 versiones)
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 28 ago 2026, 22:49 UTC | edit | Explicación de citas = expertos / retos (versión **activa**) | `JtYcoCujRetTxvkN8cLi` |
+| 28 ago 2026, 22:54 UTC | edit | Ejemplo FLUJOS sin “proveedores y aliados” (versión **activa**) | `grIyFz9PHRvrwtQ2UUwS` |
+| 28 ago 2026, 22:49 UTC | edit | Explicación de citas = expertos / retos | `JtYcoCujRetTxvkN8cLi` |
 | 28 ago 2026, 22:49 UTC | edit | CÓMO SE VE UN MENSAJE: mismo lenguaje de la plantilla | `Caj3uJZDkcpwgeNDpcmF` |
 | 28 ago 2026, 22:39 UTC | edit | Sí general: nombrar hasta 4 en prosa | `F7LmUNUU2hwWNOPcF3WX` |
 | 28 ago 2026, 22:34 UTC | edit | Recordatorio 1 línea + explicación si hay confusión | `DwD7kKEXBppRYwCGT96a` |
@@ -263,7 +264,7 @@ Si `exito_parcial`: la cita *sí está cancelada*; el .ics de baja pendiente. Nu
 
 Ejemplo:
 “Hola Alejandra,
-Como parte de tu experiencia en *Fashion Digital Talks*, te invito a las citas 1a1 con proveedores y aliados.
+Como parte de tu experiencia en *Fashion Digital Talks*, tu registro incluye citas 1a1: reuniones privadas de 30 min, sin costo extra, con expertos de empresas que ya resuelven los retos que tienes según las soluciones que buscas.
 
 Te comparto algunas opciones recomendadas:
 • *Revie*: reseñas de clientes y marketing por WhatsApp

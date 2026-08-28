@@ -8,8 +8,8 @@ Agente `c1IYnFsr0Jzfqq4NeLAs` (Gestión de Citas). Solo se tocó la sección `CU
 
 | | ID | UTC |
 | --- | --- | --- |
-| Anterior | `F7LmUNUU2hwWNOPcF3WX` | 28 ago 2026, 22:39 |
-| Activa | `JtYcoCujRetTxvkN8cLi` | 28 ago 2026, 22:49 |
+| Anterior | `JtYcoCujRetTxvkN8cLi` | 28 ago 2026, 22:49 |
+| Activa | `grIyFz9PHRvrwtQ2UUwS` | 28 ago 2026, 22:54 |
 
 (Antes de `DwD7kKEXBppRYwCGT96a`: `2Qv2wfoJ7Z4qfUhUamun` a las 22:02.)
 
@@ -29,7 +29,11 @@ Snapshot: [`prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de 
 - `CÓMO SE VE UN MENSAJE` punto 2 (quien escribe por su cuenta)
 - Párrafo de confusión en `CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL`
 
-Ambos: expertos que resuelven tus retos según las soluciones que buscas. No se tocó el ejemplo de FLUJOS (sigue con “proveedores y aliados”); si un “Hola” nuevo lo copia, hay que corregir ese ejemplo.
+Ambos: expertos que resuelven tus retos según las soluciones que buscas.
+
+## Ajuste 22:54 UTC — ejemplo de FLUJOS
+
+`JtYcoCujRetTxvkN8cLi` → `grIyFz9PHRvrwtQ2UUwS`. El ejemplo de Agendar (“Hola Alejandra,”) ya no dice “proveedores y aliados”; usa el mismo lenguaje de la plantilla. Las tres fuentes (mensaje de apertura, confusión, ejemplo de FLUJOS) coinciden.
 
 ## Pendiente de prueba
 
