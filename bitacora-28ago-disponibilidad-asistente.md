@@ -21,4 +21,10 @@ Ya estaba implementado de verdad (no solo el aviso). Confirmado con test: segund
 
 ## Prompt del agente
 
-Pendiente de aplicar en Plática **después** del deploy de este backend. El texto activo todavía dice “máximo 3” sponsors y pide reordenar horarios cronológicamente.
+Aplicado en Plática tras el redeploy y el refresh del catálogo MCP (28-ago, 20:45 UTC). Agente `Citas 1-1 | Gestión de Citas Fashion Digital Talks` (`c1IYnFsr0Jzfqq4NeLAs`), versión `lki6g3Zuvd4lzazey0Ex`; la anterior era `YjrzCPnfvXQFVUfwGa9a` (rollback por historial de versiones).
+
+- Sponsors hasta 4; horarios y citas a mover/cancelar siguen en 3.
+- Respuesta directa a “¿cuántas citas puedo tener?” — una por sponsor ofrecido, sin `search_knowledgebase` y sin lenguaje interno.
+- Revisar `hay_mas_sugeridas` / `hay_mas` / `hay_mas_citas` antes de decir que no hay más opciones.
+- Horarios se dicen en el orden que manda la tool (ya no “ordena de más temprano a más tarde”).
+- `consultar_disponibilidad_cita` siempre con `whatsapp`; `ASISTENTE_YA_OCUPADO` agregado a los desenlaces de `reservar_cita`.
