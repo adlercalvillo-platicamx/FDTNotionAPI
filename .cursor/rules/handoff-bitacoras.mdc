@@ -1,0 +1,32 @@
+---
+description: Bitácoras de handoff con fecha — siempre, no solo si Adler lo pide
+alwaysApply: true
+---
+
+# Bitácoras — handoff, no spec
+
+Al cerrar un cambio de código, contrato, env de Coolify, plantilla, prompt de agente o prueba real: **escribe o actualiza una bitácora en el mismo turno**. No esperes a que Adler pida “hazme una bitácora”. Si contradice el código, gana el código.
+
+## Archivo
+
+`bitacora-DDmmm-slug.md` en la raíz (`28ago`, `31ago`). Un hilo de trabajo = un archivo; si el mismo día cubre otro tema, otro slug. Encadena la bitácora anterior del mismo hilo.
+
+Cabecera mínima:
+
+```
+# Bitácora DDmmm — título concreto
+Handoff. Código gana si esto contradice algo.
+Fecha del trabajo. Commit si aplica. Continúa [bitacora-anterior.md].
+```
+
+## Qué va adentro
+
+- Pedido en una frase y decisión (quién la tomó).
+- Qué cambió y **por qué**, no un diff.
+- Cómo operarlo: env, endpoint, banderas (simulación vs envío real), qué no reejecutar.
+- Evidencia breve: tabla, HTTP, conteos, IDs de plantilla/prompt. Sin secretos ni `.env`.
+- Pendientes explícitos; cierra los de la bitácora anterior si ya no aplican.
+
+No reescribas docs 00–10 ni dumps sueltos. Si el contrato HTTP/MCP/env cambió, actualiza `README.md` y `AGENTS.md` en el mismo turno.
+
+Si Adler pide “documenta lo de esta sesión”, una bitácora nueva (o sección) basta — no un informe paralelo.

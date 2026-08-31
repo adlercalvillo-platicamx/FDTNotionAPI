@@ -91,6 +91,7 @@ El snapshot local también venía atrasado una versión: le faltaba `OoYEKAW7ddA
 
 ## Pendiente
 
-1. ~~Adler crea la plantilla en Meta~~ Cerrado: `agendar_cita_inicial` aprobada y puesta en `PLATICA_TEMPLATE_OFERTA_INICIAL`. **El nombre va en minúsculas**: Meta no acepta mayúsculas en nombres de plantilla, aunque la interfaz de Plática lo muestre capitalizado.
-2. Envío real sigue detrás de `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=true`. `marcar-cola-sin-enviar.js` **no se necesita para la prueba del 28-ago**: la cola `Aprobado` sin campaña son 13 filas de 4 asistentes de prueba (Samantha Rivas, Liz Melchor, Adler Calvillo, Luis Portugal), ninguno con `Última Campaña Enviada` y ningún número externo. Sí se necesitará antes del primer disparo con asistentes reales.
-3. Probar en conversación real, con la plantilla ya aprobada, que el agente no repite la explicación ni la lista al recibir la respuesta.
+1. ~~Adler crea la plantilla en Meta~~ Cerrado: `agendar_cita_inicial` aprobada. Nombre en **minúsculas**.
+2. ~~Prueba de envío~~ Cerrado el 28-ago: simulación 4/4, luego envío real 4/4. Ver [`bitacora-28ago-primer-envio-real-oferta-inicial.md`](bitacora-28ago-primer-envio-real-oferta-inicial.md). Coolify debe quedar otra vez en `MODO_SIMULACION=true` y `ENVIO_REAL=false`.
+3. `marcar-cola-sin-enviar.js` sigue haciendo falta **antes** del primer disparo a asistentes reales.
+4. Probar en conversación que el Agente 2 no repite la explicación ni la lista al recibir la respuesta.

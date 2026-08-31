@@ -1,0 +1,23 @@
+---
+description: Snapshots locales de prompts de Plática — actualizarlos junto con el agente vivo
+alwaysApply: true
+---
+
+# Prompts de Plática — el md del repo es el snapshot
+
+Los agentes de WhatsApp viven en Plática (MCP workspace Fashion Digital Talks). El repo guarda la copia en `prompts-agentes-platica/Prompt y detalles - ….md`.
+
+Si cambias un prompt, tools, knowledge o guardrails **en vivo**, actualiza ese archivo **en el mismo turno**. No dejes el snapshot atrasado.
+
+## Cuál archivo
+
+El nombre en Plática con `|` → `-` en el archivo. El Agente 2 de citas (asistentes) es `Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md` (`c1IYnFsr0Jzfqq4NeLAs`). Marketing y CRM tienen los suyos; no mezclar.
+
+## Qué actualizar (mismo formato que ya está)
+
+1. Fecha del snapshot y **id del prompt activo** (y cuántas versiones).
+2. Tablas de identidad, tools, knowledge, guardrails, asistencia humana — solo lo que cambió.
+3. Sección corta **Qué cambió** (bullet del delta vs la versión anterior).
+4. El **texto completo** del prompt activo. Traerlo con `get_agent_prompt`; no inventar ni recortar.
+
+No pongas el prompt del agente en `src/` ni en tools MCP. La lógica de negocio sigue en `services/`.
