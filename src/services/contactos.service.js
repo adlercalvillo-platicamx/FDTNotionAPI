@@ -126,6 +126,7 @@ function parsearContacto(pagina) {
     // Tamaño de Negocio — select del registro (25-ago). Filtro duro en
     // matchmaking.service.js: Grande/Mediana entran; Micro/Pequeña no.
     // Vacío = asistente viejo → fallback a Madurez Negocio (Exa).
+    // VIP salta ese filtro (31-ago); Giro/Industria no.
     tamanoNegocio: select(p['Tamaño de Negocio']),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
@@ -333,11 +334,94 @@ async function buscarDadoDeBajaPorEmailOTelefono({ email, telefono }) {
   return data.results[0] ? parsearContacto(data.results[0]) : null;
 }
 
+const CATEGORIAS_BUSQUEDA = new Set(['Asistente', 'Sponsor']);
+
+function errorValidacionContacto(mensaje) {
+  const err = new Error(mensaje);
+  err.status = 400;
+  return err;
+}
+
+function textoQuery(valor) {
+  if (valor == null) return '';
+  return String(valor).trim();
+}
+
+function filtrosCategoriaActiva(categoria) {
+  return [
+    { property: 'Categoria', select: { equals: categoria } },
+    { property: 'Dado de Baja', checkbox: { equals: false } },
+  ];
+}
+
+async function queryContactos(filter, pageSize = 10) {
+  requireDataSourceId();
+  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({ filter, page_size: pageSize }),
+  });
+  return (data.results || []).map(parsearContacto);
+}
+
+async function buscarPorTelefonoYCategoria(telefonoEntrada, categoria) {
+  const orTelefono = filtroWhatsAppPorTelefono(telefonoEntrada);
+  if (orTelefono.length === 0) return [];
+  const candidatos = await queryContactos({
+    and: [...filtrosCategoriaActiva(categoria), { or: orTelefono }],
+  });
+  return candidatos.filter((c) => coincidenTelefonos(telefonoEntrada, c.whatsapp));
+}
+
+/**
+ * Resuelve un contacto por teléfono, nombre o empresa para Liz/Laura.
+ * Solo lectura. `categoria` es obligatorio (`Asistente` | `Sponsor`).
+ * Para en el primer criterio que traiga resultados (teléfono → nombre →
+ * empresa); no combina varios filtros a la vez.
+ */
+async function buscarContacto({ nombre, telefono, empresa, categoria } = {}) {
+  const cat = textoQuery(categoria);
+  if (!CATEGORIAS_BUSQUEDA.has(cat)) {
+    throw errorValidacionContacto('categoria debe ser Asistente o Sponsor.');
+  }
+  const nom = textoQuery(nombre);
+  const tel = textoQuery(telefono);
+  const emp = textoQuery(empresa);
+  if (!nom && !tel && !emp) {
+    throw errorValidacionContacto('Falta nombre, telefono o empresa.');
+  }
+
+  if (tel) {
+    const porTelefono = await buscarPorTelefonoYCategoria(tel, cat);
+    if (porTelefono.length > 0) return porTelefono;
+  }
+  if (nom) {
+    const porNombre = await queryContactos({
+      and: [
+        ...filtrosCategoriaActiva(cat),
+        { property: 'Nombre', title: { contains: nom } },
+      ],
+    });
+    if (porNombre.length > 0) return porNombre;
+  }
+  if (emp) {
+    return queryContactos({
+      and: [
+        ...filtrosCategoriaActiva(cat),
+        { property: 'Empresa', rich_text: { contains: emp } },
+      ],
+    });
+  }
+  return [];
+}
+
 /**
  * Búsqueda por nombre aproximado — para cuando Liz/Laura preguntan "cómo va
  * fulano" y no tienen el page_id a la mano. Usa "contains", no igualdad
  * exacta, así que puede regresar varios candidatos (ambigüedad real: puede
  * haber dos personas con nombre parecido).
+ *
+ * No filtra Categoria. Para resolver un asistente o sponsor antes de
+ * reservar, usar `buscarContacto` (filtra categoría y Dado de Baja).
  */
 async function buscarContactoPorNombre(nombreAproximado) {
   requireDataSourceId();
@@ -565,6 +649,7 @@ module.exports = {
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
   buscarContactoPorNombre,
+  buscarContacto,
   buscarAsistentePorWhatsApp,
   variantesTelefono,
   formatosTelefonoParaNotion,

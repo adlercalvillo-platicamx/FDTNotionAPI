@@ -124,8 +124,18 @@ const MADURECES_EXA_QUE_ENTRAN = new Set(['Consolidado', 'PyME']);
  * Allowlist, no denylist: un valor raro o vacío no “se cuela”.
  * Con Tamaño poblado: solo Grande/Mediana. Vacío (registro viejo):
  * Consolidado/PyME de Exa. Vacío + vacío o Temprano → fuera.
+ * Única excepción: VIP entra aunque Tamaño y Madurez Exa estén vacíos
+ * o sean Micro/Pequeña/Temprano (Adler, 31-ago-2026). El filtro de
+ * Giro/Industria no tiene esa excepción.
  */
 function esCandidatoPorTamanoNegocio(candidato) {
+  // VIP entra sin importar Tamaño de Negocio / Madurez Exa — el boleto
+  // VIP ya garantiza cita (ver contactos.service.js, elegibilidad de
+  // boleto). Confirmado por Adler el 31-ago-2026: el filtro duro de
+  // tamaño (Laura, 25-ago) no debe excluir VIP, aunque el dato esté
+  // vacío. NO aplica lo mismo al filtro de Giro/Industria — ese sigue
+  // sin excepción para VIP (confirmado 12-ago, sin cambio).
+  if (candidato.esVip) return true;
   const tamano = candidato.tamanoNegocio;
   if (tamano) return TAMANOS_QUE_ENTRAN.has(tamano);
   return MADURECES_EXA_QUE_ENTRAN.has(candidato.madurezNegocioExa);

@@ -5,6 +5,7 @@ const authMiddleware = require('./middleware/auth.middleware');
 const citasRoutes = require('./routes/citas.routes');
 const matchmakingRoutes = require('./routes/matchmaking.routes');
 const checklistRoutes = require('./routes/checklist.routes');
+const contactosRoutes = require('./routes/contactos.routes');
 const { montarMcp } = require('./mcp/mount');
 const flowsRoutes = require('./routes/flows.routes');
 
@@ -39,6 +40,7 @@ app.use(authMiddleware);
 app.use('/citas', citasRoutes);
 app.use('/matchmaking', matchmakingRoutes);
 app.use('/checklist', checklistRoutes);
+app.use('/contactos', contactosRoutes);
 
 // ── MCP — mismo nivel de protección que las rutas de arriba (X-API-Key) ──
 // Expone consultar_checklist, revisar_checklists_pendientes y
