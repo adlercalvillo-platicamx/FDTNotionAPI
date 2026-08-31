@@ -1,7 +1,7 @@
 # Bitácora 31ago — `buscar_contacto` + VIP salta filtro de tamaño
 
 Handoff. Código gana si esto contradice algo.
-Fecha del trabajo: 31 ago 2026. Continúa el prompt de Adler (`prompt-cursor-buscar-contacto-y-limpieza-agente`). HEAD al arrancar: `6c6d4affde7940629db8c69e81fec23ea384cb86` (igual al SHA del prompt).
+Fecha del trabajo: 31 ago 2026. Commit `4d75180` en `main`. HEAD al arrancar: `6c6d4affde7940629db8c69e81fec23ea384cb86` (igual al SHA del prompt).
 
 ## Pedido
 
@@ -23,30 +23,25 @@ Decisión de arquitectura (Adler, no reabierta): `buscar_contacto` y `reservar_c
 - Matchmaking: el próximo cron de 6h puede sugerir VIP que antes no salían. **Adler debe saberlo antes del redeploy Coolify** — no es sorpresa.
 - Coolify: redeploy **manual**. Hasta que no esté, Plática no puede registrar `api_buscar_contacto`.
 
-## Evidencia (unitario, sin Notion)
+## Evidencia
 
-| Caso | Resultado |
-|---|---|
-| buscar-contacto 7/7 | PASS (`node tests/buscar-contacto.manual-test.js`) |
-| vip-tamano-negocio 5/5 | PASS |
-| tamano-negocio baseline | PASS (no-VIP vacío sigue fuera) |
-| matchmaking.manual-test.js | Carlos 260 / Laura 1320, sin cambio |
+**Unitario (mocks, sin Notion):** buscar-contacto 7/7; vip-tamano-negocio 5/5; tamano-negocio baseline PASS; matchmaking.manual-test.js Carlos 260 / Laura 1320.
 
-## Impacto VIP (Notion de pruebas) — pendiente de dry-run post-deploy
+**Notion de pruebas (solo lectura, vía `.env` local — no Coolify):** los 7 casos HTTP de `buscarContacto` PASS. Las llamadas fueron `query` a Contactos, no PATCH. VIP en el pool de giro elegible: **0**. VIP con Tamaño y Madurez Exa vacíos en ese pool: **0**. El cron no va a “soltar” VIP nuevos en este dataset de pruebas; el test unitario sí cubre el caso. Dry-run `sugerirMatchesParaSponsor` post-Coolify queda como confirmación en el host desplegado, no como hallazgo nuevo de VIP.
 
-El conteo de VIP con Tamaño y Madurez Exa ambos vacíos se reporta **después** del dry-run contra un sponsor real (`escribirEnNotion: false`). Hasta entonces: tests unitarios confirman el comportamiento; no hay cifra de Notion en esta sección.
+## Plática (Parte 2 — incompleta a propósito hasta el redeploy)
 
-## Plática (Parte 2)
+Hecho ahora:
+- Refresh + sync del MCP `YfE1GCT5D6KLwZ48lXzz` (Backend MCP): `disparar_campanas_aprobadas` quedó instalada (`mcp_disparar_campanas_aprobadas_xhbrbu`, `X06FqRzIW5HqjImemwGQ`) y **conectada active** al subagente `gZ4oJ84r1JT79zd9AEZg`.
+- Las 6 tools de checklist/sugerir/aprobar/guardar **siguen active**. No las desconecté todavía: sin `GET /contactos/buscar` en Coolify ni `api_buscar_contacto`, el agente perdería cómo resolver nombres.
 
-Al cerrar código esto **aún no** está aplicado en vivo. Pendiente tras redeploy:
-
-- Desconectar las 6 tools de checklist/sugerir/aprobar/guardar.
-- Conectar `disparar_campanas_aprobadas` + `buscar_contacto` (REST).
-- Reescribir prompt del subagente (ya no checklist/sugerir_matches).
+Pendiente (Adler, redeploy manual de Coolify, nunca automático):
+- [ ] Redeploy para que exista `GET /contactos/buscar`.
+- [ ] Registrar tool REST `buscar_contacto` (mismo patrón que `api_reservar_cita` / `DHNtYd1XvPA8IWaKBQxU`) y conectarla.
+- [ ] Desconectar las 6: `bw8Kl02fMqNgSN1Icg1v`, `98cW1ucXsMXKAMJQsNs6`, `T7Ra4k66RNTPIYqwI7Ok`, `YnSJmKwam8dvts4X0Sgb`, `ZsVRWjaYxRVyCqSXwPay`, `uNRGZ4h9QN34wBZtRLZ8`.
+- [ ] Reescribir prompt del subagente (ya no checklist/sugerir_matches) y snapshot en `prompts-agentes-platica/`.
+- [ ] 7 casos contra Coolify vía Plática.
 
 ## Pendientes
 
-- [ ] Redeploy Coolify (Adler).
-- [ ] 7 casos de `GET /contactos/buscar` contra Coolify + Notion real (confirmar 0 escrituras).
-- [ ] Dry-run `sugerirMatchesParaSponsor` y contar VIP afectados.
-- [ ] Tools + prompt del subagente; actualizar snapshot `prompts-agentes-platica/`.
+Los de arriba. Esta tarea **no** está terminada: falta Coolify + REST `buscar_contacto` + limpieza de tools/prompt.
