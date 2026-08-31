@@ -9,6 +9,8 @@ Los agentes de WhatsApp viven en Plática (MCP workspace Fashion Digital Talks).
 
 Si cambias un prompt, tools, knowledge o guardrails **en vivo**, actualiza ese archivo **en el mismo turno**. No dejes el snapshot atrasado.
 
+Editar el agente: `get_agent_prompt` → `edit_agent_prompt` con el `oldText` **exacto** de esa respuesta (un mismatch aborta). No pegues de memoria ni de un dump viejo.
+
 ## Cuál archivo
 
 El nombre en Plática con `|` → `-` en el archivo. El Agente 2 de citas (asistentes) es `Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md` (`c1IYnFsr0Jzfqq4NeLAs`). Marketing y CRM tienen los suyos; no mezclar.

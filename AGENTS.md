@@ -2,7 +2,7 @@
 
 Backend Node/Express de citas 1a1, matchmaking y checklist para **Fashion Digital Talks 2026** (Plática.mx). Fuente de verdad: Notion + `.ics` por correo. Google Calendar propio se retiró el 27-ago.
 
-Lee [`README.md`](README.md) y [`.cursor/rules/architecture.mdc`](.cursor/rules/architecture.mdc) antes de cambiar código. Tras un cambio, bitácora con fecha ([`.cursor/rules/handoff-bitacoras.mdc`](.cursor/rules/handoff-bitacoras.mdc)) y, si tocó un agente de Plática, el snapshot en `prompts-agentes-platica/` ([`.cursor/rules/prompts-platica.mdc`](.cursor/rules/prompts-platica.mdc)). Las bitácoras son handoff, no spec: si contradicen el código, gana el código.
+Lee [`README.md`](README.md) y [`.cursor/rules/architecture.mdc`](.cursor/rules/architecture.mdc) antes de cambiar código. Tras un cambio, bitácora con fecha ([`.cursor/rules/handoff-bitacoras.mdc`](.cursor/rules/handoff-bitacoras.mdc)) y, si tocó un agente de Plática, el snapshot en `prompts-agentes-platica/` ([`.cursor/rules/prompts-platica.mdc`](.cursor/rules/prompts-platica.mdc)). WhatsApp, Coolify y one-shots: [`.cursor/rules/operacion-en-vivo.mdc`](.cursor/rules/operacion-en-vivo.mdc). Las bitácoras son handoff, no spec: si contradicen el código, gana el código.
 
 ## Comandos
 

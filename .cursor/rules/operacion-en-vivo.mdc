@@ -1,0 +1,26 @@
+---
+description: Verificar antes de WhatsApp, Notion o Coolify — simular, proponer, no disparar a ciegas
+alwaysApply: true
+---
+
+# Operación en vivo — el estilo de este repo
+
+Antes de un envío real (plantilla WhatsApp, SMTP, webhook de campañas, one-shot que escribe Notion): **nombra a quién le llega**. Si la cola no es solo números de prueba, para y dilo. No asumas “en Aprobados solo están los nuestros”.
+
+## Campañas
+
+Default en Coolify: `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true` y `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`. El webhook no trae override en el body.
+
+Orden: simulación → leer `payload` (plantilla y `{{2}}`) → envío real → **devolver** las dos banderas al default. `MODO_SIMULACION` solo deja de simular con el string exacto `false`.
+
+Plantillas de Meta: nombre en **minúsculas** (`agendar_cita_inicial`). En Coolify no dejes la misma variable dos veces: gana la que no esperabas. Names con guiones en la fecha no se inyectan; usar underscores (`CITAS_HORA_INICIO_2026_10_07`).
+
+## Copy y prompts
+
+Si Adler pide una plantilla o un cambio de tono: **propón el texto primero**, espera el ok, luego código/Plática. No implementes la redacción de un mensaje como si ya estuviera aprobada.
+
+## Bloqueos
+
+Si algo va a rechazar Meta, a mandar al número equivocado o a dejar estado sucio: dilo **antes** de disparar (cuerpo > 1024, `Otro` en `{{2}}`, `Falló` reintentable). No “ya está” cuando el payload está mal.
+
+Tras un envío o un fallo: bitácora con evidencia (HTTP, conteos, IDs). Sin secretos.
