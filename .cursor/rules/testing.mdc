@@ -21,7 +21,7 @@ node tests/checklist.manual-test.js
 - `matchmaking.manual-test.js`: Carlos Medina y Laura Espinoza **ambos** sugieren a Ana (desde 28-ago: etapa ya no excluye; Ana entra por fallback Exa Consolidado). Scores de referencia: Carlos 260, Laura 1320. Contacto vacío histórico sigue fuera por tamaño.
 - `matchmaking-global.manual-test.js`: 1 solapamiento detectado (Ana entre dos sponsors), con Diamante ordenado antes que Oro — por nivel de patrocinio, no por score de match.
 - `tamano-negocio.manual-test.js`: Micro/Pequeña/Temprano/vacío (no-VIP) fuera; Grande/Mediana/Exa Consolidado/PyME dentro. Grande **sin** `Etapa de Negocio` entra aunque el sponsor tenga `Etapa Cliente Buscada` llena.
-- `vip-tamano-negocio.manual-test.js`: VIP entra aunque Tamaño y Madurez Exa estén vacíos o sean Micro; no-VIP vacío sigue fuera; VIP con giro fuera de los 3 elegibles sigue excluido.
+- `vip-tamano-negocio.manual-test.js`: boleto `Presencial VIP` entra aunque el checkbox `Es VIP` esté en false y Tamaño/Madurez vacíos o Micro; checkbox `Es VIP` sin boleto VIP no salta el filtro; giro fuera de los 3 elegibles sigue excluido.
 - `checklist.manual-test.js`: Carlos → incompleto, le faltan 5 campos del bloque Speaker (foto, logo, sitio web, Instagram, LinkedIn). Laura → completo.
 
 Si algo de esto cambia inesperadamente, repórtalo antes de "corregir" el test para que vuelva a pasar — puede ser una regresión real, no un test mal escrito.

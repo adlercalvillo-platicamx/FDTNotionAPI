@@ -91,7 +91,7 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - **Bronce** no participa (error explícito). Prioridad de desempate: Cristal > Diamante > Oro. **`Citas Minimas Prometidas` es por sponsor**, no derivar cuota del nivel. `topN` = cuota + `MARGEN_CANDIDATOS` (2).
 - Capa 2: ranking en [`matchmaking.service.js`](src/services/matchmaking.service.js) (pesos `PESOS`). Exa en ranking: `Madurez Negocio` 40/15 (sin Tamaño declarado), `ICP Moda/Ecommerce` +30/−30 (Ambiguo/vacío = 0), `Estado Web` +10 si `Con web` (Sin web no resta). No son filtros duros.
 - Giro elegible (también VIP): Marca de moda, Retailer/tienda multimarca, Manufactura. `Quiere Citas 1a1` es **select** `Sí`/`No`/vacío — excluir solo `'No'` explícito.
-- **Tamaño de Negocio** (filtro duro): Grande/Mediana, o fallback Exa Consolidado/PyME. **VIP salta este filtro** (31-ago, Adler); el de Giro no.
+- **Tamaño de Negocio** (filtro duro): Grande/Mediana, o fallback Exa Consolidado/PyME. **Presencial VIP salta este filtro** (31-ago, Adler; 1-sep se lee `ticketTipo`, no el checkbox `Es VIP`); el de Giro no.
 - Virtual es elegible por default (13-ago). `incluirVirtual` está **deprecado** (no-op, no usarlo en código nuevo).
 - **Etapa de Negocio / Etapa Cliente Buscada no filtran** (28-ago, Adler). Ticketópolis ya no captura etapa en asistentes nuevos. `etapasValidas` en `buscarAsistentesCandidatos` es no-op (mismo patrón que `incluirVirtual`). Los campos siguen en Notion.
 - Notion: **máximo 2 niveles** de anidamiento en filtros. Condiciones extra → post-filtro en JS (como `Quiere Citas 1a1`).

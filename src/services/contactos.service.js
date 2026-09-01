@@ -126,7 +126,8 @@ function parsearContacto(pagina) {
     // Tamaño de Negocio — select del registro (25-ago). Filtro duro en
     // matchmaking.service.js: Grande/Mediana entran; Micro/Pequeña no.
     // Vacío = asistente viejo → fallback a Madurez Negocio (Exa).
-    // VIP salta ese filtro (31-ago); Giro/Industria no.
+    // Presencial VIP (ticketTipo, no el checkbox Es VIP) salta ese
+    // filtro (31-ago; campo corregido 1-sep); Giro/Industria no.
     tamanoNegocio: select(p['Tamaño de Negocio']),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.

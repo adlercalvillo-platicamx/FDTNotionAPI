@@ -1,4 +1,5 @@
-// VIP salta el filtro duro de Tamaño de Negocio (Adler, 31-ago-2026).
+// Presencial VIP (ticketTipo) salta el filtro duro de Tamaño de Negocio.
+// El checkbox Es VIP NO es esa excepción (Adler, 1-sep-2026).
 // Giro/Industria sigue sin excepción para VIP.
 //
 //   node tests/vip-tamano-negocio.manual-test.js
@@ -43,7 +44,7 @@ const poolBruto = [
     empresa: 'VIP Vacío SA',
     categoria: 'Asistente',
     ticketTipo: 'Presencial VIP',
-    esVip: true,
+    esVip: false,
     tamanoNegocio: null,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
@@ -54,7 +55,7 @@ const poolBruto = [
     empresa: 'VIP Micro SA',
     categoria: 'Asistente',
     ticketTipo: 'Presencial VIP',
-    esVip: true,
+    esVip: false,
     tamanoNegocio: TAMANO_MICRO,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
@@ -75,7 +76,7 @@ const poolBruto = [
     nombre: 'No VIP Grande',
     empresa: 'Grande SA',
     categoria: 'Asistente',
-    ticketTipo: 'Virtual',
+    ticketTipo: 'Presencial',
     esVip: false,
     tamanoNegocio: TAMANO_GRANDE,
     madurezNegocioExa: null,
@@ -87,7 +88,7 @@ const poolBruto = [
     empresa: 'Pagos SA',
     categoria: 'Asistente',
     ticketTipo: 'Presencial VIP',
-    esVip: true,
+    esVip: false,
     tamanoNegocio: null,
     madurezNegocioExa: null,
     giroIndustria: GIRO_FINTECH,
@@ -104,7 +105,6 @@ require.cache[contactosPath] = {
       return poolBruto.find((a) => a.id === id);
     },
     async buscarAsistentesCandidatos() {
-      // Mismo filtro de giro que contactos.service.js — VIP no es excepción.
       return poolBruto.filter((c) => GIROS_ELEGIBLES_MATCHMAKING.includes(c.giroIndustria));
     },
   },
@@ -132,28 +132,31 @@ async function main() {
 
   assert.strictEqual(
     esCandidatoPorTamanoNegocio({
-      esVip: true,
+      ticketTipo: 'Presencial VIP',
+      esVip: false,
       tamanoNegocio: null,
       madurezNegocioExa: null,
     }),
     true
   );
   ok += 1;
-  console.log('1. VIP sin Tamaño ni Madurez Exa → entra');
+  console.log('1. Presencial VIP + Es VIP false + tamaño vacío → entra');
 
   assert.strictEqual(
     esCandidatoPorTamanoNegocio({
-      esVip: true,
+      ticketTipo: 'Presencial VIP',
+      esVip: false,
       tamanoNegocio: TAMANO_MICRO,
       madurezNegocioExa: null,
     }),
     true
   );
   ok += 1;
-  console.log('2. VIP con Tamaño Micro explícito → entra');
+  console.log('2. Presencial VIP + Micro explícito → entra');
 
   assert.strictEqual(
     esCandidatoPorTamanoNegocio({
+      ticketTipo: 'Presencial',
       esVip: false,
       tamanoNegocio: null,
       madurezNegocioExa: null,
@@ -161,10 +164,23 @@ async function main() {
     false
   );
   ok += 1;
-  console.log('3. No-VIP sin Tamaño ni Madurez Exa → sigue fuera');
+  console.log('3. Presencial no-VIP sin tamaño → sigue fuera');
 
   assert.strictEqual(
     esCandidatoPorTamanoNegocio({
+      ticketTipo: 'Presencial',
+      esVip: true,
+      tamanoNegocio: null,
+      madurezNegocioExa: null,
+    }),
+    false
+  );
+  ok += 1;
+  console.log('4. Checkbox Es VIP sin boleto Presencial VIP → no entra');
+
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio({
+      ticketTipo: 'Presencial',
       esVip: false,
       tamanoNegocio: TAMANO_GRANDE,
       madurezNegocioExa: null,
@@ -172,14 +188,13 @@ async function main() {
     true
   );
   ok += 1;
-  console.log('4. No-VIP Grande → sigue dentro');
+  console.log('5. Presencial no-VIP Grande → sigue dentro');
 
   const srcContactos = fs.readFileSync(contactosPath, 'utf8');
   assert.ok(
     srcContactos.includes('no hay excepción para VIP'),
     'el filtro de Giro en contactos.service.js debe seguir sin excepción VIP'
   );
-  assert.ok(!/if \(c\.esVip\) return true/.test(srcContactos));
 
   const r = await sugerirMatchesParaSponsor(sponsor.id, { topN: 20, escribirEnNotion: false });
   const ids = r.sugerencias.map((s) => s.id);
@@ -189,10 +204,10 @@ async function main() {
   assert.ok(!ids.includes('novip-vacio'));
   assert.ok(!ids.includes('vip-fintech'), 'VIP con giro fuera de los 3 elegibles no entra');
   ok += 1;
-  console.log('5. VIP giro Pagos/fintech excluido en sugerirMatchesParaSponsor; VIP vacío de moda sí entra');
+  console.log('6. giro Pagos/fintech excluido; Presencial VIP vacío de moda sí entra');
 
-  assert.strictEqual(ok, 5);
-  console.log('\n✅ vip-tamano-negocio 5/5');
+  assert.strictEqual(ok, 6);
+  console.log('\n✅ vip-tamano-negocio 6/6');
 }
 
 main().catch((err) => {
