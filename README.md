@@ -199,7 +199,7 @@ Pruebas SMTP reales contra Coolify: destinatarios **solo** en allowlist de prueb
 
 ## Pendientes conocidos (no bloquean el primer deploy, sí producción estable)
 - Cron de reconciliación para citas que quedan en "Pendiente Calendar" por un crash a media ejecución.
-- ~~Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada`.~~ **28-ago:** etapa ya no es filtro de matchmaking (Adler). El campo sigue en Notion; no hace falta homologar catálogos para el pool.
+- ~~Confirmar con Laura: lista final de `Nivel de Patrocinio` y tabla de equivalencia de `Etapa de Negocio` ↔ `Etapa Cliente Buscada`.~~ **28-ago:** etapa ya no es filtro de matchmaking (Adler). **2-sep:** en Contactos de Laura, `Etapa Cliente Buscada` conserva el nombre para no romper integraciones, pero en sponsors guarda el tamaño de empresa buscado (`Grande`, `Mediana`, `Pequeña`, `Micro`). El backend actual ignora ese campo para el pool.
 - ~~El shape exacto de la respuesta de `/calendar/crear-evento`~~ — verificado el 22 de julio; **irrelevante desde el 27-ago** (Calendar propio retirado).
 - Envío de alertas por WhatsApp (checklist y prospección) — no construido, es integración aparte.
 - Confirmar con Laura: ¿última cita del miércoles puede ser `18:30–19:00` (toca el cierre del horario de citas) o hay que cortar antes? Mismo análisis jueves (`17:30–18:00`). Ver Caso 4c de `tests-disponibilidad`.

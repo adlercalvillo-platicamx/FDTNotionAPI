@@ -94,7 +94,7 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - **Tamaño de Negocio** es `rich_text` desde 1-sep; el parser tolera `select` durante la transición y clasifica por prefijo sin acentos. Filtro duro: Grande/Mediana, o fallback Exa Consolidado/PyME cuando el texto no es un tamaño. **Presencial VIP y Speaker saltan este filtro** vía `ticketTipo`; el de Giro no.
 - **Speaker** es `Categoria=Asistente`, entra al pool y suma 500 (mismo peso que Presencial VIP). Speaker y Presencial VIP no acumulan el bonus `PRESENCIAL=150`; ese bonus queda solo para `Presencial`.
 - Virtual es elegible por default (13-ago). `incluirVirtual` está **deprecado** (no-op, no usarlo en código nuevo).
-- **Etapa de Negocio / Etapa Cliente Buscada no filtran** (28-ago, Adler). Ticketópolis ya no captura etapa en asistentes nuevos. `etapasValidas` en `buscarAsistentesCandidatos` es no-op (mismo patrón que `incluirVirtual`). Los campos siguen en Notion.
+- **Etapa de Negocio / Etapa Cliente Buscada no filtran** (28-ago, Adler). `etapasValidas` en `buscarAsistentesCandidatos` es no-op (mismo patrón que `incluirVirtual`). Desde 2-sep, en Contactos de Laura `Etapa Cliente Buscada` conserva el nombre técnico pero para sponsors significa **tamaño de empresa buscado** (`Grande`, `Mediana`, `Pequeña`, `Micro`); no volver a interpretar esos valores como madurez digital.
 - Notion: **máximo 2 niveles** de anidamiento en filtros. Condiciones extra → post-filtro en JS (como `Quiere Citas 1a1`).
 - Global: cargar pares con cita activa **una vez** (paginado) y consultar en memoria. No llamar Notion por candidato (timeout histórico ~130–150 HTTP).
 
