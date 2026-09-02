@@ -11,7 +11,8 @@ const { reintentarNotificacion } = require('../services/booking.service');
 async function ejecutarReintentosPendientes() {
   // Dos pendientes distintos: la confirmación que nunca salió y el aviso
   // de cancelación que nunca salió. reintentarNotificacion() distingue
-  // cuál .ics toca por el estatus de la fila.
+  // cuál .ics toca por el estatus de la fila. Las filas de bloqueo de
+  // conferencia no vienen en sinConfirmar.
   const [sinConfirmar, sinCancelar] = await Promise.all([
     citasService.buscarCitasSinNotificarParaReintentar(),
     citasService.buscarCancelacionesSinNotificar(),

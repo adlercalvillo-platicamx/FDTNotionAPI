@@ -19,6 +19,7 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   CAPACIDAD_MESAS_LLENA: 409,
   CONTACTO_NO_RESUELTO: 409,
   SIN_DESTINATARIOS: 400,
+  FILA_BLOQUEO_AGENDA: 409,
   ESTADO_INVALIDO: 409,
   ASISTENTE_NO_ENCONTRADO: 404,
   CITA_NO_ENCONTRADA: 404,
@@ -344,8 +345,9 @@ async function reenviarNotificacion(req, res) {
 async function reintentarNotificacionesPendientes(req, res) {
   try {
     const resultado = await ejecutarReintentosPendientes();
-    // 200 aunque haya fallidos parciales: el detalle trae el motivo de cada uno.
-    // 502 solo si TODAS fallaron y había candidatas.
+  // 200 aunque haya fallidos parciales: el detalle trae el motivo de cada uno.
+  // 502 solo si TODAS fallaron y había candidatas. Las filas de bloqueo de
+  // conferencia no entran en `total` (el service las filtra antes).
     if (resultado.total > 0 && resultado.exitosos === 0) {
       return res.status(502).json({
         ...resultado,

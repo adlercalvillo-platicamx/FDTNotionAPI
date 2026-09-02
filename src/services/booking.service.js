@@ -610,12 +610,21 @@ async function reservarCita({
  *   - POST /citas/reintentar-notificaciones-pendientes (batch, vía MCP)
  *
  * A demanda, sin tope de llamadas. No valida capacidad ni ocupación.
- * NO entra al mutex.
+ * NO entra al mutex. Las filas de bloqueo de conferencia (Contacto
+ * Principal = contacto ficticio) se rechazan con FILA_BLOQUEO_AGENDA;
+ * el barrido masivo ni las incluye.
  */
 async function reintentarNotificacion(notionPageId) {
   const cita = await citasService.obtenerCitaPorId(notionPageId);
   const datos = citasService.datosDeCita(cita);
   const esCancelacion = citasService.tieneCancelacionPendienteDeAviso(cita);
+
+  if (citasService.esFilaBloqueoAgenda(datos.asistentePageId)) {
+    throw new BookingError(
+      'FILA_BLOQUEO_AGENDA',
+      'Esta fila es un bloqueo de conferencia del programa, no una cita real. No se envía correo.'
+    );
+  }
 
   if (!esCancelacion && datos.estatus !== 'Confirmada sin notificar') {
     throw new BookingError(

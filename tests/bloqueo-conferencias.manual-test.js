@@ -225,6 +225,43 @@ function casoPruebasNoCambia() {
   assert.strictEqual(contactoBloqueoAgendaId(), CONTACTO_BLOQUEO_AGENDA_ID_DEFAULT);
 }
 
+async function casoReintentoOmiteFilaBloqueo() {
+  const notionPath = require.resolve('../src/utils/notion-client');
+  const citasPath = require.resolve('../src/services/citas.service');
+  delete require.cache[notionPath];
+  delete require.cache[citasPath];
+  require.cache[notionPath] = {
+    id: notionPath,
+    filename: notionPath,
+    loaded: true,
+    exports: {
+      async notionFetch() {
+        return {
+          results: [
+            {
+              id: 'cita-real',
+              properties: {
+                Estatus: { select: { name: 'Confirmada sin notificar' } },
+                'Contacto Principal': { relation: [{ id: 'asistente-real' }] },
+              },
+            },
+            {
+              id: 'cita-bloqueo',
+              properties: {
+                Estatus: { select: { name: 'Confirmada sin notificar' } },
+                'Contacto Principal': { relation: [{ id: BLOQUEO }] },
+              },
+            },
+          ],
+        };
+      },
+    },
+  };
+  const citas = require(citasPath);
+  const filas = await citas.buscarCitasSinNotificarParaReintentar();
+  assert.deepStrictEqual(filas.map((f) => f.id), ['cita-real']);
+}
+
 async function main() {
   casoIndiceYDisponibilidad();
   console.log('✅ Bloqueo de Blip a las 12:00: SPONSOR_YA_OCUPADO; 10 citas reales + bloqueo = 10 mesas; otro sponsor sí agenda.');
@@ -236,6 +273,8 @@ async function main() {
   console.log('✅ Workspace de pruebas: sigue usando el default sin fallar (sin cambios).');
   await casoMatchmakingExcluyeComite();
   console.log('✅ Comite/Team (Bloqueo de Agenda) no sale como candidato aunque tenga tamaño Grande.');
+  await casoReintentoOmiteFilaBloqueo();
+  console.log('✅ El barrido de notificaciones omite la fila de bloqueo y deja la cita real.');
 }
 
 main().catch((err) => {

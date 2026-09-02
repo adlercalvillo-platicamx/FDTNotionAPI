@@ -478,9 +478,11 @@ async function confirmarNotificacionEnviada(notionPageId) {
 }
 
 /**
- * Todas las citas en "Confirmada sin notificar" — usado por
+ * Citas reales en "Confirmada sin notificar" — usado por
  * POST /citas/reintentar-notificaciones-pendientes (MCP a demanda).
  * Sin filtro por intentos: el reenvío no tiene tope.
+ * Omite filas de bloqueo de conferencia (Contacto Principal = contacto
+ * ficticio): no son citas 1a1 y no deben disparar SMTP/.ics.
  */
 async function buscarCitasSinNotificarParaReintentar() {
   requireDataSourceId();
@@ -490,7 +492,9 @@ async function buscarCitasSinNotificarParaReintentar() {
       filter: { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
     }),
   });
-  return data.results;
+  return (data.results || []).filter(
+    (fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))
+  );
 }
 
 /** GET directo de una página de Citas por su notion_page_id. Usado por

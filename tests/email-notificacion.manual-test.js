@@ -562,6 +562,33 @@ function baseParams(overrides = {}) {
     assert.ok(hOk.emailCalls.every((c) => typeof c.secuencia === 'number' && c.secuencia > 0));
   });
 
+  await ok('fila de bloqueo de conferencia → FILA_BLOQUEO_AGENDA, 0 correos', async () => {
+    const bloqueoId = '3c990fe2-7345-8121-92a6-f9e09a540d2e';
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', [bloqueoId]: '' },
+    });
+    h.porId.set('cita-bloqueo', {
+      id: 'cita-bloqueo',
+      sponsor: 'sponsor-a',
+      asistente: bloqueoId,
+      inicio: INICIO,
+      fin: FIN,
+      estatus: 'Confirmada sin notificar',
+      mesa: null,
+      intentos: 0,
+      requestId: 'bloqueo',
+    });
+    await assert.rejects(
+      () => h.booking.reintentarNotificacion('cita-bloqueo'),
+      (e) =>
+        e instanceof h.booking.BookingError &&
+        e.code === 'FILA_BLOQUEO_AGENDA' &&
+        /bloqueo de conferencia/.test(e.message)
+    );
+    assert.strictEqual(h.porId.get('cita-bloqueo').estatus, 'Confirmada sin notificar');
+    assert.strictEqual(h.emailCalls.length, 0);
+  });
+
   console.log('\n=== SIN_DESTINATARIOS en reenvío ===');
   await ok('relations OK pero sin Email → SIN_DESTINATARIOS', async () => {
     const h = crearHarness({

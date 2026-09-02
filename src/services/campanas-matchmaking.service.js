@@ -67,8 +67,11 @@ function plantillaPara(modoSimulacion) {
 
 // WhatsApp rechaza el envío si el valor de una variable trae saltos de línea,
 // tabs o más de 4 espacios seguidos, así que la lista de sponsors va en un solo
-// renglón separada por " · ". Los asteriscos sí se renderizan como negritas.
-const SEPARADOR_SUGERENCIAS = ' · ';
+// renglón, con viñetas en línea. Los asteriscos sí se renderizan como negritas.
+// El '\r' pasa el filtro de Meta pero es retorno de carro, no salto: probado el
+// 2-sep contra un número propio y se comió los sponsors 2 a 4. No usarlo.
+const VINETA = '•';
+const SEPARADOR_SUGERENCIAS = ` ${VINETA} `;
 // Se muestran las soluciones que el asistente pidió y el sponsor ofrece, no el
 // catálogo completo del sponsor: con 4 sponsors de 5 soluciones cada uno el
 // cuerpo llegaba a 1035 caracteres y Meta lo rechazaba (tope 1024).
@@ -86,6 +89,22 @@ function limpiarParametroPlantilla(texto) {
     .trim();
 }
 
+function capitalizarPalabra(palabra) {
+  if (!palabra) return palabra;
+  return palabra.charAt(0).toLocaleUpperCase('es') + palabra.slice(1).toLocaleLowerCase('es');
+}
+
+// Ticketópolis vuelca el nombre completo y en mayúsculas ("ANA MARIA PEREZ"),
+// así que el saludo salía gritado y con apellidos. Se manda solo el primer
+// token: no se intenta adivinar nombres compuestos ("Ana María" → "Ana").
+function primerNombreParaSaludo(nombreCompleto) {
+  const [primero = ''] = limpiarParametroPlantilla(nombreCompleto).split(' ');
+  return primero
+    .split(/([-'’])/)
+    .map((parte) => (/^[-'’]$/.test(parte) ? parte : capitalizarPalabra(parte)))
+    .join('');
+}
+
 function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
   const ofrece = (Array.isArray(sponsor.solucion) ? sponsor.solucion : [sponsor.solucion])
     .map((solucion) => limpiarParametroPlantilla(solucion))
@@ -98,14 +117,15 @@ function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
 }
 
 function textoSugerencias(sugerencias, solucionesBuscadas) {
-  const armar = (maxSoluciones) =>
-    (sugerencias || [])
-      .map((sponsor) => {
-        const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
-        const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
-        return soluciones.length ? `*${nombre}* (${soluciones.join(', ')})` : `*${nombre}*`;
-      })
-      .join(SEPARADOR_SUGERENCIAS);
+  const armar = (maxSoluciones) => {
+    const partes = (sugerencias || []).map((sponsor) => {
+      const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
+      const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
+      return soluciones.length ? `*${nombre}* (${soluciones.join(', ')})` : `*${nombre}*`;
+    });
+    if (!partes.length) return '';
+    return `${VINETA} ${partes.join(SEPARADOR_SUGERENCIAS)}`;
+  };
 
   // Nombres de empresa muy largos podrían pasarse del margen incluso con el
   // tope por sponsor: se recorta a una solución y, en el peor caso, a los
@@ -126,7 +146,7 @@ function payloadPara({ contacto, sugerencias, modoSimulacion }) {
     phone: contacto.whatsapp,
     templateName: plantillaPara(modoSimulacion),
     params: [
-      limpiarParametroPlantilla(contacto.nombre) || 'Asistente',
+      primerNombreParaSaludo(contacto.nombre) || 'Asistente',
       textoSugerencias(sugerencias, contacto.solucionesBuscadas),
     ],
   };
@@ -363,7 +383,7 @@ function payloadRecordatorio({ contacto, modoSimulacion }) {
   return {
     phone: contacto.whatsapp,
     templateName: plantillaRecordatorio(modoSimulacion),
-    params: [contacto.nombre || 'Asistente'],
+    params: [primerNombreParaSaludo(contacto.nombre) || 'Asistente'],
   };
 }
 
@@ -491,6 +511,7 @@ module.exports = {
   evaluarVentanaRecordatorio,
   ESTATUS_YA_INTERACTUO,
   agruparPorAsistente,
+  primerNombreParaSaludo,
   textoSugerencias,
   payloadPara,
   contactoYaInteractuo,

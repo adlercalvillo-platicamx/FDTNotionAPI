@@ -122,6 +122,7 @@ const {
   REACTIVACION_2,
   elegirCampana,
   payloadPara,
+  primerNombreParaSaludo,
   dispararCampanasAprobadas,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,
@@ -591,6 +592,8 @@ async function casoTopCuatroYParamsEstables() {
   assert.ok(payload.params[1].includes('*Empresa 1* (Solución 1)'));
   assert.ok(payload.params[1].includes('*Empresa 4* (Solución 4)'));
   assert.ok(!payload.params[1].includes('Empresa 5'));
+  assert.ok(payload.params[1].startsWith('• '), 'cada sponsor lleva viñeta, la primera incluida');
+  assert.strictEqual((payload.params[1].match(/•/g) || []).length, 4, 'una viñeta por sponsor');
   assert.ok(
     !/[\r\n\t]/.test(payload.params[1]),
     'WhatsApp rechaza saltos de línea dentro de una variable'
@@ -608,8 +611,26 @@ async function casoParametroSaneadoParaWhatsApp() {
     sugerencias: [{ empresa: 'Revie', solucion: ['Reseñas\nde clientes', 'Marketing   por WhatsApp'] }],
     modoSimulacion: true,
   });
-  assert.strictEqual(payload.params[0], 'Ana María');
-  assert.strictEqual(payload.params[1], '*Revie* (Reseñas de clientes, Marketing por WhatsApp)');
+  assert.strictEqual(payload.params[0], 'Ana');
+  assert.strictEqual(payload.params[1], '• *Revie* (Reseñas de clientes, Marketing por WhatsApp)');
+}
+
+// Ticketópolis manda "NOMBRE APELLIDO" en mayúsculas al actualizar Notion.
+async function casoSaludoSoloPrimerNombre() {
+  assert.strictEqual(primerNombreParaSaludo('ANA MARIA PEREZ LOPEZ'), 'Ana');
+  assert.strictEqual(primerNombreParaSaludo('JOSÉ  DE LA CRUZ'), 'José');
+  assert.strictEqual(primerNombreParaSaludo('  adler  '), 'Adler');
+  assert.strictEqual(primerNombreParaSaludo('ANA-MARÍA SOTO'), 'Ana-María');
+  assert.strictEqual(primerNombreParaSaludo(''), '');
+  assert.strictEqual(primerNombreParaSaludo(null), '');
+
+  configurarOferta();
+  const payload = payloadPara({
+    contacto: { ...contacto, nombre: '   ' },
+    sugerencias: [{ empresa: 'Revie', solucion: ['Omnichannel'] }],
+    modoSimulacion: true,
+  });
+  assert.strictEqual(payload.params[0], 'Asistente', 'sin nombre usable cae al genérico');
 }
 
 // El catálogo completo del sponsor hacía que el cuerpo pasara 1024 caracteres
@@ -624,7 +645,7 @@ async function casoSolucionesCruzadasConLoQueBusca() {
     ],
     modoSimulacion: true,
   });
-  assert.strictEqual(payload.params[1], '*Blip* (Omnichannel, Pagos) · *Envia.com*');
+  assert.strictEqual(payload.params[1], '• *Blip* (Omnichannel, Pagos) • *Envia.com*');
 }
 
 async function casoSugerenciasNoPasanElMargen() {
@@ -704,6 +725,8 @@ async function main() {
   console.log('✅ Oferta única usa top 4 y 2 params: nombre y sponsors en una línea.');
   await casoParametroSaneadoParaWhatsApp();
   console.log('✅ Los params se sanean: sin saltos de línea ni espacios dobles.');
+  await casoSaludoSoloPrimerNombre();
+  console.log('✅ El saludo usa solo el primer nombre, capitalizado.');
   await casoSolucionesCruzadasConLoQueBusca();
   console.log('✅ {{2}} solo lleva las soluciones que el asistente buscaba, sin "Otro".');
   await casoSugerenciasNoPasanElMargen();
