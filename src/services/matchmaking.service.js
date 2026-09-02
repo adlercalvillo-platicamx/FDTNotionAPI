@@ -71,7 +71,7 @@ const MARGEN_CANDIDATOS = 2;
 // ─────────────────────────────────────────────────────────────
 const PESOS = {
   ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor
-  VIP: 500, // asistente con boleto Presencial VIP
+  VIP: 500, // prioridad compartida por Presencial VIP y Speaker
   // Agregado 13 de agosto — Virtual pasó a ser elegible por default en
   // buscarAsistentesCandidatos (ver contactos.service.js), pero Laura pidió
   // seguir priorizando presencial sobre virtual. Mismo patrón de diseño que
@@ -81,7 +81,7 @@ const PESOS = {
   // idéntico, el presencial gana. Deliberadamente menor que VIP (esto es
   // sobre canal, no sobre calidad de perfil) pero mayor que cualquier señal
   // individual de match (área/solución), para que el desempate sea claro.
-  PRESENCIAL: 150, // aplica a "Presencial" y "Presencial VIP"; 0 para "Virtual"
+  PRESENCIAL: 150, // desde 1-sep aplica solo a "Presencial"
   AREA: 60, // match directo de área/puesto
   SOLUCION: 60, // match directo por cada solución coincidente
   // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
@@ -124,14 +124,14 @@ const MADURECES_EXA_QUE_ENTRAN = new Set(['Consolidado', 'PyME']);
  * Allowlist, no denylist: un valor raro o vacío no “se cuela”.
  * Con Tamaño poblado: solo Grande/Mediana. Vacío (registro viejo):
  * Consolidado/PyME de Exa. Vacío + vacío o Temprano → fuera.
- * Única excepción: Presencial VIP entra aunque Tamaño y Madurez Exa
- * estén vacíos o sean Micro/Pequeña/Temprano (Adler, 31-ago-2026).
+ * Excepciones: Presencial VIP y Speaker entran aunque Tamaño y Madurez
+ * Exa estén vacíos o sean Micro/Pequeña/Temprano (Adler, 1-sep-2026).
  * El filtro de Giro/Industria no tiene esa excepción.
  */
 function esCandidatoPorTamanoNegocio(candidato) {
-  // Presencial VIP entra sin importar Tamaño de Negocio / Madurez Exa —
-  // el boleto VIP ya garantiza cita (ver contactos.service.js,
-  // elegibilidad de boleto). Confirmado por Adler el 31-ago-2026: el
+  // Presencial VIP y Speaker entran sin importar Tamaño / Madurez Exa:
+  // ambos boletos incluyen citas (ver contactos.service.js).
+  // Confirmado por Adler el 1-sep-2026: el
   // filtro duro de tamaño (Laura, 25-ago) no debe excluir VIP, aunque
   // el dato esté vacío. NO aplica lo mismo al filtro de Giro/Industria
   // — ese sigue sin excepción para VIP (confirmado 12-ago, sin cambio).
@@ -146,7 +146,7 @@ function esCandidatoPorTamanoNegocio(candidato) {
   // Este es el mismo campo que ya usa correctamente el peso de
   // puntaje VIP más abajo en calcularScore:
   // `candidato.ticketTipo === 'Presencial VIP'`.
-  if (candidato.ticketTipo === 'Presencial VIP') return true;
+  if (candidato.ticketTipo === 'Presencial VIP' || candidato.ticketTipo === 'Speaker') return true;
   const tamano = candidato.tamanoNegocio;
   if (tamano) return TAMANOS_QUE_ENTRAN.has(tamano);
   return MADURECES_EXA_QUE_ENTRAN.has(candidato.madurezNegocioExa);
@@ -238,6 +238,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   const senales = {
     oroMolido: false,
     esVip: false,
+    esSpeaker: false,
     esPresencial: false,
     areaCoincidente: null,
     solucionesCoincidentes: [],
@@ -265,13 +266,16 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     score += PESOS.VIP;
     detalle.push('vip: asistente con boleto Presencial VIP (citas incluidas)');
     senales.esVip = true;
+  } else if (candidato.ticketTipo === 'Speaker') {
+    score += PESOS.VIP;
+    detalle.push('speaker: ponente del evento (mismo peso que VIP, sin bonus de presencial)');
+    senales.esSpeaker = true;
   }
 
-  // Prioridad de modalidad presencial sobre virtual — agregado 13 de agosto,
-  // ver nota de diseño en PESOS.PRESENCIAL arriba. Cualquier modalidad
-  // presencial (con o sin VIP) recibe el mismo empujón; Virtual no recibe
-  // nada aquí (0 puntos, no se resta nada tampoco).
-  if (candidato.ticketTipo === 'Presencial VIP' || candidato.ticketTipo === 'Presencial') {
+  // Desde 1-sep el bonus de modalidad se reserva al boleto Presencial.
+  // Presencial VIP y Speaker ya reciben su prioridad de 500 y no acumulan
+  // estos 150 puntos.
+  if (candidato.ticketTipo === 'Presencial') {
     score += PESOS.PRESENCIAL;
     detalle.push('presencial: asistente con boleto presencial (prioridad sobre virtual)');
     senales.esPresencial = true;
@@ -403,6 +407,8 @@ function generarExplicacionNatural(candidato, senales) {
 
   if (senales.esVip) {
     texto += ` Es asistente VIP, así que sus citas de negocio ya vienen incluidas en su boleto y tiene prioridad.`;
+  } else if (senales.esSpeaker) {
+    texto += ` Es ponente del evento, así que sus citas de negocio ya vienen incluidas y tiene prioridad.`;
   }
   if (senales.esPresencial && !senales.esVip) {
     texto += ` Asistirá de forma presencial, lo cual se prioriza sobre los asistentes virtuales.`;

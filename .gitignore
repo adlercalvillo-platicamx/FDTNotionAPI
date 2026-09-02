@@ -3,3 +3,6 @@ node_modules/
 *.log
 .DS_Store
 commit-message.txt
+.local-backups/
+reservaciones_fashiondigitaltalks2026_*.csv
+Especificacion-Campos-Ticketopolis-*.docx

@@ -440,11 +440,11 @@ ok('Sin CITAS_HORA_INICIO del día → HORARIO_NO_CONFIGURADO (503)', () => {
 });
 
 console.log('\n=== Tipos boleto elegibles (DIFF-1 B.2) ===');
-ok('Virtual siempre en lista elegible (incluirVirtual ignorado)', () => {
+ok('Virtual y Speaker siempre en lista elegible (incluirVirtual ignorado)', () => {
   // Réplica de la constante post-diff
-  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual'];
-  assert.deepStrictEqual(tiposBoletoElegibles, ['Presencial VIP', 'Presencial', 'Virtual']);
+  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker'];
   assert.ok(tiposBoletoElegibles.includes('Virtual'));
+  assert.ok(tiposBoletoElegibles.includes('Speaker'));
 });
 
 console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);

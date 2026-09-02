@@ -35,6 +35,32 @@ const telefono = (prop) => prop?.phone_number || '';
 const url = (prop) => prop?.url || '';
 const fecha = (prop) => prop?.date?.start || null;
 
+const TAMANO_GRANDE = 'Grande - más de 250 empleados';
+const TAMANO_MEDIANA = 'Mediana - 50 a 250 empleados';
+const TAMANO_PEQUENA = 'Pequeña - 10 a 50 empleados';
+const TAMANO_MICRO = 'Micro - menos de 10 empleados';
+
+/**
+ * Normaliza el contrato transitorio de Tamaño de Negocio.
+ * Notion puede entregarlo como select (schema anterior) o rich_text
+ * (schema desde 1-sep-2026). Los textos de Etapa que Ticketópolis mezcla
+ * en la misma columna no son tamaños y se convierten en null para conservar
+ * el fallback existente de Madurez Negocio (Exa).
+ */
+function clasificarTamanoNegocio(valorCrudo) {
+  if (!valorCrudo || !valorCrudo.trim()) return null;
+  const sinAcentos = valorCrudo
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (sinAcentos.startsWith('grande')) return TAMANO_GRANDE;
+  if (sinAcentos.startsWith('mediana')) return TAMANO_MEDIANA;
+  if (sinAcentos.startsWith('pequena')) return TAMANO_PEQUENA;
+  if (sinAcentos.startsWith('micro')) return TAMANO_MICRO;
+  return null;
+}
+
 /** Convierte una página cruda de la API de Notion a un objeto plano para matchmaking. */
 function parsearContacto(pagina) {
   const p = pagina.properties;
@@ -123,12 +149,12 @@ function parsearContacto(pagina) {
     // 14 de agosto — agregado para el peso nuevo de matchmaking.service.js
     // (criterio de tamaño de empresa, pedido por Laura en la Demo 2, 13-ago).
     madurezNegocioExa: select(p['Madurez Negocio (Exa)']),
-    // Tamaño de Negocio — select del registro (25-ago). Filtro duro en
-    // matchmaking.service.js: Grande/Mediana entran; Micro/Pequeña no.
-    // Vacío = asistente viejo → fallback a Madurez Negocio (Exa).
-    // Presencial VIP (ticketTipo, no el checkbox Es VIP) salta ese
-    // filtro (31-ago; campo corregido 1-sep); Giro/Industria no.
-    tamanoNegocio: select(p['Tamaño de Negocio']),
+    // Lectura dual durante la migración select → rich_text. Grande/Mediana
+    // entran; Micro/Pequeña no. Texto de Etapa → null → fallback Exa.
+    // Presencial VIP y Speaker saltan tamaño; Giro no tiene excepción.
+    tamanoNegocio: clasificarTamanoNegocio(
+      texto(p['Tamaño de Negocio']) || select(p['Tamaño de Negocio'])
+    ),
     // ⚠️ ICP Moda/Ecommerce cambió de checkbox a SELECT (Sí/No/Ambiguo) —
     // ver 02-schema-notion-completo.md. Leerlo como checkbox daba siempre false.
     // Entra al ranking (Capa 2) desde 27-ago: Sí +30, No −30, Ambiguo/vacío 0.
@@ -150,9 +176,8 @@ async function obtenerContacto(pageId) {
  * Capa 1 — filtros duros que Notion puede resolver en un solo query.
  *
  * ELEGIBILIDAD POR TIPO DE BOLETO:
- *   - "Presencial VIP" → SIEMPRE elegible (confirmado por Liz, 24 de julio).
- *     Las citas vienen incluidas en el boleto, por eso a los VIP ni siquiera
- *     se les hace la pregunta de opt-in.
+ *   - "Presencial VIP" / "Speaker" → SIEMPRE elegibles por boleto.
+ *     Las citas vienen incluidas, por eso no requieren opt-in.
  *   - "Presencial" → elegible SALVO que haya marcado explícitamente que no
  *     quiere citas (ver el post-filtro de `Quiere Citas 1a1` más abajo).
  *   - "Virtual" → ⚠️ CAMBIÓ el 13 de agosto: antes NUNCA entraba salvo con
@@ -163,7 +188,7 @@ async function obtenerContacto(pageId) {
  *     reuniones...?" desde hace poco — cita textual: "justo Adler faltaría
  *     agregar el virtual, porque ya se agregó esa pregunta". Laura ya había
  *     confirmado en sesión previa (13 de julio) que VIP/Presencial/Virtual
- *     tienen derecho a citas — solo Expo queda fuera.
+ *     tienen derecho a citas. Speaker se agregó el 1-sep; Expo queda fuera.
  *     Nota de calidad de match, sigue vigente: los virtuales NO tienen
  *     "Soluciones Buscadas" ni "Area" en su formulario (solo "Etapa de
  *     Negocio"), así que sus matches van a tener menos señales de forma
@@ -224,12 +249,12 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // Etapa de Negocio; no se manda ese filtro a Notion.
   void etapasValidas;
   void incluirVirtual;
-  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual'];
+  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker'];
 
   // Filtro de Giro/Industria — agregado 12 de agosto, confirmado por Laura
   // en la demo del 11 de agosto: "todo lo demás, no me interesa que tengan
-  // citas". Aplica a TODOS los boletos elegibles, VIP incluido (confirmado
-  // con Adler el 12 de agosto — no hay excepción para VIP).
+  // citas". Aplica a TODOS los boletos elegibles, VIP y Speaker incluidos
+  // (confirmado con Adler: no hay excepción para VIP ni Speaker).
   // Los proveedores de servicios (marketing, tecnología, logística, etc.)
   // no se sientan con otros proveedores de servicios (que es el perfil de
   // los sponsors) — se sientan con marcas de moda, retailers y manufactura.
@@ -270,14 +295,13 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // condición.
   // Virtual se agregó a esta misma regla el 13 de agosto: Liz confirmó que
   // el formulario de Virtual ya tiene la misma pregunta de opt-in que
-  // Presencial (antes solo Presencial la tenía). "Presencial VIP" sigue
-  // siempre elegible (las citas vienen incluidas en el boleto, ni siquiera
-  // se le hace la pregunta).
+  // Presencial (antes solo Presencial la tenía). Presencial VIP y Speaker
+  // siguen siempre elegibles (las citas vienen incluidas en el boleto).
   const candidatos = data.results.map(parsearContacto).filter((c) => {
     if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Virtual') {
       return c.quiereCitas1a1 !== 'No';
     }
-    return true; // Presencial VIP ya viene filtrado por Notion, no requiere este campo
+    return true; // Presencial VIP/Speaker no requieren este campo
   });
 
   return candidatos;
@@ -645,6 +669,7 @@ async function buscarAsistentePorWhatsApp(telefonoEntrada) {
 
 module.exports = {
   parsearContacto,
+  clasificarTamanoNegocio,
   obtenerContacto,
   buscarAsistentesCandidatos,
   sugerirMatches,
