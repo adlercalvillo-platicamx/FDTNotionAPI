@@ -62,7 +62,10 @@ si Laura necesita la misma navegación que pruebas.
 Fuente: `reservaciones_fashiondigitaltalks2026_260901.csv`, UTF-16 LE.
 
 - 110 filas, 105 emails únicos.
-- 51 filas coinciden en los campos auditados.
+- 51 filas coinciden en los campos auditados **contra pruebas**. Esta cifra no
+  tiene relación con las páginas actualizadas en Laura; son dos comparaciones
+  distintas (pruebas vs. CSV aquí, Laura vs. CSV en la carga) y que ambas
+  ronden 51 es coincidencia.
 - 3 diferencias reales: folios vencidos `A5D843`, `8E6F38`, `2A2CFC` siguen
   activos en pruebas.
 - 48 filas autorizadas/cargables no estaban en pruebas.
@@ -88,10 +91,12 @@ Evidencia:
 
 - antes: 61 páginas;
 - 44 altas creadas;
-- 51 existentes actualizadas conservadoramente;
+- 51 existentes actualizadas conservadoramente en la corrida principal;
+- Nora/F13446 recibió 15 campos vacíos adicionales en un paso posterior, tras
+  confirmar que es una persona distinta de Natalia; no venía en las 51;
+- **52 páginas existentes modificadas en total** (51 + Nora), 96 páginas
+  tocadas contando las altas;
 - después: 105 páginas;
-- Nora/F13446 recibió 15 campos vacíos adicionales tras confirmar que es una
-  persona distinta;
 - las 44 IDs creadas se releyeron; muestra de 10/10 verificada;
 - las 96 personas válidas (contando Natalia y Nora por separado) se resuelven;
 - Speaker: Pascaline Leon, `Categoria=Asistente`, ticket `Speaker`;
@@ -99,6 +104,15 @@ Evidencia:
 - Magali permanece `Sponsor | Referido`;
 - Ingrid quedó con folio `235A44`; `21614B` no se cargó;
 - ninguno de los 11 folios excluidos aparece en Laura.
+
+Recuento contra Notion (no contra el log de la corrida), 2-sep: consulta
+paginada de los 105 Contactos de Laura filtrando por `created_time` y
+`last_edited_time` posteriores al respaldo previo
+(`2026-09-02T03:23Z`; Notion trunca ambos al minuto, así que la ventana se
+compara al minuto). Resultado: 44 creadas y 52 existentes editadas = 96
+tocadas. Las 44 creadas y las 51 actualizadas del log aparecen todas dentro de
+la ventana; la única página editada que el log no listaba es Nora/F13446. La
+bitácora decía 51 y quedó corregida a 52.
 
 Backups y resultado están en `.local-backups/` y están ignorados por git. No
 contienen tokens, pero sí PII; no subirlos.
