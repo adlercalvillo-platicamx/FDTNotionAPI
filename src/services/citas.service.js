@@ -1687,6 +1687,44 @@ function formatearHorarioLegible(inicio) {
 }
 
 /**
+ * Falla con un código explícito si el page_id no es un sponsor real.
+ *
+ * Sin esto, un sponsorPageId inexistente devolvía el día entero libre
+ * (17/17 bloques) porque la disponibilidad solo compara ids contra las
+ * citas confirmadas: si el id no está en ninguna, "no está ocupado".
+ * Caso real del 2-sep: el Agente 2 armó un sponsor_notion_id pegando el
+ * prefijo que comparten los sponsors a la cola de un cita_page_id, ofreció
+ * esos horarios en WhatsApp y el 404 de Notion recién apareció al escribir
+ * la relación en crearCitaPendiente, como un 500 opaco.
+ */
+async function requireSponsorExistente(sponsorPageId) {
+  const contactos = require('./contactos.service');
+  let sponsor;
+  try {
+    sponsor = await contactos.obtenerContacto(sponsorPageId);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    const err = new Error(
+      `El sponsor "${sponsorPageId}" no existe en Contactos de Notion. Copia sponsor_notion_id tal cual de consultar_sugeridas_para_asistente (o de citasConfirmadas); no lo armes ni lo completes a partir de otro id.`
+    );
+    err.status = 404;
+    err.code = 'SPONSOR_NO_ENCONTRADO';
+    throw err;
+  }
+
+  if (sponsor.categoria !== 'Sponsor') {
+    const err = new Error(
+      `El contacto "${sponsorPageId}" es ${sponsor.nombre || 'sin nombre'} con Categoria=${sponsor.categoria || 'vacía'}, no Sponsor: no tiene agenda de citas 1a1.`
+    );
+    err.status = 400;
+    err.code = 'SPONSOR_CATEGORIA_INVALIDA';
+    throw err;
+  }
+
+  return sponsor;
+}
+
+/**
  * Lista de bloques con disponible/motivo para un sponsor y fecha.
  *
  * @param {object} params
@@ -1705,6 +1743,7 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePag
   }
 
   requireHorarioConfigurado(fecha);
+  await requireSponsorExistente(sponsorPageId);
 
   const bloques = generarBloquesParaFecha(fecha);
   const confirmadas = await listarCitasConfirmadasEnFecha(fecha);
@@ -1753,6 +1792,7 @@ module.exports = {
   MARCA_CANCELACION_PENDIENTE,
   ESTATUS_CITA_REAL,
   contarCitasConfirmadasPorSponsor,
+  requireSponsorExistente,
   crearCitaSugerida,
   buscarSugerenciasPendientesPorSponsor,
   marcarCitaAprobada,

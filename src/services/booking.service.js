@@ -362,6 +362,41 @@ async function enviarCorreosDeCita({
 }
 
 /**
+ * Traduce el 404 de Notion al crear la relación en un código de negocio que
+ * nombra el campo culpable.
+ *
+ * Notion contesta "Could not find page with ID" y eso salía al cliente como
+ * un 500 "Revisa los logs". El 2-sep el Agente 2 mandó un
+ * sponsor_notion_id inventado y reintentó con el mismo valor varias veces
+ * porque nada en la respuesta decía cuál de los dos ids estaba mal.
+ * Devuelve null si el 404 no menciona a ninguno de los dos: en ese caso el
+ * error original sigue su camino (puede ser la data source, no el contacto).
+ */
+function errorDeContactoInexistente(error, { sponsorPageId, asistentePageId }) {
+  if (error?.status !== 404) return null;
+
+  const sinGuiones = (valor) => String(valor || '').replace(/-/g, '').toLowerCase();
+  const mensaje = sinGuiones(error?.notion?.message || error?.message);
+  const mencionado = (id) => {
+    const limpio = sinGuiones(id);
+    return limpio.length > 0 && mensaje.includes(limpio);
+  };
+
+  let campo = null;
+  if (mencionado(sponsorPageId)) {
+    campo = { nombre: 'sponsor_notion_id', valor: sponsorPageId, code: 'SPONSOR_NO_ENCONTRADO' };
+  } else if (mencionado(asistentePageId)) {
+    campo = { nombre: 'asistente_notion_id', valor: asistentePageId, code: 'ASISTENTE_NO_ENCONTRADO' };
+  }
+  if (!campo) return null;
+
+  return new BookingError(
+    campo.code,
+    `${campo.nombre} "${campo.valor}" no existe en Contactos de Notion, así que la cita no se creó. Copia el page_id tal cual de la herramienta que te dio la sugerencia; no lo derives de otro id ni reintentes con el mismo valor.`
+  );
+}
+
+/**
  * Reserva una cita 1-a-1 entre un sponsor y un asistente.
  *
  * @param {object} params
@@ -451,15 +486,22 @@ async function reservarCita({
     const numeroMesa = citasEnBloque + 1;
 
     if (!citaPendiente) {
-      citaPendiente = await citasService.crearCitaPendiente({
-        requestId: request_id,
-        sponsorPageId: sponsor_notion_id,
-        asistentePageId: asistente_notion_id,
-        inicio,
-        fin,
-        titulo: titulo || `Cita — ${request_id}`,
-        mesa: numeroMesa,
-      });
+      try {
+        citaPendiente = await citasService.crearCitaPendiente({
+          requestId: request_id,
+          sponsorPageId: sponsor_notion_id,
+          asistentePageId: asistente_notion_id,
+          inicio,
+          fin,
+          titulo: titulo || `Cita — ${request_id}`,
+          mesa: numeroMesa,
+        });
+      } catch (error) {
+        throw errorDeContactoInexistente(error, {
+          sponsorPageId: sponsor_notion_id,
+          asistentePageId: asistente_notion_id,
+        }) || error;
+      }
     }
 
     // Si reutilizamos Sugerido/Aprobado, un fallo al confirmar no debe

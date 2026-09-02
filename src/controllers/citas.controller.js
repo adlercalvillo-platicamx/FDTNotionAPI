@@ -22,6 +22,8 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   FILA_BLOQUEO_AGENDA: 409,
   ESTADO_INVALIDO: 409,
   ASISTENTE_NO_ENCONTRADO: 404,
+  SPONSOR_NO_ENCONTRADO: 404, // page_id que no existe en Contactos (agente armando ids, 2-sep)
+  SPONSOR_CATEGORIA_INVALIDA: 400,
   CITA_NO_ENCONTRADA: 404,
   SIN_CITAS_ACTIVAS: 404,
   CITA_NO_PERTENECE: 403, // el teléfono no corresponde al Contacto Principal de esa cita
@@ -258,6 +260,12 @@ async function disponibilidad(req, res) {
     // construido pero la variable de entorno todavía no se puso".
     if (error.status === 503) {
       return res.status(503).json({ error: 'Service Unavailable', message: error.message });
+    }
+
+    // Sponsor que no existe en Contactos: dato inválido del cliente, no un
+    // bug. Antes contestaba el día entero libre (ver requireSponsorExistente).
+    if (error.status === 404) {
+      return res.status(404).json({ error: error.code || 'Not Found', message: error.message });
     }
 
     console.error('[CitasController] Error en disponibilidad:', error);
