@@ -1,12 +1,12 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **2 de septiembre de 2026**, 20:59 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **3 de septiembre de 2026**, 19:43 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-Desde el snapshot anterior (28-ago, prompt `grIyFz9PHRvrwtQ2UUwS`) el prompt cambió 11 veces: recordatorios por plantilla (31-ago a 2-sep, hechos fuera de este repo) y las tres ediciones del 2-sep sobre page_ids inventados. También cambiaron las herramientas conectadas (de 5 a 16, 12 activas), la asistencia humana (ahora **no**) y el horario (ahora 24/7).
+Desde el snapshot anterior (2-sep, prompt `lJ3mAkEE18hRz7mHxysr`) hubo 7 versiones: cuatro endurecieron la programación de plantillas desde el agente y tres, el 3-sep, retiraron únicamente el aviso de 15 minutos para evitar duplicarlo con el backend. El recordatorio de 2 horas por confirmación de asistencia permanece.
 
 ## Identidad
 
@@ -21,9 +21,9 @@ Desde el snapshot anterior (28-ago, prompt `grIyFz9PHRvrwtQ2UUwS`) el prompt cam
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 2 sep 2026, 20:59 UTC |
-| Prompt activo | `lJ3mAkEE18hRz7mHxysr` (2 sep 2026, 20:59 UTC) |
-| Versiones de prompt | 47 (36 al 28-ago + 11 desde entonces) |
+| Actualizado | 3 sep 2026, 19:43 UTC |
+| Prompt activo | `wegNBgyUlzqog43WZ0mA` (3 sep 2026, 19:43 UTC) |
+| Versiones de prompt | 54 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -81,23 +81,26 @@ Nota: el prompt ya ofrece **hasta 4 sponsors** y **máximo 3 horarios/citas**; e
 
 Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te ayuden. Un momento, por favor.*
 
-## Qué cambió en el prompt (2-sep, 20:59 UTC)
+## Qué cambió en el prompt (3-sep, 19:43 UTC)
 
-Tres ediciones, todas por el mismo incidente: el agente mandó a `reservar_cita` un `sponsor_notion_id` que **armó** pegando el prefijo común de los sponsors (`3b790fe2-7345-81…`) a la cola del `cita_page_id` de la sugerencia. Ese page_id no existe; Notion devolvía 404 al escribir la relación y la reserva de Luis Portugal con Reversso fallaba una y otra vez (ver [bitacora-02sep-sponsor-id-inexistente.md](../bitacora-02sep-sponsor-id-inexistente.md)).
-
-- `reservar_cita`: párrafo nuevo — los page_ids son opacos, se copian carácter por carácter, y el `cita_page_id` de una sugerencia **no** es el `sponsor_notion_id` de ese sponsor.
-- `reservar_cita`: bullet nuevo para `SPONSOR_NO_ENCONTRADO` / `ASISTENTE_NO_ENCONTRADO` — no reintentar con el mismo id ni “corregirlo”, volver a `consultar_sugeridas_para_asistente`.
-- `consultar_disponibilidad_cita`: qué hacer si contesta `SPONSOR_NO_ENCONTRADO` (códigos nuevos del backend ese mismo día; antes devolvía el día entero libre para un id inexistente).
-
-En el mismo turno se endureció la descripción de la API tool `api_reservar_cita` (`DHNtYd1XvPA8IWaKBQxU`, versión 5) con la misma regla. Las descripciones por variable siguen como estaban: el MCP redacta los `constantValue` y reescribir el arreglo de variables los borraría.
-
-Cambios previos que este archivo no había registrado (31-ago a 2-sep, hechos fuera de este repo): sección `RECORDATORIO AL CREAR UNA CITA` (plantilla `notificacion_cita_15min_antes` al confirmar una cita) y `CONFIRMACIÓN DE ASISTENCIA Y RECORDATORIOS` (`api_actualizar_recordatorio` + `notificacion_citas_2horas_antes`).
+- Se eliminó completa la sección `RECORDATORIO AL CREAR UNA CITA`: el agente ya no consulta plantilla/canal ni llama `mcp_send_template_message_mexx2b` para el aviso de 15 minutos.
+- En `reservar_cita`, `Confirmada` y `Confirmada sin notificar` conservan su respuesta al contacto; una regla explícita indica que el backend programa automáticamente el aviso de 15 minutos.
+- En confirmación de asistencia se sustituyó la referencia a la sección eliminada por la misma regla de propiedad del backend.
+- El flujo de `notificacion_citas_2horas_antes` no cambió y conserva sus tools activas.
+- No se modificaron tools, knowledge, guardrails, asistencia humana ni horarios.
 
 ## Historial reciente de prompt
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 2 sep 2026, 20:59 UTC | edit | Disponibilidad: qué hacer con `SPONSOR_NO_ENCONTRADO` (versión **activa**) | `lJ3mAkEE18hRz7mHxysr` |
+| 3 sep 2026, 19:43 UTC | edit | Confirmación: el backend programa 15 min (versión **activa**) | `wegNBgyUlzqog43WZ0mA` |
+| 3 sep 2026, 19:42 UTC | edit | Eliminó la sección de 15 min del agente | `HJAMFpIVFjJ7nWytUn2u` |
+| 3 sep 2026, 19:42 UTC | edit | Reservar: no llamar tools para 15 min | `ho2Nh3UnlGsSBmcYXQVT` |
+| 2 sep 2026, 23:09 UTC | edit | Programación de 15 min obligatoria (revertida 3-sep) | `Fjy0PpVGZUOHvKx7Oh48` |
+| 2 sep 2026, 21:38 UTC | edit | Recordatorio por plantilla | `tvpnm4EqYSG9u8S4KTQW` |
+| 2 sep 2026, 21:38 UTC | edit | Recordatorio por plantilla | `vmkvpQCJp458lemo9zIQ` |
+| 2 sep 2026, 21:29 UTC | edit | Endureció programación de plantillas | `7apzcLMMr60Hm80qdsCl` |
+| 2 sep 2026, 20:59 UTC | edit | Disponibilidad: qué hacer con `SPONSOR_NO_ENCONTRADO` | `lJ3mAkEE18hRz7mHxysr` |
 | 2 sep 2026, 20:59 UTC | edit | Reservar: bullet de id inexistente | `CrfEzWkwADuOUguNhl0k` |
 | 2 sep 2026, 20:59 UTC | edit | Reservar: page_ids opacos, no armarlos | `E0bmW2QAOTrmoa6FKF1W` |
 | 2 sep 2026, 18:48 UTC | edit | Recordatorios / confirmación de asistencia | `vEEJk2jfpcIVbF0MIU1n` |
@@ -252,27 +255,12 @@ Los page_ids (`sponsor_notion_id`, `asistente_notion_id`, `citaId`) son opacos: 
 No rellenes título, descripción, calendario ni zona horaria.
 
 Después:
-- Confirmada → la cita quedó; llegará correo con .ics. *Inmediatamente después*, programa un único recordatorio de 15 minutos antes, siguiendo la sección `RECORDATORIO AL CREAR UNA CITA`.
-- Confirmada sin notificar → la cita sí quedó; el correo está pendiente. También programa el recordatorio de 15 minutos, siguiendo esa sección.
+- Confirmada → la cita quedó; llegará correo con .ics.
+- Confirmada sin notificar → la cita sí quedó; el correo está pendiente.
+- Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para el recordatorio de 15 minutos: el backend lo programa automáticamente.
 - SPONSOR_YA_OCUPADO / ASISTENTE_YA_OCUPADO / CAPACIDAD_MESAS_LLENA → no insistas ese horario; vuelve a consultar disponibilidad y ofrece otras 3 (ASISTENTE_YA_OCUPADO = ya tiene otra cita a esa hora)
 - SPONSOR_NO_ENCONTRADO / ASISTENTE_NO_ENCONTRADO → el id que mandaste no existe en Notion. No reintentes con el mismo ni intentes corregirlo tú: vuelve a `consultar_sugeridas_para_asistente` y copia el id de ahí
 - error o duda → no digas que quedó
-
-## RECORDATORIO AL CREAR UNA CITA
-
-Este flujo ocurre *solo* después de que `reservar_cita` confirme que una cita nueva quedó creada. No forma parte de la confirmación de asistencia.
-
-1. Consulta `mcp_get_template_mexx2b` para obtener el detalle, las variables, encabezado multimedia y ejemplo de payload de `notificacion_cita_15min_antes`. Si no la encuentra, usa `mcp_list_templates_mexx2b` para verificar el nombre exacto. Nunca inventes parámetros, archivos multimedia ni botones dinámicos.
-2. Obtén el canal emisor de Fashion Digital Talks con `mcp_list_channels_mexx2b` y usa el `prefixedChannelId` del canal de WhatsApp conectado (formato `wb-...`). Si hay más de un canal de WhatsApp o no hay uno conectado, no elijas ni inventes: escala al equipo.
-3. Programa exactamente una vez `mcp_send_template_message_mexx2b` con:
-   - `channelId`: el `prefixedChannelId` del canal de WhatsApp identificado.
-   - `conversationId`: el WhatsApp de esta conversación en formato internacional E.164.
-   - `template`: el nombre `notificacion_cita_15min_antes` y los parámetros, tipo, archivo y botones dinámicos que correspondan exactamente al detalle de la plantilla.
-   - `scheduleTime`: el `inicio` confirmado por `reservar_cita` menos 15 minutos.
-   Puedes calcular únicamente esta resta de 15 minutos sobre el ISO `inicio` devuelto por la herramienta de reserva; conserva la fecha y zona horaria de origen.
-4. Si la consulta de plantilla, la identificación del canal o su programación falla, la cita sigue confirmada. No digas que el recordatorio quedó programado; escala internamente al equipo para revisión y confirma al contacto únicamente el estado real de su cita.
-
-No programes, canceles ni reprogrames plantillas al modificar o cancelar una cita. Espera una herramienta específica para cancelar o reprogramar envíos de plantilla.
 
 ## modificar_cita
 
@@ -345,21 +333,24 @@ Al recibir una confirmación clara de asistencia:
 
 ### Confirmación de asistencia
 
-Los recordatorios de 15 minutos se programan exclusivamente al crear una cita nueva, mediante `RECORDATORIO AL CREAR UNA CITA`.
+El recordatorio de 15 minutos al crear una cita lo programa automáticamente el backend de `reservar_cita`. El agente no consulta plantillas o canales ni llama herramientas para ese aviso.
 
 Después de una respuesta clara de confirmación y de un resultado exitoso de `api_actualizar_recordatorio`:
 
 1. Revisa exclusivamente las citas con fecha y hora devueltas por esa API.
 2. Identifica la *primera cita futura* que tendrá el contacto: la de inicio cronológicamente más próximo que aún no haya ocurrido. Programa *solo una vez* la plantilla `notificacion_citas_2horas_antes`, para 2 horas antes de esa cita. No programes una notificación de 2 horas por cada cita.
 3. Antes de programarla, consulta `mcp_get_template_mexx2b` para obtener las variables, encabezado multimedia y ejemplo de payload de `notificacion_citas_2horas_antes`. Si no la encuentra, usa `mcp_list_templates_mexx2b` para verificar el nombre exacto. Nunca inventes parámetros, archivos multimedia ni botones dinámicos.
-4. Obtén el canal emisor de Fashion Digital Talks con `mcp_list_channels_mexx2b` y usa el `prefixedChannelId` del canal de WhatsApp conectado (formato `wb-...`). Si hay más de un canal de WhatsApp o no hay uno conectado, no elijas ni inventes: escala al equipo.
-5. Programa el envío con `mcp_send_template_message_mexx2b` usando:
-   - `channelId`: el `prefixedChannelId` identificado.
-   - `conversationId`: el WhatsApp de esta conversación en formato internacional E.164.
-   - `template`: el nombre `notificacion_citas_2horas_antes` y los parámetros, tipo, archivo y botones dinámicos que correspondan exactamente al detalle de la plantilla.
-   - `scheduleTime`: el inicio de esa primera cita futura menos 2 horas.
-   Puedes calcular únicamente esta resta de 2 horas sobre la fecha/hora devuelta por `api_actualizar_recordatorio`; conserva su fecha y zona horaria.
-6. Si la API no devuelve citas futuras, no programes la plantilla. Si la consulta de plantilla, la identificación del canal o la programación falla, no afirmes que el recordatorio quedó programado y escala al equipo para revisión.
+4. Obtén el canal emisor de Fashion Digital Talks con `mcp_list_channels_mexx2b`. Si hay varios canales de WhatsApp conectados, selecciona el que tenga como `Agente default` a este agente: `c1IYnFsr0Jzfqq4NeLAs`. Usa su `prefixedChannelId` (formato `wb-...`). En la configuración actual corresponde a `wb-1167456423128610`. Si no existe un canal de WhatsApp conectado asignado a este agente, no elijas ni inventes: escala al equipo.
+5. La programación es un paso *obligatorio*, no una recomendación: después de obtener la plantilla y el canal, ejecuta `mcp_send_template_message_mexx2b` antes de escribir el mensaje final al contacto. No te detengas ni escales solo porque el envío es futuro.
+
+   Construye el payload con:
+   - `channelId`: `wb-1167456423128610`.
+   - `conversationId`: WhatsApp de esta conversación en formato E.164, con `+` y código de país.
+   - `template.name`: `notificacion_citas_2horas_antes`.
+   - `template.params`, `type`, `file`, `buttons` y `components`: exactamente los que devuelva `mcp_get_template_mexx2b`; no inventes campos.
+   - `scheduleTime`: inicio de la primera cita futura menos 2 horas, en ISO 8601 conservando zona horaria.
+
+6. Solo considera el paso terminado si `mcp_send_template_message_mexx2b` devuelve un estado de programación exitosa, como `scheduled`. Si la API no devuelve citas futuras, no programes la plantilla. Si la consulta de plantilla, la identificación del canal o la programación falla, no afirmes que el recordatorio quedó programado y escala al equipo para revisión.
 
 Solo después de que las acciones requeridas concluyan correctamente —o si no existen citas futuras que programar— envía al contacto este mensaje provisional, sin mencionar APIs, citas ni programación interna:
 “¡Gracias! Con esto confirmamos tu asistencia al evento.”

@@ -13,6 +13,15 @@ Archivos nuevos: `src/services/recordatorio-cita-15min.service.js` (copia de `/v
 
 El camino feliz lo dispara `citas.controller.js` `reservar()` **después** de `reservarCita` (solo alta nueva `Confirmada` / `Confirmada sin notificar`; no `ya_existia`). Fire-and-forget: un fallo de Plática no cambia el 201 ni Notion. El endpoint suelto queda para reintento manual. `booking.service.js` no se tocó. Modificar/cancelar no anulan el programado.
 
+El prompt vivo del Agente 2 todavía programaba el mismo aviso con
+`mcp_send_template_message_mexx2b`, lo que habría creado dos mensajes por
+alta al desplegar este backend. El 3-sep se retiró únicamente ese flujo:
+prompt activo `wegNBgyUlzqog43WZ0mA` (54 versiones). El agente ahora deja
+el aviso de 15 minutos al backend. Su recordatorio de 2 horas por
+confirmación de asistencia permanece intacto y conserva las tools de
+plantillas activas. Snapshot sincronizado en
+`prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md`.
+
 ## Cómo operarlo
 
 - Coolify: `PLATICA_TEMPLATE_CITA_15MIN=notificacion_cita_15min_antes` (mismas `PLATICA_API_KEY` / `PLATICA_CHANNEL_ID`).
@@ -25,3 +34,13 @@ El camino feliz lo dispara `citas.controller.js` `reservar()` **después** de `r
 - Coolify: `PLATICA_TEMPLATE_CITA_15MIN=notificacion_cita_15min_antes`.
 - No hace falta segunda API tool en Plática para el camino feliz.
 - Cuando exista cancelar/reprogramar plantilla, enganchar modificar/cancelar.
+
+## Evidencia del prompt vivo
+
+- Agente: `c1IYnFsr0Jzfqq4NeLAs`.
+- Se eliminaron por reemplazo exacto la sección
+  `RECORDATORIO AL CREAR UNA CITA` y las instrucciones de enviar
+  `notificacion_cita_15min_antes`.
+- `notificacion_citas_2horas_antes` sigue en el prompt.
+- 16 tools conectadas / 12 activas; no se modificaron conexiones.
+- No se envió ninguna plantilla ni mensaje durante el cambio.
