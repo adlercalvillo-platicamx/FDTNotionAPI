@@ -164,6 +164,17 @@ async function programarRecordatorioCita15min({
     scheduleTime,
   });
 
+  console.log(
+    '[Recordatorio15min] Programado',
+    JSON.stringify({
+      asistente_notion_id,
+      sponsor_notion_id,
+      scheduleTime,
+      status: respuesta.status || 'scheduled',
+      messageId: respuesta.messageId || null,
+    })
+  );
+
   return {
     status: respuesta.status || 'scheduled',
     messageId: respuesta.messageId || null,

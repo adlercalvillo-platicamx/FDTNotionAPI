@@ -29,11 +29,38 @@ plantillas activas. Snapshot sincronizado en
 - Body: `asistente_notion_id`, `sponsor_notion_id`, `inicio` (ISO). `X-API-Key`.
 - Plática cae → 502. Notion de la cita no se toca.
 
+## Límite de 720 h de Plática (bloquea el evento por ahora)
+
+Plática/Meta rechaza `scheduleTime` a más de **720 h (30 días)**. Probado
+en vivo el 2-sep 23:11 UTC con `notificacion_cita_15min_antes` para una
+cita del 7 oct:
+
+```
+Template send failed: 3 INVALID_ARGUMENT: The Task.scheduleTime,
+2026-10-07T09:45:00-07:00, is too far in the future.
+Schedule time must be no more than 720h in the future.
+```
+
+El backend pega al mismo `/v1/messages/template`, así que hoy recibe el
+mismo 500 → 502. **Ninguna cita del 7–8 oct se puede programar antes del
+7–8 sep.** Decisión (Luis, 3-sep): no se implementa barrido diferido; se
+espera a que abra la ventana y se revisa después del 7 de septiembre.
+
+Para verlo en Coolify, el service ahora escribe
+`[Recordatorio15min] Programado {…}` en éxito y el controller
+`Recordatorio 15 min omitido` / `falló` con ids, `inicio` y el error.
+Antes el éxito era silencioso y no se distinguía de "no corrió".
+
 ## Pendientes
 
 - Coolify: `PLATICA_TEMPLATE_CITA_15MIN=notificacion_cita_15min_antes`.
 - No hace falta segunda API tool en Plática para el camino feliz.
 - Cuando exista cancelar/reprogramar plantilla, enganchar modificar/cancelar.
+- Después del 7-sep: reprobar el recordatorio ya dentro de la ventana de
+  720 h y decidir cómo cubrir las citas agendadas antes de esa fecha.
+- El Agente 2 todavía consulta `mcp_get_template_mexx2b` de la plantilla
+  de 15 min tras reservar (3-sep 20:07); ya no la envía, pero es una
+  llamada de más.
 
 ## Evidencia del prompt vivo
 
