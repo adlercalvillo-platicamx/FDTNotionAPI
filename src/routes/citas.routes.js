@@ -2,8 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const citasController = require('../controllers/citas.controller');
+const { programarRecordatorio15min } = require('../controllers/recordatorio-cita-15min.controller');
 
 router.post('/reservar', citasController.reservar);
+router.post('/programar-recordatorio-15min', programarRecordatorio15min);
 router.post('/modificar-cita', citasController.modificar);
 router.post('/cancelar-cita', citasController.cancelar);
 router.get('/disponibilidad', citasController.disponibilidad);
