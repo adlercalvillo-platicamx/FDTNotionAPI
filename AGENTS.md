@@ -44,6 +44,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
+| Recordatorio WhatsApp 15 min | Camino feliz: **POST `/citas/reservar`** (fire-and-forget en el controller). Reintento: **POST `/citas/programar-recordatorio-15min`**. No cambia JSON/status de agendar. | — |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). El WhatsApp Flow de reserva arma el dropdown en proceso, solo `Aprobado`. | `consultar_sugeridas_para_asistente` (`whatsapp`; campo **`sugeridas`** = solo `Aprobado`; + `citasConfirmadas`) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
