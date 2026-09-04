@@ -275,6 +275,10 @@ function campoIcs(contenido, campo) {
   return match ? match[1].trim() : null;
 }
 
+function icsDesplegado(contenido) {
+  return String(contenido).replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+}
+
 function ultimoIcs() {
   return correos[correos.length - 1].icalEvent.content;
 }
@@ -323,10 +327,13 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
 
     assert.strictEqual(correos.length, 2, 'sponsor + asistente');
     const ics = ultimoIcs();
+    const icsPlano = icsDesplegado(ics);
     assert.strictEqual(campoIcs(ics, 'UID'), 'cita-1@fashiondigitaltalks.com');
     assert.strictEqual(campoIcs(ics, 'STATUS'), 'CONFIRMED');
     assert.ok(Number(campoIcs(ics, 'SEQUENCE')) > 0, 'SEQUENCE debe superar el 0 del envío original');
     assert.strictEqual(campoIcs(ics, 'DTSTART'), '20261007T180000Z', '12:00 -06:00 = 18:00Z');
+    assert.ok(icsPlano.includes('Club France'), 'LOCATION del .ics es la sede, no la mesa');
+    assert.ok(icsPlano.includes('Tu cita será en la mesa 1.'));
     assert.ok(correos[0].subject.startsWith('Cambio de horario —'));
 
     const textoSponsor = correos[0].text;
@@ -335,10 +342,16 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(!textoSponsor.includes('está confirmada'));
     assert.ok(textoSponsor.includes('El espacio con DINUS ahora es:'));
     assert.ok(textoSponsor.includes('Horario anterior:'));
+    assert.ok(textoSponsor.includes('Tu cita será en la mesa 1.'));
+    assert.ok(textoSponsor.includes('Club France, Francia 75-Interior'));
+    assert.ok(textoSponsor.includes('Abre el archivo .ics adjunto para actualizar el horario'));
+    assert.ok(!textoSponsor.includes('Para actualizar tu calendario, selecciona'));
     assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
     assert.ok(textoSponsor.includes('Ana Dinus'));
     assert.ok(textoSponsor.includes('ana@dinus.test'));
     assert.ok(textoAsistente.includes('El espacio con Platica.mx ahora es:'));
+    assert.ok(textoAsistente.includes('Tu cita será en la mesa 1.'));
+    assert.ok(textoAsistente.includes('Club France'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
     assert.ok(!textoAsistente.includes('Sam Sponsor'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));
@@ -507,16 +520,23 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(campoIcs(ics, 'UID'), 'cita-cancel@fashiondigitaltalks.com');
     assert.strictEqual(campoIcs(ics, 'STATUS'), 'CANCELLED');
     assert.strictEqual(campoIcs(ics, 'METHOD'), 'CANCEL');
+    assert.ok(ics.includes('Club France'), 'el .ics de baja conserva la sede');
     assert.strictEqual(correos[0].icalEvent.method, 'CANCEL');
     assert.ok(correos[0].subject.startsWith('Cita cancelada —'));
 
     const textoSponsor = correos[0].text;
     const textoAsistente = correos[1].text;
     assert.ok(textoSponsor.includes('con DINUS fue cancelada'));
+    assert.ok(textoSponsor.includes('Horario cancelado:'));
+    assert.ok(textoSponsor.includes('Abre el archivo .ics adjunto para quitar la cita'));
+    assert.ok(!textoSponsor.includes('Tu cita será en la mesa'));
+    assert.ok(!textoSponsor.includes('Club France'));
     assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
     assert.ok(textoSponsor.includes('Ana Dinus'));
     assert.ok(textoSponsor.includes('ana@dinus.test'));
     assert.ok(textoAsistente.includes('con Platica.mx fue cancelada'));
+    assert.ok(!textoAsistente.includes('Tu cita será en la mesa'));
+    assert.ok(!textoAsistente.includes('Club France'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
     assert.ok(!textoAsistente.includes('Sam Sponsor'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));

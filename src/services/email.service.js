@@ -17,6 +17,7 @@
 
 const nodemailer = require('nodemailer');
 const { createEvent } = require('ics');
+const { UBICACION_ICS_EVENTO, GEO_ICS_EVENTO, URL_MAPS_EVENTO } = require('../utils/sede-evento');
 
 class EmailError extends Error {
   constructor(categoria, message, causaOriginal) {
@@ -74,7 +75,7 @@ function _setTransporterForTests(transporter) {
  * como uno nuevo. Verificado contra la librería `ics` que ya usa el
  * proyecto — no hizo falta cambiarla.
  */
-function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion, secuencia, cancelacion }) {
+function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, secuencia, cancelacion }) {
   const fecha = new Date(inicio);
   const fechaFin = new Date(fin);
 
@@ -100,7 +101,9 @@ function generarIcs({ notionPageId, titulo, descripcion, inicio, fin, ubicacion,
     endInputType: 'utc',
     title: titulo,
     description: descripcion || '',
-    location: ubicacion || '',
+    location: UBICACION_ICS_EVENTO,
+    geo: GEO_ICS_EVENTO,
+    url: URL_MAPS_EVENTO,
     status: cancelacion ? 'CANCELLED' : 'CONFIRMED',
   };
 
@@ -160,7 +163,6 @@ async function enviarConfirmacionCita({
   descripcion,
   inicio,
   fin,
-  ubicacion,
   secuencia,
 }) {
   return enviarCorreoConIcs({
@@ -171,7 +173,6 @@ async function enviarConfirmacionCita({
     descripcion,
     inicio,
     fin,
-    ubicacion,
     secuencia,
     cancelacion: false,
   });
@@ -194,7 +195,6 @@ async function enviarCancelacionCita({
   descripcion,
   inicio,
   fin,
-  ubicacion,
   secuencia,
 }) {
   return enviarCorreoConIcs({
@@ -205,7 +205,6 @@ async function enviarCancelacionCita({
     descripcion,
     inicio,
     fin,
-    ubicacion,
     secuencia,
     cancelacion: true,
   });
@@ -219,7 +218,6 @@ async function enviarCorreoConIcs({
   descripcion,
   inicio,
   fin,
-  ubicacion,
   secuencia,
   cancelacion,
 }) {
@@ -238,7 +236,6 @@ async function enviarCorreoConIcs({
     descripcion,
     inicio,
     fin,
-    ubicacion,
     secuencia,
     cancelacion,
   });

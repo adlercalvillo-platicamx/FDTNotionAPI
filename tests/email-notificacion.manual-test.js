@@ -330,11 +330,17 @@ function baseParams(overrides = {}) {
     assert.ok(mailSponsor.descripcion.includes('Empresa asistente-b agendó un espacio con Empresa sponsor-a'));
     assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
     assert.ok(mailSponsor.descripcion.includes('Nombre: Nombre asistente-b'));
+    assert.ok(mailSponsor.descripcion.includes('Horario: miércoles, 7 de octubre, 12:00 h.'));
+    assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
+    assert.ok(mailSponsor.descripcion.includes('Club France, Francia 75-Interior'));
     assert.ok(mailSponsor.descripcion.includes('Agregar al calendario'));
     assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
 
     // Asistente: solo empresa del sponsor, SIN datos de contacto
     assert.ok(mailAsistente.descripcion.includes('Agendaste un espacio con Empresa sponsor-a'));
+    assert.ok(mailAsistente.descripcion.includes('Horario: miércoles, 7 de octubre, 12:00 h.'));
+    assert.ok(mailAsistente.descripcion.includes('Tu cita será en la mesa 1.'));
+    assert.ok(mailAsistente.descripcion.includes('Club France'));
     assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
     assert.ok(!mailAsistente.descripcion.includes('Datos de contacto'));
     assert.ok(!mailAsistente.descripcion.includes('Nombre sponsor-a'));

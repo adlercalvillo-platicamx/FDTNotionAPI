@@ -38,6 +38,7 @@ const { Mutex } = require('async-mutex');
 const citasService = require('./citas.service');
 const contactosService = require('./contactos.service');
 const emailService = require('./email.service');
+const { UBICACION_ICS_EVENTO } = require('../utils/sede-evento');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
 // Tolerancia sobre qué tan "pasado" puede estar el horario DESTINO de una
@@ -53,8 +54,12 @@ const MARGEN_MODIFICACION_MINUTOS = citasService.MARGEN_MODIFICACION_MINUTOS;
 // Va en el cuerpo del correo de modificar/cancelar (clientes de correo
 // que no aplican el .ics solos). No viaja en la respuesta HTTP: eso era
 // la advertencia del Google Calendar propio, retirado el 27-ago.
-const NOTA_CALENDARIO =
-  'Si tu calendario no se actualiza solo, puede que necesites editar o eliminar el evento manualmente.';
+const NOTA_CALENDARIO_ACTUALIZAR =
+  'Abre el archivo .ics adjunto para actualizar el horario en tu calendario. Si no se actualiza solo, edita o elimina el evento a mano.';
+const NOTA_CALENDARIO_CANCELAR =
+  'Abre el archivo .ics adjunto para quitar la cita de tu calendario. Si no se elimina solo, bórralo a mano.';
+// Alias histórico: tests/docs que aún nombran NOTA_CALENDARIO leen la de modificación.
+const NOTA_CALENDARIO = NOTA_CALENDARIO_ACTUALIZAR;
 // Cada envío SMTP se reintenta hasta 3 veces de inmediato (timeouts).
 // No hay tope de reintentos del endpoint: se dispara a demanda (MCP/API)
 // cuantas veces haga falta tras corregir el dato (Adler, 18-ago).
@@ -192,12 +197,13 @@ function interpretarFilaIdempotente(existente) {
  * cae al nombre de la persona para no dejar el texto incompleto.
  *
  * Calendar reusa `descripcion` (= descripcionSponsor: calendario del sponsor).
+ * LOCATION del .ics es siempre Club France; mesa y horario van en este texto.
  *
  * `emailsExtra` (de asistentes_email en el body) se suma al correo del
  * asistente — mismo tono corto, sin datos de contacto. No reemplaza a
  * Contactos. Deduplicado contra el email del sponsor/asistente.
  */
-async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emailsExtra }) {
+async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emailsExtra, inicio, mesa }) {
   if (!sponsorPageId || !asistentePageId) {
     throw new BookingError(
       'CONTACTO_NO_RESUELTO',
@@ -219,13 +225,16 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
   const empresaAsistente = asistente.empresa || asistente.nombre || 'El asistente';
   const empresaSponsor = sponsor.empresa || sponsor.nombre || 'el sponsor';
   const datosContactoAsistente = lineasDatosContactoAsistente(asistente);
+  const horario = inicio ? citasService.formatearHorarioLegible(inicio) : null;
+  const lugar = parrafoMesaYSede(mesa);
 
   const descripcionSponsor = [
     '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
     '',
     `${empresaAsistente} agendó un espacio con ${empresaSponsor}. Nos dará mucho gusto recibirlos.`,
     '',
-    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
+    ...(horario ? [`Horario: ${horario}.`, lugar, ''] : [lugar, '']),
+    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics).',
     '',
     ...datosContactoAsistente,
     '',
@@ -241,7 +250,8 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     '',
     `Agendaste un espacio con ${empresaSponsor}. Nos dará mucho gusto recibirte.`,
     '',
-    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario y la mesa asignada.',
+    ...(horario ? [`Horario: ${horario}.`, lugar, ''] : [lugar, '']),
+    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics).',
     '',
     '¡Te esperamos en Fashion Digital Talks 2026!',
     'Equipo Fashion Digital Talks',
@@ -274,6 +284,21 @@ function lineasDatosContactoAsistente(asistente) {
     asistente.email ? `Correo: ${asistente.email}` : null,
     asistente.whatsapp ? `Teléfono: ${asistente.whatsapp}` : null,
   ].filter((linea) => linea !== null);
+}
+
+function numeroDeMesa(mesa) {
+  if (mesa == null || mesa === '') return null;
+  if (typeof mesa === 'number' && Number.isFinite(mesa)) return String(mesa);
+  const m = String(mesa).match(/(\d+)/);
+  return m ? m[1] : null;
+}
+
+function parrafoMesaYSede(mesa) {
+  const n = numeroDeMesa(mesa);
+  const lineaMesa = n
+    ? `Tu cita será en la mesa ${n}. En los días previos al evento te enviaremos más detalle para ubicarla en piso.`
+    : 'En los días previos al evento te enviaremos más detalle para ubicar tu mesa en piso.';
+  return [lineaMesa, `Recuerda que el evento se llevará a cabo en ${UBICACION_ICS_EVENTO}.`].join('\n');
 }
 
 /**
@@ -318,7 +343,6 @@ async function enviarCorreosDeCita({
   asunto,
   inicio,
   fin,
-  ubicacion,
   secuencia,
   cancelacion,
 }) {
@@ -352,7 +376,6 @@ async function enviarCorreosDeCita({
       descripcion: envio.descripcion,
       inicio,
       fin,
-      ubicacion,
       secuencia,
       cancelacion,
     });
@@ -545,6 +568,8 @@ async function reservarCita({
         sponsorPageId: sponsor_notion_id,
         asistentePageId: asistente_notion_id,
         emailsExtra: asistentes_email,
+        inicio,
+        mesa: numeroMesa,
       });
     } catch (resolucionError) {
       await compensarReservaFallida(
@@ -591,7 +616,6 @@ async function reservarCita({
               titulo: notificacion.tituloCita,
               inicio,
               fin,
-              ubicacion: numeroMesa ? `Mesa ${numeroMesa}` : undefined,
             });
           } catch (emailError) {
             await citasService.marcarCitaConfirmadaSinNotificar({
@@ -679,6 +703,8 @@ async function reintentarNotificacion(notionPageId) {
     sponsorPageId: datos.sponsorPageId,
     asistentePageId: datos.asistentePageId,
     emailsExtra: [], // el reintento no tiene el body original de la reserva — solo Contactos
+    inicio: datos.inicio,
+    mesa: datos.mesa,
   });
 
   if (!tieneDestinatarios(notificacion)) {
@@ -702,7 +728,6 @@ async function reintentarNotificacion(notionPageId) {
         asunto: `Cita cancelada — ${titulo}`,
         inicio: datos.inicio,
         fin: datos.fin,
-        ubicacion: datos.mesa || undefined,
         secuencia,
         cancelacion: true,
       });
@@ -727,6 +752,7 @@ async function reintentarNotificacion(notionPageId) {
     ? conTextosDeModificacion(notificacion, {
         horarioAnterior: datos.horarioOriginal,
         horarioNuevo: datos.inicio,
+        mesa: datos.mesa,
       })
     : notificacion;
 
@@ -738,7 +764,6 @@ async function reintentarNotificacion(notionPageId) {
       asunto: esReprogramacion ? `Cambio de horario — ${titulo}` : undefined,
       inicio: datos.inicio,
       fin: datos.fin,
-      ubicacion: datos.mesa || undefined,
       secuencia,
     });
     await citasService.confirmarNotificacionEnviada(notionPageId);
@@ -943,12 +968,13 @@ function requerirHorarioNoPasado(nuevoInicioMs, ahoraMs) {
   }
 }
 
-function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo }) {
+function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo, mesa }) {
   const horarioNuevoLegible = citasService.formatearHorarioLegible(horarioNuevo);
   const horarioAnteriorLegible = citasService.formatearHorarioLegible(horarioAnterior);
   const empresaAsistente = notificacion.empresaAsistente || 'el asistente';
   const empresaSponsor = notificacion.empresaSponsor || 'el sponsor';
   const datosAsistente = (notificacion.datosContactoAsistente || []).join('\n');
+  const lugar = parrafoMesaYSede(mesa);
 
   return {
     ...notificacion,
@@ -958,9 +984,9 @@ function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo }
       `El espacio con ${empresaAsistente} ahora es: ${horarioNuevoLegible}`,
       `Horario anterior: ${horarioAnteriorLegible}`,
       '',
-      'Para actualizar tu calendario, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario nuevo y la mesa asignada.',
+      lugar,
       '',
-      NOTA_CALENDARIO,
+      NOTA_CALENDARIO_ACTUALIZAR,
       '',
       datosAsistente,
       '',
@@ -975,9 +1001,9 @@ function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo }
       `El espacio con ${empresaSponsor} ahora es: ${horarioNuevoLegible}`,
       `Horario anterior: ${horarioAnteriorLegible}`,
       '',
-      'Para actualizar tu calendario, selecciona "Agregar al calendario" en la invitación adjunta (.ics). Ahí encontrarás el horario nuevo y la mesa asignada.',
+      lugar,
       '',
-      NOTA_CALENDARIO,
+      NOTA_CALENDARIO_ACTUALIZAR,
       '',
       '¡Te esperamos en Fashion Digital Talks 2026!',
       'Equipo Fashion Digital Talks',
@@ -998,7 +1024,7 @@ function conTextosDeCancelacion(notificacion, inicio) {
       '',
       `Horario cancelado: ${horario}`,
       '',
-      NOTA_CALENDARIO,
+      NOTA_CALENDARIO_CANCELAR,
       '',
       datosAsistente,
       '',
@@ -1010,7 +1036,7 @@ function conTextosDeCancelacion(notificacion, inicio) {
       '',
       `Horario cancelado: ${horario}`,
       '',
-      NOTA_CALENDARIO,
+      NOTA_CALENDARIO_CANCELAR,
       '',
       '¡Nos vemos en Fashion Digital Talks 2026!',
       'Equipo Fashion Digital Talks',
@@ -1125,12 +1151,12 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
         notificacion: conTextosDeModificacion(notificacion, {
           horarioAnterior,
           horarioNuevo: inicio,
+          mesa,
         }),
         titulo: cita.titulo || notificacion.tituloCita,
         asunto: `Cambio de horario — ${cita.titulo || notificacion.tituloCita}`,
         inicio,
         fin,
-        ubicacion: `Mesa ${mesa}`,
         secuencia: siguienteSecuenciaIcs(),
       });
       return respuesta;
@@ -1202,7 +1228,6 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
         asunto: `Cita cancelada — ${titulo}`,
         inicio: cita.inicio,
         fin: cita.fin,
-        ubicacion: cita.mesa || undefined,
         secuencia: siguienteSecuenciaIcs(),
         cancelacion: true,
       });
@@ -1234,4 +1259,6 @@ module.exports = {
   validarDuracionYFecha,
   MARGEN_MODIFICACION_MINUTOS,
   NOTA_CALENDARIO,
+  NOTA_CALENDARIO_ACTUALIZAR,
+  NOTA_CALENDARIO_CANCELAR,
 };
