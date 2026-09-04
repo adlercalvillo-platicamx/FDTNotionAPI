@@ -56,32 +56,31 @@ const MARGEN_CANDIDATOS = 2;
 // ─────────────────────────────────────────────────────────────
 // PESOS DEL RANKING (Capa 2)
 //
-// Decisión de diseño sobre VIP, tomada por Plática (NO confirmada por Laura,
-// pendiente de validar en la demo):
-// Liz confirmó que un asistente VIP tiene prioridad sobre un Presencial. Pero
-// se implementa como un IMPULSO FUERTE, no como un override absoluto, porque:
-//   - Liz también dijo que el VIP depende del perfil ("si nos llenaron que sí
-//     pero no cumplen el perfil, pues no") — la calidad del match importa.
-//   - Con override absoluto, un VIP con match mediocre le ganaría a un
-//     Presencial que el sponsor pidió POR NOMBRE en su formulario. Eso sería
-//     un mal resultado de negocio y Laura lo notaría.
-// Con VIP=500 y ORO_MOLIDO=1000: el VIP gana todos los casos normales y
-// cerrados, pero un candidato explícitamente pedido por el sponsor le gana.
-// Ese es justamente el "caso cerrado" que Adler intuyó como excepción.
+// 3-sep — VIP/Speaker/Presencial ya no suman puntos fijos. El boleto es un
+// multiplicador sobre la afinidad real (ver MULTIPLICADOR_CANAL). Decisión
+// de Adler/Plática, NO confirmada por Laura/Liz — pendiente de validar en
+// demo. Motivo: +500 de VIP aplastaba a un Presencial con área+soluciones
+// reales (Miranda Ayala 510 vs Eduardo Moran 340 en pruebas).
+//
+// Liz: el VIP tiene prioridad sobre un Presencial, pero "si nos llenaron
+// que sí pero no cumplen el perfil, pues no". El multiplicador amplifica
+// un match que ya existe; no inventa score. Oro molido (+1000) se queda
+// fuera del multiplicador: el sponsor pidió esa empresa por nombre.
+//
+// ×1.4 (no 1.3 ni 1.5): calibrado contra 4 sponsors reales de pruebas.
+// Con 1.3, una sola solución extra del Presencial revertía al VIP; con
+// 1.4 hace falta diferencia de 2+ señales. Virtual queda en ×1.0 (Adler:
+// no bajar a 0.9 — el formulario virtual ya no captura Área/Soluciones).
 // ─────────────────────────────────────────────────────────────
+const MULTIPLICADOR_CANAL = {
+  Virtual: 1.0,
+  Presencial: 1.15,
+  'Presencial VIP': 1.4,
+  Speaker: 1.4,
+};
+
 const PESOS = {
-  ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor
-  VIP: 500, // prioridad compartida por Presencial VIP y Speaker
-  // Agregado 13 de agosto — Virtual pasó a ser elegible por default en
-  // buscarAsistentesCandidatos (ver contactos.service.js), pero Laura pidió
-  // seguir priorizando presencial sobre virtual. Mismo patrón de diseño que
-  // VIP: impulso fuerte en el ranking, no exclusión — un Virtual con match
-  // excelente (área+solución+oro molido) sigue pudiendo ganarle a un
-  // Presencial sin señales específicas; entre dos candidatos con match
-  // idéntico, el presencial gana. Deliberadamente menor que VIP (esto es
-  // sobre canal, no sobre calidad de perfil) pero mayor que cualquier señal
-  // individual de match (área/solución), para que el desempate sea claro.
-  PRESENCIAL: 150, // desde 1-sep aplica solo a "Presencial"
+  ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor; NO se multiplica
   AREA: 60, // match directo de área/puesto
   SOLUCION: 60, // match directo por cada solución coincidente
   // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
@@ -233,13 +232,15 @@ function coincidenciaTextoLibre(textoAsistente, textoSponsor) {
 // Capa 2 — scoring con match directo
 // ─────────────────────────────────────────────────────────────
 function calcularScore(sponsor, candidato, cuotaPendiente) {
-  let score = 0;
+  let scoreBase = 0; // afinidad: se multiplica por canal si es > 0
+  let scoreFijo = 0; // oro molido, fuera del multiplicador
   const detalle = [];
   const senales = {
     oroMolido: false,
     esVip: false,
     esSpeaker: false,
     esPresencial: false,
+    multiplicadorCanal: 1.0,
     areaCoincidente: null,
     solucionesCoincidentes: [],
     coincidenciaTextoLibre: false,
@@ -256,27 +257,21 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   };
 
   if (empresaMencionadaEn(candidato.empresa, sponsor.clientesPotencialesDeseados)) {
-    score += PESOS.ORO_MOLIDO;
+    scoreFijo += PESOS.ORO_MOLIDO;
     detalle.push('oro_molido: empresa mencionada explícitamente por el sponsor');
     senales.oroMolido = true;
   }
 
-  // Prioridad VIP — ver nota de diseño arriba.
+  // Canal: ya no suma puntos. Marca señales/detalle para el reporte y elige
+  // el multiplicador más abajo. VIP y Speaker no acumulan Presencial.
   if (candidato.ticketTipo === 'Presencial VIP') {
-    score += PESOS.VIP;
     detalle.push('vip: asistente con boleto Presencial VIP (citas incluidas)');
     senales.esVip = true;
   } else if (candidato.ticketTipo === 'Speaker') {
-    score += PESOS.VIP;
-    detalle.push('speaker: ponente del evento (mismo peso que VIP, sin bonus de presencial)');
+    detalle.push('speaker: ponente del evento (mismo multiplicador que VIP, sin bonus de presencial)');
     senales.esSpeaker = true;
   }
-
-  // Desde 1-sep el bonus de modalidad se reserva al boleto Presencial.
-  // Presencial VIP y Speaker ya reciben su prioridad de 500 y no acumulan
-  // estos 150 puntos.
   if (candidato.ticketTipo === 'Presencial') {
-    score += PESOS.PRESENCIAL;
     detalle.push('presencial: asistente con boleto presencial (prioridad sobre virtual)');
     senales.esPresencial = true;
   }
@@ -286,20 +281,20 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   const tamanoDeclarado = TAMANOS_QUE_ENTRAN.has(candidato.tamanoNegocio);
   if (tamanoDeclarado) {
     if (candidato.tamanoNegocio === TAMANO_GRANDE) {
-      score += PESOS.TAMANO_GRANDE;
+      scoreBase += PESOS.TAMANO_GRANDE;
       detalle.push('tamano_negocio: empresa grande');
       senales.tamanoNegocio = 'Grande';
     } else if (candidato.tamanoNegocio === TAMANO_MEDIANA) {
-      score += PESOS.TAMANO_MEDIANA;
+      scoreBase += PESOS.TAMANO_MEDIANA;
       detalle.push('tamano_negocio: empresa mediana');
       senales.tamanoNegocio = 'Mediana';
     }
   } else if (candidato.madurezNegocioExa === 'Consolidado') {
-    score += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
+    scoreBase += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
     detalle.push('madurez_negocio: empresa consolidada (Exa)');
     senales.madurezNegocio = 'Consolidado';
   } else if (candidato.madurezNegocioExa === 'PyME') {
-    score += PESOS.MADUREZ_NEGOCIO_PYME;
+    scoreBase += PESOS.MADUREZ_NEGOCIO_PYME;
     detalle.push('madurez_negocio: PyME (Exa)');
     senales.madurezNegocio = 'PyME';
   } else if (candidato.madurezNegocioExa === 'Temprano') {
@@ -308,11 +303,11 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 
   // ICP Moda/Ecommerce (Exa) — Capa 2, no filtro duro. Vacío ≠ No.
   if (candidato.icpModaEcommerce === 'Sí') {
-    score += PESOS.ICP_MODA_ECOMMERCE_SI;
+    scoreBase += PESOS.ICP_MODA_ECOMMERCE_SI;
     detalle.push('icp_moda_ecommerce: Exa confirmó encaje con moda/ecommerce');
     senales.icpModaEcommerce = 'Sí';
   } else if (candidato.icpModaEcommerce === 'No') {
-    score += PESOS.ICP_MODA_ECOMMERCE_NO;
+    scoreBase += PESOS.ICP_MODA_ECOMMERCE_NO;
     detalle.push('icp_moda_ecommerce: Exa detectó que no encaja con moda/ecommerce');
     senales.icpModaEcommerce = 'No';
   } else if (candidato.icpModaEcommerce === 'Ambiguo') {
@@ -321,7 +316,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 
   // Estado Web (Exa) — solo premia; Sin web y vacío no restan.
   if (candidato.estadoWebExa === 'Con web') {
-    score += PESOS.ESTADO_WEB_CON_WEB;
+    scoreBase += PESOS.ESTADO_WEB_CON_WEB;
     detalle.push('estado_web: presencia web activa (Exa)');
     senales.estadoWebExa = 'Con web';
   } else if (candidato.estadoWebExa === 'Sin web') {
@@ -336,7 +331,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     candidato.area !== VALOR_COMODIN &&
     (sponsor.puestosBuscados || []).includes(candidato.area)
   ) {
-    score += PESOS.AREA;
+    scoreBase += PESOS.AREA;
     detalle.push(`area: coincide con "${candidato.area}"`);
     senales.areaCoincidente = candidato.area;
   }
@@ -347,7 +342,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   const solucionesSponsor = sponsor.solucion || [];
   for (const solucion of candidato.solucionesBuscadas || []) {
     if (solucion !== VALOR_COMODIN && solucionesSponsor.includes(solucion)) {
-      score += PESOS.SOLUCION;
+      scoreBase += PESOS.SOLUCION;
       detalle.push(`solucion: coincide con "${solucion}"`);
       senales.solucionesCoincidentes.push(solucion);
     }
@@ -355,7 +350,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 
   // Señal débil de texto libre ↔ texto libre.
   if (coincidenciaTextoLibre(candidato.otraSolucionBuscada, sponsor.clientesPotencialesDeseados)) {
-    score += PESOS.OTRA_SOLUCION_TEXTO;
+    scoreBase += PESOS.OTRA_SOLUCION_TEXTO;
     detalle.push('texto_libre: lo que el asistente escribió se parece a lo que describió el sponsor');
     senales.coincidenciaTextoLibre = true;
   }
@@ -364,8 +359,21 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     detalle.push(`cuota_pendiente: ${cuotaPendiente} citas por cubrir`);
   }
 
-  if (candidato.fuenteDato === 'Declarado') score += PESOS.DATO_DECLARADO;
-  else if (candidato.fuenteDato === 'Inferido') score += PESOS.DATO_INFERIDO;
+  if (candidato.fuenteDato === 'Declarado') scoreBase += PESOS.DATO_DECLARADO;
+  else if (candidato.fuenteDato === 'Inferido') scoreBase += PESOS.DATO_INFERIDO;
+
+  const multiplicador = MULTIPLICADOR_CANAL[candidato.ticketTipo] ?? 1.0;
+  senales.multiplicadorCanal = multiplicador;
+  // Solo amplifica afinidad positiva. ICP=No (−30) no debe caer más en un
+  // VIP que en un Virtual por el solo hecho del boleto.
+  // Centesimas enteras: 370×1.15 en IEEE da 425.499… y Math.round lo baja
+  // a 425; (370×115)/100 redondea a 426, que es la calibración de ×1.4.
+  const scoreBaseFinal =
+    scoreBase > 0 ? Math.round((scoreBase * Math.round(multiplicador * 100)) / 100) : scoreBase;
+  if (scoreBase > 0 && multiplicador !== 1) {
+    detalle.push(`canal: ${candidato.ticketTipo} ×${multiplicador}`);
+  }
+  const score = scoreBaseFinal + scoreFijo;
 
   return { score, detalle, senales };
 }
@@ -406,9 +414,9 @@ function generarExplicacionNatural(candidato, senales) {
   }
 
   if (senales.esVip) {
-    texto += ` Es asistente VIP, así que sus citas de negocio ya vienen incluidas en su boleto y tiene prioridad.`;
+    texto += ` Es asistente VIP, así que sus citas de negocio ya vienen incluidas en su boleto y su match se prioriza sobre otros candidatos con un perfil similar.`;
   } else if (senales.esSpeaker) {
-    texto += ` Es ponente del evento, así que sus citas de negocio ya vienen incluidas y tiene prioridad.`;
+    texto += ` Es ponente del evento, así que sus citas de negocio ya vienen incluidas y su match se prioriza sobre otros candidatos con un perfil similar.`;
   }
   if (senales.esPresencial && !senales.esVip) {
     texto += ` Asistirá de forma presencial, lo cual se prioriza sobre los asistentes virtuales.`;
@@ -842,6 +850,7 @@ module.exports = {
   generarExplicacionNatural,
   empresaMencionadaEn,
   coincidenciaTextoLibre,
+  MULTIPLICADOR_CANAL,
   PRIORIDAD_NIVEL_PATROCINIO,
   TAMANO_GRANDE,
   TAMANO_MEDIANA,

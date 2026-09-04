@@ -55,8 +55,10 @@ const presencialNormal = {
   otraSolucionBuscada: '', fuenteDato: 'Declarado',
 };
 const rNormal = calcularScore(sponsorPagos, presencialNormal, 2);
-console.log(`   Presencial normal (mismo match, sin ser nombrado): ${rNormal.score}`);
-check('El VIP le gana a un Presencial con match equivalente', rVip.score > rNormal.score);
+console.log(`   Presencial con área+Pagos (sin ser nombrado): ${rNormal.score}`);
+// Antes (bono +500): este caso se llamaba "match equivalente" pero el VIP
+// no tenía área ni soluciones — el +500 le hacía ganar. 3-sep: invertido.
+check('Un Presencial con afinidad real le gana a un VIP sin área/solución', rNormal.score > rVip.score);
 
 console.log('\n=== 3. El comodín "Otro" no debe contar como coincidencia ===');
 const sponsorOtro = {

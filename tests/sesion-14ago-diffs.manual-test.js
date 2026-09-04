@@ -142,7 +142,7 @@ ok('Virtual + vacío → aparece', () => {
 });
 
 console.log('\n=== DIFF-2 matchmaking — Virtual (pesos + explicación) ===');
-ok('Presencial vs Virtual mismas señales → Presencial +150', () => {
+ok('Presencial vs Virtual mismas señales → Presencial gana por ×1.15, no +150', () => {
   const area = 'Direccion General / Founder / CEO';
   const sponsor = { ...sponsorBase, puestosBuscados: [area], solucion: ['Logistica / fulfillment'] };
   const comun = {
@@ -152,7 +152,10 @@ ok('Presencial vs Virtual mismas señales → Presencial +150', () => {
   };
   const p = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Presencial', ...comun }), 0);
   const v = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Virtual', ...comun }), 0);
-  assert.strictEqual(p.score - v.score, PESOS.PRESENCIAL);
+  const base = PESOS.AREA + PESOS.SOLUCION + PESOS.DATO_DECLARADO;
+  assert.strictEqual(v.score, base);
+  assert.strictEqual(p.score, Math.round((base * 115) / 100));
+  assert.ok(p.score > v.score);
   assert.ok(p.detalle.some((d) => d.startsWith('presencial:')));
   assert.ok(!v.detalle.some((d) => d.startsWith('presencial:')));
 });
@@ -177,7 +180,7 @@ ok('Virtual match perfecto (oro+área+solución) vs Presencial sin señales → 
   const presencial = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Presencial' }), 0);
   assert.ok(virtual.score > presencial.score, `virtual=${virtual.score} presencial=${presencial.score}`);
   assert.strictEqual(virtual.score, PESOS.ORO_MOLIDO + PESOS.AREA + PESOS.SOLUCION);
-  assert.strictEqual(presencial.score, PESOS.PRESENCIAL);
+  assert.strictEqual(presencial.score, 0);
 });
 ok('Explicación VIP no menciona prioridad dos veces', () => {
   const { senales } = calcularScore(
@@ -186,8 +189,8 @@ ok('Explicación VIP no menciona prioridad dos veces', () => {
     0
   );
   const texto = generarExplicacionNatural(candidatoBase({ ticketTipo: 'Presencial VIP' }), senales);
-  const matches = texto.match(/prioridad/gi) || [];
-  assert.strictEqual(matches.length, 1, `texto=${texto}`);
+  assert.ok(texto.includes('perfil similar'), `texto=${texto}`);
+  assert.ok(!texto.includes('tiene prioridad'), `texto=${texto}`);
   assert.ok(!texto.includes('Asistirá de forma presencial'));
 });
 
@@ -202,9 +205,9 @@ ok('PyME → +15', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ madurezNegocioExa: 'PyME', ticketTipo: 'Virtual' }), 0);
   assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_PYME);
 });
-ok('Caso dominante: madurez null + no Virtual → score = PRESENCIAL only (0 cambio vs peso nuevo)', () => {
+ok('Caso dominante: madurez null + Presencial sin afinidad → score 0 (el canal ya no suma)', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ madurezNegocioExa: null, ticketTipo: 'Presencial' }), 0);
-  assert.strictEqual(r.score, PESOS.PRESENCIAL);
+  assert.strictEqual(r.score, 0);
   assert.ok(!r.detalle.some((d) => d.startsWith('madurez_negocio:')));
   assert.strictEqual(r.senales.madurezNegocio, null);
 });
@@ -216,7 +219,7 @@ ok('Nancy/ZAGIS patrón: Consolidado no bypassa Capa 1 (score es Capa 2; elegibi
     candidatoBase({ madurezNegocioExa: 'Consolidado', ticketTipo: 'Presencial' }),
     0
   );
-  assert.strictEqual(r.score, PESOS.PRESENCIAL + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.strictEqual(r.score, Math.round((PESOS.MADUREZ_NEGOCIO_CONSOLIDADO * 115) / 100));
 });
 
 console.log('\n=== DIFF-2 interacción Virtual + Madurez ===');
@@ -230,13 +233,13 @@ ok('Virtual + Consolidado: +40 madurez, 0 presencial', () => {
   assert.strictEqual(r.senales.esPresencial, false);
   assert.strictEqual(r.senales.madurezNegocio, 'Consolidado');
 });
-ok('Presencial + Consolidado sin otras señales = 190', () => {
+ok('Presencial + Consolidado sin otras señales = 40 × 1.15 → 46', () => {
   const r = calcularScore(
     sponsorBase,
     candidatoBase({ ticketTipo: 'Presencial', madurezNegocioExa: 'Consolidado' }),
     0
   );
-  assert.strictEqual(r.score, PESOS.PRESENCIAL + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.strictEqual(r.score, Math.round((PESOS.MADUREZ_NEGOCIO_CONSOLIDADO * 115) / 100));
 });
 ok('Explicación Presencial (no VIP) + Consolidado: ambas frases, orden correcto', () => {
   const { senales } = calcularScore(

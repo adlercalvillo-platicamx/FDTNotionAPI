@@ -60,7 +60,7 @@ const {
   calcularScore,
   esCandidatoPorTamanoNegocio,
   generarExplicacionNatural,
-  PESOS,
+  MULTIPLICADOR_CANAL,
 } = require('../src/services/matchmaking.service');
 
 const sponsor = {
@@ -156,14 +156,20 @@ async function main() {
   caso('Speaker salta tamaño vacío', () => {
     assert.strictEqual(esCandidatoPorTamanoNegocio(candidato('Speaker')), true);
   });
-  caso('Speaker suma 500 y no 150', () => {
-    assert.strictEqual(calcularScore(sponsor, candidato('Speaker'), 0).score, PESOS.VIP);
+  caso('Speaker sin afinidad no compra score (×1.4 sobre base 0)', () => {
+    const r = calcularScore(sponsor, candidato('Speaker'), 0);
+    assert.strictEqual(r.score, 0);
+    assert.strictEqual(r.senales.multiplicadorCanal, MULTIPLICADOR_CANAL.Speaker);
   });
-  caso('Presencial VIP ahora suma solo 500', () => {
-    assert.strictEqual(calcularScore(sponsor, candidato('Presencial VIP'), 0).score, PESOS.VIP);
+  caso('Presencial VIP sin afinidad tampoco compra score', () => {
+    const r = calcularScore(sponsor, candidato('Presencial VIP'), 0);
+    assert.strictEqual(r.score, 0);
+    assert.strictEqual(r.senales.multiplicadorCanal, MULTIPLICADOR_CANAL['Presencial VIP']);
   });
-  caso('Presencial normal conserva 150', () => {
-    assert.strictEqual(calcularScore(sponsor, candidato('Presencial'), 0).score, PESOS.PRESENCIAL);
+  caso('Presencial sin afinidad queda en 0 (ya no +150)', () => {
+    const r = calcularScore(sponsor, candidato('Presencial'), 0);
+    assert.strictEqual(r.score, 0);
+    assert.strictEqual(r.senales.multiplicadorCanal, MULTIPLICADOR_CANAL.Presencial);
   });
   caso('Speaker usa señal propia, no VIP ni presencial', () => {
     const { senales } = calcularScore(sponsor, candidato('Speaker'), 0);

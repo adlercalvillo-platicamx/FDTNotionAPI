@@ -18,11 +18,12 @@ node tests/checklist.manual-test.js
 
 **Resultado ya validado — si corres esto y cambia sin que se haya tocado lógica de negocio a propósito, algo se rompió:**
 
-- `matchmaking.manual-test.js`: Carlos Medina y Laura Espinoza **ambos** sugieren a Ana (desde 28-ago: etapa ya no excluye; Ana entra por fallback Exa Consolidado). Scores de referencia: Carlos 260, Laura 1320. Contacto vacío histórico sigue fuera por tamaño.
+- `matchmaking.manual-test.js`: Carlos Medina y Laura Espinoza **ambos** sugieren a Ana (desde 28-ago: etapa ya no excluye; Ana entra por fallback Exa Consolidado). Scores de referencia 3-sep (multiplicador, redondeo en centésimas): Carlos **127**, Laura **1196** (antes 260 / 1320 con bono Presencial +150). Contacto vacío histórico sigue fuera por tamaño.
+- `multiplicador-canal.manual-test.js`: VIP vacío pierde contra Presencial con área+3 soluciones; mismo match VIP > Presencial (~22%); Presencial 5 sol vs VIP 4 sol gana el VIP (×1.4); oro molido no se multiplica; ICP No no se amplifica.
 - `matchmaking-global.manual-test.js`: 1 solapamiento detectado (Ana entre dos sponsors), con Diamante ordenado antes que Oro — por nivel de patrocinio, no por score de match.
 - `tamano-negocio.manual-test.js`: Micro/Pequeña/Temprano/vacío (no-VIP) fuera; Grande/Mediana/Exa Consolidado/PyME dentro. Grande **sin** `Etapa de Negocio` entra aunque el sponsor tenga `Etapa Cliente Buscada` llena.
 - `vip-tamano-negocio.manual-test.js`: boleto `Presencial VIP` entra aunque el checkbox `Es VIP` esté en false y Tamaño/Madurez vacíos o Micro; checkbox `Es VIP` sin boleto VIP no salta el filtro; giro fuera de los 3 elegibles sigue excluido.
-- `tamano-speaker.manual-test.js`: 16/16. Tamaño se lee desde `rich_text` o `select`, normaliza acentos y manda textos de Etapa al fallback Exa. Speaker entra solo con giro elegible, salta tamaño y suma 500; VIP suma 500, Presencial 150.
+- `tamano-speaker.manual-test.js`: 16/16. Tamaño se lee desde `rich_text` o `select`, normaliza acentos y manda textos de Etapa al fallback Exa. Speaker entra solo con giro elegible y salta tamaño. Sin afinidad, Speaker/VIP/Presencial quedan en score 0 (el canal ya no suma 500/150).
 - `checklist.manual-test.js`: Carlos → incompleto, le faltan 5 campos del bloque Speaker (foto, logo, sitio web, Instagram, LinkedIn). Laura → completo.
 
 Si algo de esto cambia inesperadamente, repórtalo antes de "corregir" el test para que vuelva a pasar — puede ser una regresión real, no un test mal escrito.
