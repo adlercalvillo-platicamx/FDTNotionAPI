@@ -32,8 +32,8 @@ const asistentes = [
   { id: 'grande', nombre: 'Grande SA', empresa: 'Grande SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE },
   { id: 'sin-etapa', nombre: 'Sin Etapa SA', empresa: 'Sin Etapa SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE, etapaDeNegocio: null },
   { id: 'mediana', nombre: 'Mediana SA', empresa: 'Mediana SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA },
-  { id: 'micro', nombre: 'Micro SA', empresa: 'Micro SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO, madurezNegocioExa: 'Consolidado' },
-  { id: 'pequena', nombre: 'Pequena SA', empresa: 'Pequena SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA },
+  { id: 'micro', nombre: 'Micro SA', empresa: 'Micro SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO },
+  { id: 'pequena', nombre: 'Pequena SA', empresa: 'Pequena SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
   { id: 'exa-cons', nombre: 'Viejo Consolidado', empresa: 'Viejo C', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Consolidado' },
   { id: 'exa-pyme', nombre: 'Viejo PyME', empresa: 'Viejo P', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'PyME' },
   { id: 'exa-temp', nombre: 'Viejo Temprano', empresa: 'Viejo T', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Temprano' },
@@ -83,6 +83,8 @@ delete require.cache[servicePath];
 const {
   sugerirMatchesParaSponsor,
   esCandidatoPorTamanoNegocio,
+  calcularScore,
+  PESOS,
 } = require('../src/services/matchmaking.service');
 
 async function main() {
@@ -115,18 +117,38 @@ async function main() {
   assert.ok(!idsPequenas.includes('grande'));
   assert.ok(!idsPequenas.includes('mediana'));
 
-  // Pequeña/Micro no ganan bono y, aunque exista Exa, no hacen fallback:
-  // su tamaño nuevo explícito es la fuente de verdad.
+  // Pequeña/Micro no tienen bono de tamaño; si Exa está poblado, sí caen
+  // al fallback de madurez (Capa 2 independiente de Capa 1).
   const scoresPequenas = Object.fromEntries(
     rPequenas.sugerencias.map((s) => [s.id, s.score])
   );
+  assert.strictEqual(scoresPequenas.pequena, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
   assert.strictEqual(scoresPequenas.micro, 0);
-  assert.strictEqual(scoresPequenas.pequena, 0);
-  assert.ok(
-    rPequenas.sugerencias
-      .find((s) => s.id === 'micro')
-      .explicacion.includes('dentro de los tamaños que este sponsor indicó buscar')
+  const explicacionPequena = rPequenas.sugerencias.find((s) => s.id === 'pequena');
+  assert.ok(explicacionPequena.explicacion.includes('dentro de los tamaños que este sponsor indicó buscar'));
+  assert.ok(explicacionPequena.explicacion.includes('consolidado'));
+  assert.ok(explicacionPequena.detalle.some((d) => d.includes('madurez_negocio')));
+
+  // Mock A: Pequeña + Exa Consolidado → entra y suma 40 de madurez.
+  const mockA = calcularScore(
+    { etapaClienteBuscada: ['Pequeña'] },
+    { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
+    0
   );
+  assert.strictEqual(mockA.score, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.strictEqual(mockA.senales.madurezNegocio, 'Consolidado');
+  assert.strictEqual(mockA.senales.tamanoNegocio, 'Pequeña');
+  assert.ok(mockA.detalle.some((d) => d.includes('madurez_negocio')));
+
+  // Mock B: Micro sin Exa → 0 de tamaño/madurez, sin error.
+  const mockB = calcularScore(
+    { etapaClienteBuscada: ['Micro'] },
+    { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO },
+    0
+  );
+  assert.strictEqual(mockB.score, 0);
+  assert.strictEqual(mockB.senales.madurezNegocio, null);
+  assert.strictEqual(mockB.senales.tamanoNegocio, 'Micro');
 
   // Registros legacy siguen independientes de la selección del sponsor.
   assert.ok(idsPequenas.includes('exa-cons'));

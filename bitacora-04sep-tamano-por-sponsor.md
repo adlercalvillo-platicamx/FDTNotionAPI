@@ -13,7 +13,7 @@ Decisión explícita de Adler: Presencial VIP y Speaker conservan el bypass de t
 - Capa 1 recibe `sponsor.etapaClienteBuscada` al evaluar tamaño.
 - Tamaño nuevo reconocido: Grande, Mediana, Pequeña o Micro. Solo entra si el sponsor lo eligió; selección vacía no deja pasar tamaños nuevos.
 - Registro legacy (`tamanoNegocio=null`): sigue entrando únicamente por Madurez Exa Consolidado/PyME. No se cruza con la selección del sponsor.
-- Pequeña/Micro no reciben bono de tamaño y no hacen fallback a Madurez Exa aunque Exa esté poblado. Grande conserva +40; Mediana +15.
+- Pequeña/Micro no reciben bono de tamaño. Capa 2 sí cae al fallback Exa Consolidado/PyME si está poblado (corregido el mismo 4-sep; ver sección siguiente). Grande conserva +40; Mediana +15.
 - Notas explican que Pequeña/Micro están dentro de los tamaños aceptados por ese sponsor. Para un VIP/Speaker admitido por bypass no afirma falsamente que el sponsor aceptó el tamaño.
 - El checklist nombra el campo como “Tamaños de empresa buscados”; el nombre técnico en Notion sigue siendo `Etapa Cliente Buscada`.
 
@@ -54,10 +54,23 @@ Esos dry-run excluyen los pares que ya tienen las 64 filas `Sugerido` de la corr
 
 No se modificó Notion. No se borraron ni regeneraron las 64 sugerencias actuales. Tras el push: redeploy Coolify; después borrar/regenerar `Sugerido` solo si se quiere reemplazar la corrida anterior. Campañas deben permanecer con simulación `true` y envío real `false`.
 
-Capa 2 no cambió: Grande +40, Mediana +15. Pequeña/Micro siguen en 0 de tamaño. El cron no reordena filas `Sugerido`; la siguiente corrida arma otro `topN` con el pool restante.
+Capa 2: Grande +40, Mediana +15. Pequeña/Micro no tienen bono de tamaño; si Exa dice Consolidado/PyME, ese fallback sí suma. El cron no reordena filas `Sugerido`; la siguiente corrida arma otro `topN` con el pool restante.
+
+## Corrección 4-sep — fallback Exa para Pequeña/Micro
+
+Pedido Adler: Capa 1 (¿entra?) y Capa 2 (¿cuánto suma?) son independientes. `calcularScore` había tratado Pequeña/Micro como tamaño declarado y cortaba el `else if` de Madurez Exa.
+
+Fix: el bono de tamaño sigue solo en Grande/Mediana. Cualquier otro caso, incluido Pequeña/Micro, cae al fallback Exa. Capa 1 y el bypass VIP/Speaker no se tocaron.
+
+Mocks:
+
+- A: `Pequeña` + Exa `Consolidado` frente a sponsor que busca Pequeña → entra, `score` 40, `senales.madurezNegocio === 'Consolidado'`, detalle con `madurez_negocio`.
+- B: `Micro` sin Exa → `score` 0, sin error.
+
+Commit/push de este fallback autorizado por Adler. Redeploy Coolify pendiente.
 
 ## Pendientes
 
-- Redeploy Coolify.
+- Redeploy Coolify (Capa 1 `9e31c60` + este fallback).
 - Tras deploy, dry-run Coolify para Leadin/Reevolution/Envia.com antes de volver a correr `sugerir-todos`.
 - La regla sigue pendiente de validación con Laura/Liz.

@@ -91,8 +91,9 @@ const PESOS = {
   MADUREZ_NEGOCIO_CONSOLIDADO: 40,
   MADUREZ_NEGOCIO_PYME: 15,
   // 26-ago: filtro duro de tamaño (Laura 25-ago). Estos pesos SOLO aplican
-  // si Tamaño de Negocio está poblado (Grande/Mediana). No se suman junto
-  // con MADUREZ_NEGOCIO_* — si ambos existen, gana el dato declarado.
+  // si Tamaño de Negocio es Grande o Mediana. Pequeña/Micro no tienen bono
+  // propio: caen al fallback MADUREZ_NEGOCIO_* si Exa está poblado. No se
+  // suman Grande/Mediana con madurez — si ambos existen, gana el tamaño.
   TAMANO_GRANDE: 40,
   TAMANO_MEDIANA: 15,
   // 27-ago — Exa adicional, independiente de MADUREZ_NEGOCIO_* (40/15).
@@ -117,12 +118,6 @@ const TAMANO_GRANDE = 'Grande - más de 250 empleados';
 const TAMANO_MEDIANA = 'Mediana - 50 a 250 empleados';
 const TAMANO_PEQUENA = 'Pequeña - 10 a 50 empleados';
 const TAMANO_MICRO = 'Micro - menos de 10 empleados';
-const TAMANOS_DECLARADOS = new Set([
-  TAMANO_GRANDE,
-  TAMANO_MEDIANA,
-  TAMANO_PEQUENA,
-  TAMANO_MICRO,
-]);
 const MADURECES_EXA_QUE_ENTRAN = new Set(['Consolidado', 'PyME']);
 
 function categoriaTamanoNegocio(tamano) {
@@ -324,24 +319,19 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.esPresencial = true;
   }
 
-  // Madurez Negocio (Exa) — solo si NO hay Tamaño de Negocio declarado.
-  // Si ambos existieran, gana el select del formulario (TAMANO_*), no se suman.
-  const tamanoDeclarado = TAMANOS_DECLARADOS.has(candidato.tamanoNegocio);
-  if (tamanoDeclarado) {
+  // Madurez Negocio (Exa) — solo si NO hay bono de Grande/Mediana.
+  // Pequeña/Micro no bloquean este fallback: Capa 1 ya decidió si entran.
+  const tamanoConBono =
+    candidato.tamanoNegocio === TAMANO_GRANDE || candidato.tamanoNegocio === TAMANO_MEDIANA;
+  if (tamanoConBono) {
     if (candidato.tamanoNegocio === TAMANO_GRANDE) {
       scoreBase += PESOS.TAMANO_GRANDE;
       detalle.push('tamano_negocio: empresa grande');
       senales.tamanoNegocio = 'Grande';
-    } else if (candidato.tamanoNegocio === TAMANO_MEDIANA) {
+    } else {
       scoreBase += PESOS.TAMANO_MEDIANA;
       detalle.push('tamano_negocio: empresa mediana');
       senales.tamanoNegocio = 'Mediana';
-    } else if (candidato.tamanoNegocio === TAMANO_PEQUENA) {
-      detalle.push('tamano_negocio: empresa pequeña (sin bono de tamaño)');
-      senales.tamanoNegocio = 'Pequeña';
-    } else if (candidato.tamanoNegocio === TAMANO_MICRO) {
-      detalle.push('tamano_negocio: microempresa (sin bono de tamaño)');
-      senales.tamanoNegocio = 'Micro';
     }
     senales.tamanoAceptadoPorSponsor = tamanosBuscadosNormalizados(
       sponsor.etapaClienteBuscada
@@ -356,6 +346,21 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.madurezNegocio = 'PyME';
   } else if (candidato.madurezNegocioExa === 'Temprano') {
     senales.madurezNegocio = 'Temprano'; // no suma, pero se registra
+  }
+
+  if (!tamanoConBono) {
+    const categoria = categoriaTamanoNegocio(candidato.tamanoNegocio);
+    if (categoria === 'Pequeña' || categoria === 'Micro') {
+      senales.tamanoNegocio = categoria;
+      senales.tamanoAceptadoPorSponsor = tamanosBuscadosNormalizados(
+        sponsor.etapaClienteBuscada
+      ).has(categoria);
+      detalle.push(
+        categoria === 'Pequeña'
+          ? 'tamano_negocio: empresa pequeña (sin bono de tamaño)'
+          : 'tamano_negocio: microempresa (sin bono de tamaño)'
+      );
+    }
   }
 
   // ICP Moda/Ecommerce (Exa) — Capa 2, no filtro duro. Vacío ≠ No.
