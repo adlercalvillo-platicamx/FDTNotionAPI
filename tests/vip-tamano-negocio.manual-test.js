@@ -24,7 +24,7 @@ const sponsor = {
   empresa: 'Acme',
   nivelPatrocinio: 'Oro',
   citasMinimasPrometidas: 2,
-  etapaClienteBuscada: [],
+  etapaClienteBuscada: ['Grande'],
   clientesActuales: '',
   clientesPotencialesDeseados: '',
   puestosBuscados: [],

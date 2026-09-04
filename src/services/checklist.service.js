@@ -24,7 +24,7 @@ const CAMPOS_REQUERIDOS_SPONSOR = [
   { campo: 'whatsapp', etiqueta: 'Celular / WhatsApp' },
   { campo: 'solucion', etiqueta: 'Solución que ofrece', esArray: true },
   { campo: 'servicios', etiqueta: 'Descripción del servicio/producto' },
-  { campo: 'etapaClienteBuscada', etiqueta: 'Etapa de desarrollo digital buscada', esArray: true },
+  { campo: 'etapaClienteBuscada', etiqueta: 'Tamaños de empresa buscados', esArray: true },
   { campo: 'puestosBuscados', etiqueta: 'Puestos/áreas con los que quiere parearse', esArray: true },
 ];
 

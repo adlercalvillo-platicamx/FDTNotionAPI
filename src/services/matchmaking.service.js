@@ -115,19 +115,59 @@ const VALOR_COMODIN = 'Otro';
 
 const TAMANO_GRANDE = 'Grande - más de 250 empleados';
 const TAMANO_MEDIANA = 'Mediana - 50 a 250 empleados';
-const TAMANOS_QUE_ENTRAN = new Set([TAMANO_GRANDE, TAMANO_MEDIANA]);
+const TAMANO_PEQUENA = 'Pequeña - 10 a 50 empleados';
+const TAMANO_MICRO = 'Micro - menos de 10 empleados';
+const TAMANOS_DECLARADOS = new Set([
+  TAMANO_GRANDE,
+  TAMANO_MEDIANA,
+  TAMANO_PEQUENA,
+  TAMANO_MICRO,
+]);
 const MADURECES_EXA_QUE_ENTRAN = new Set(['Consolidado', 'PyME']);
+
+function categoriaTamanoNegocio(tamano) {
+  if (tamano === TAMANO_GRANDE) return 'Grande';
+  if (tamano === TAMANO_MEDIANA) return 'Mediana';
+  if (tamano === TAMANO_PEQUENA) return 'Pequeña';
+  if (tamano === TAMANO_MICRO) return 'Micro';
+  return null;
+}
+
+function normalizarCategoriaTamanoBuscado(valor) {
+  const normalizado = String(valor || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (normalizado.startsWith('grande')) return 'Grande';
+  if (normalizado.startsWith('mediana')) return 'Mediana';
+  if (normalizado.startsWith('pequena')) return 'Pequeña';
+  if (normalizado.startsWith('micro')) return 'Micro';
+  return null;
+}
+
+function tamanosBuscadosNormalizados(valores) {
+  return new Set(
+    (Array.isArray(valores) ? valores : [])
+      .map(normalizarCategoriaTamanoBuscado)
+      .filter(Boolean)
+  );
+}
 
 /**
  * Filtro duro de tamaño (Capa 1, antes de calcularScore).
- * Allowlist, no denylist: un valor raro o vacío no “se cuela”.
- * Con Tamaño poblado: solo Grande/Mediana. Vacío (registro viejo):
+ * Con Tamaño nuevo poblado: entra solo si el sponsor eligió esa categoría
+ * en `Etapa Cliente Buscada` (el nombre técnico quedó legacy; desde 2-sep
+ * guarda Grande/Mediana/Pequeña/Micro). Si no se pasa la selección del
+ * sponsor, conserva el fallback histórico Grande/Mediana para callers viejos.
+ *
+ * Sin Tamaño nuevo (registro viejo): todo sigue igual — entra por
  * Consolidado/PyME de Exa. Vacío + vacío o Temprano → fuera.
  * Excepciones: Presencial VIP y Speaker entran aunque Tamaño y Madurez
- * Exa estén vacíos o sean Micro/Pequeña/Temprano (Adler, 1-sep-2026).
+ * Exa estén vacíos o no coincidan con el sponsor (Adler, 4-sep-2026).
  * El filtro de Giro/Industria no tiene esa excepción.
  */
-function esCandidatoPorTamanoNegocio(candidato) {
+function esCandidatoPorTamanoNegocio(candidato, tamanosBuscadosSponsor) {
   // Presencial VIP y Speaker entran sin importar Tamaño / Madurez Exa:
   // ambos boletos incluyen citas (ver contactos.service.js).
   // Confirmado por Adler el 1-sep-2026: el
@@ -147,7 +187,14 @@ function esCandidatoPorTamanoNegocio(candidato) {
   // `candidato.ticketTipo === 'Presencial VIP'`.
   if (candidato.ticketTipo === 'Presencial VIP' || candidato.ticketTipo === 'Speaker') return true;
   const tamano = candidato.tamanoNegocio;
-  if (tamano) return TAMANOS_QUE_ENTRAN.has(tamano);
+  if (tamano) {
+    const categoria = categoriaTamanoNegocio(tamano);
+    if (!categoria) return false;
+    const seleccion = Array.isArray(tamanosBuscadosSponsor)
+      ? tamanosBuscadosNormalizados(tamanosBuscadosSponsor)
+      : new Set(['Grande', 'Mediana']);
+    return seleccion.has(categoria);
+  }
   return MADURECES_EXA_QUE_ENTRAN.has(candidato.madurezNegocioExa);
 }
 
@@ -245,7 +292,8 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     solucionesCoincidentes: [],
     coincidenciaTextoLibre: false,
     madurezNegocio: null, // "Temprano" | "PyME" | "Consolidado" | null
-    tamanoNegocio: null, // "Grande" | "Mediana" | null (Micro/Pequeña no llegan aquí)
+    tamanoNegocio: null, // "Grande" | "Mediana" | "Pequeña" | "Micro" | null
+    tamanoAceptadoPorSponsor: false,
     icpModaEcommerce: null, // "Sí" | "No" | "Ambiguo" | null
     estadoWebExa: null, // "Con web" | "Sin web" | null
     cuotaPendiente,
@@ -278,7 +326,7 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 
   // Madurez Negocio (Exa) — solo si NO hay Tamaño de Negocio declarado.
   // Si ambos existieran, gana el select del formulario (TAMANO_*), no se suman.
-  const tamanoDeclarado = TAMANOS_QUE_ENTRAN.has(candidato.tamanoNegocio);
+  const tamanoDeclarado = TAMANOS_DECLARADOS.has(candidato.tamanoNegocio);
   if (tamanoDeclarado) {
     if (candidato.tamanoNegocio === TAMANO_GRANDE) {
       scoreBase += PESOS.TAMANO_GRANDE;
@@ -288,7 +336,16 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
       scoreBase += PESOS.TAMANO_MEDIANA;
       detalle.push('tamano_negocio: empresa mediana');
       senales.tamanoNegocio = 'Mediana';
+    } else if (candidato.tamanoNegocio === TAMANO_PEQUENA) {
+      detalle.push('tamano_negocio: empresa pequeña (sin bono de tamaño)');
+      senales.tamanoNegocio = 'Pequeña';
+    } else if (candidato.tamanoNegocio === TAMANO_MICRO) {
+      detalle.push('tamano_negocio: microempresa (sin bono de tamaño)');
+      senales.tamanoNegocio = 'Micro';
     }
+    senales.tamanoAceptadoPorSponsor = tamanosBuscadosNormalizados(
+      sponsor.etapaClienteBuscada
+    ).has(senales.tamanoNegocio);
   } else if (candidato.madurezNegocioExa === 'Consolidado') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
     detalle.push('madurez_negocio: empresa consolidada (Exa)');
@@ -425,6 +482,14 @@ function generarExplicacionNatural(candidato, senales) {
     texto += ` Declaró un negocio de tamaño grande.`;
   } else if (senales.tamanoNegocio === 'Mediana') {
     texto += ` Declaró un negocio de tamaño mediano.`;
+  } else if (senales.tamanoNegocio === 'Pequeña') {
+    texto += senales.tamanoAceptadoPorSponsor
+      ? ` Declaró un negocio de tamaño pequeño, dentro de los tamaños que este sponsor indicó buscar.`
+      : ` Declaró un negocio de tamaño pequeño.`;
+  } else if (senales.tamanoNegocio === 'Micro') {
+    texto += senales.tamanoAceptadoPorSponsor
+      ? ` Declaró una microempresa, dentro de los tamaños que este sponsor indicó buscar.`
+      : ` Declaró una microempresa.`;
   }
   if (senales.madurezNegocio === 'Consolidado') {
     texto += ` El enriquecimiento automático identificó su negocio como consolidado.`;
@@ -496,7 +561,9 @@ async function sugerirMatchesParaSponsor(
   // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
   // dado de baja). Etapa de negocio ya no se filtra (28-ago).
   const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ incluirVirtual })).filter(
-    (c) => esCandidatoAsistenteReal(c) && esCandidatoPorTamanoNegocio(c)
+    (c) =>
+      esCandidatoAsistenteReal(c) &&
+      esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada)
   );
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
@@ -854,5 +921,7 @@ module.exports = {
   PRIORIDAD_NIVEL_PATROCINIO,
   TAMANO_GRANDE,
   TAMANO_MEDIANA,
+  TAMANO_PEQUENA,
+  TAMANO_MICRO,
   PESOS,
 };

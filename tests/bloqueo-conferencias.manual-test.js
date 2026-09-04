@@ -94,7 +94,7 @@ async function casoMatchmakingExcluyeComite() {
     empresa: 'Acme',
     nivelPatrocinio: 'Oro',
     citasMinimasPrometidas: 2,
-    etapaClienteBuscada: [],
+    etapaClienteBuscada: ['Grande', 'Mediana'],
     clientesActuales: '',
     clientesPotencialesDeseados: '',
     puestosBuscados: [],

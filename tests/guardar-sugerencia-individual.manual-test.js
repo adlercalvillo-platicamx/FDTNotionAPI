@@ -12,7 +12,7 @@ const sponsor = {
   nombre: 'Sponsor Uno',
   categoria: 'Sponsor',
   empresa: 'Proveedor Uno',
-  etapaClienteBuscada: ['Venta por redes sociales'],
+  etapaClienteBuscada: ['Grande', 'Mediana'],
   solucion: ['Logistica / fulfillment'],
   puestosBuscados: ['Direccion General / Founder / CEO'],
   clientesActuales: '',

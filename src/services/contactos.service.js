@@ -149,8 +149,9 @@ function parsearContacto(pagina) {
     // 14 de agosto — agregado para el peso nuevo de matchmaking.service.js
     // (criterio de tamaño de empresa, pedido por Laura en la Demo 2, 13-ago).
     madurezNegocioExa: select(p['Madurez Negocio (Exa)']),
-    // Lectura dual durante la migración select → rich_text. Grande/Mediana
-    // entran; Micro/Pequeña no. Texto de Etapa → null → fallback Exa.
+    // Lectura dual durante la migración select → rich_text. La elegibilidad
+    // de Grande/Mediana/Pequeña/Micro depende de los tamaños elegidos por
+    // cada sponsor; texto legacy de Etapa → null → fallback Exa.
     // Presencial VIP y Speaker saltan tamaño; Giro no tiene excepción.
     tamanoNegocio: clasificarTamanoNegocio(
       texto(p['Tamaño de Negocio']) || select(p['Tamaño de Negocio'])

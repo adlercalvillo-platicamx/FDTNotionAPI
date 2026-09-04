@@ -20,13 +20,8 @@ const sponsor = {
   empresa: 'Acme',
   nivelPatrocinio: 'Oro',
   citasMinimasPrometidas: 2,
-  etapaClienteBuscada: [
-    'Exploracion de e-commerce',
-    'Operacion basica de e-commerce',
-    'Escalamiento de e-commerce',
-    'Estrategia omnicanal avanzada',
-    'Venta por redes sociales',
-  ],
+  // El nombre técnico quedó legacy: desde 2-sep guarda tamaños buscados.
+  etapaClienteBuscada: ['Grande', 'Mediana'],
   clientesActuales: '',
   clientesPotencialesDeseados: '',
   puestosBuscados: [],
@@ -85,9 +80,13 @@ require.cache[citasPath] = {
 };
 
 delete require.cache[servicePath];
-const { sugerirMatchesParaSponsor } = require('../src/services/matchmaking.service');
+const {
+  sugerirMatchesParaSponsor,
+  esCandidatoPorTamanoNegocio,
+} = require('../src/services/matchmaking.service');
 
 async function main() {
+  // Sponsor que solo acepta Grande/Mediana: conserva el resultado anterior.
   const r = await sugerirMatchesParaSponsor(sponsor.id, { topN: 20, escribirEnNotion: false });
   const ids = r.sugerencias.map((s) => s.id).sort();
   assert.deepStrictEqual(ids, ['exa-cons', 'exa-pyme', 'grande', 'mediana', 'sin-etapa']);
@@ -103,7 +102,64 @@ async function main() {
   assert.strictEqual(scores.mediana, 15);
   assert.strictEqual(scores['exa-cons'], 40);
   assert.strictEqual(scores['exa-pyme'], 15);
-  console.log('✅ Micro/Pequeña/Temprano/vacío no entran; Grande/Mediana/Exa sí; Grande sin etapa entra con sponsor tipo Blip.');
+
+  // El mismo pool para un sponsor que declaró Pequeña/Micro.
+  sponsor.etapaClienteBuscada = ['Pequeña', 'Micro'];
+  const rPequenas = await sugerirMatchesParaSponsor(sponsor.id, {
+    topN: 20,
+    escribirEnNotion: false,
+  });
+  const idsPequenas = rPequenas.sugerencias.map((s) => s.id).sort();
+  assert.deepStrictEqual(idsPequenas, ['exa-cons', 'exa-pyme', 'micro', 'pequena']);
+  assert.strictEqual(rPequenas.totalCandidatosEvaluados, 4);
+  assert.ok(!idsPequenas.includes('grande'));
+  assert.ok(!idsPequenas.includes('mediana'));
+
+  // Pequeña/Micro no ganan bono y, aunque exista Exa, no hacen fallback:
+  // su tamaño nuevo explícito es la fuente de verdad.
+  const scoresPequenas = Object.fromEntries(
+    rPequenas.sugerencias.map((s) => [s.id, s.score])
+  );
+  assert.strictEqual(scoresPequenas.micro, 0);
+  assert.strictEqual(scoresPequenas.pequena, 0);
+  assert.ok(
+    rPequenas.sugerencias
+      .find((s) => s.id === 'micro')
+      .explicacion.includes('dentro de los tamaños que este sponsor indicó buscar')
+  );
+
+  // Registros legacy siguen independientes de la selección del sponsor.
+  assert.ok(idsPequenas.includes('exa-cons'));
+  assert.ok(idsPequenas.includes('exa-pyme'));
+
+  // Decisión Adler 4-sep: VIP/Speaker conservan bypass de tamaño.
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Presencial VIP', tamanoNegocio: TAMANO_MICRO },
+      ['Grande']
+    ),
+    true
+  );
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Presencial', tamanoNegocio: TAMANO_PEQUENA },
+      ['Pequena']
+    ),
+    true,
+    'tolera selección del sponsor sin acento'
+  );
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Presencial', tamanoNegocio: TAMANO_GRANDE },
+      []
+    ),
+    false,
+    'selección vacía del sponsor no deja pasar tamaños nuevos por accidente'
+  );
+
+  console.log(
+    '✅ Tamaño nuevo respeta al sponsor; legacy conserva Exa; VIP mantiene bypass.'
+  );
 }
 
 main().catch((err) => {
