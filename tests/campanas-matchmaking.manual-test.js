@@ -123,6 +123,10 @@ const {
   elegirCampana,
   payloadPara,
   primerNombreParaSaludo,
+  nombreRepresentanteParaOferta,
+  largoCuerpoOferta,
+  maxLargoSugerencias,
+  TOPE_CUERPO_META,
   dispararCampanasAprobadas,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,
@@ -589,15 +593,16 @@ async function casoTopCuatroYParamsEstables() {
   const payload = resultado.detalle[0].payload;
   assert.strictEqual(payload.params.length, 2, 'la plantilla lleva solo nombre y sugerencias');
   assert.strictEqual(payload.params[0], 'Ana');
-  assert.ok(payload.params[1].includes('*Empresa 1* (Solución 1)'));
-  assert.ok(payload.params[1].includes('*Empresa 4* (Solución 4)'));
+  assert.ok(payload.params[1].includes('1) *Persona 1* de *Empresa 1* (Solución 1)'));
+  assert.ok(payload.params[1].includes('4) *Persona 4* de *Empresa 4* (Solución 4)'));
   assert.ok(!payload.params[1].includes('Empresa 5'));
-  assert.ok(payload.params[1].startsWith('• '), 'cada sponsor lleva viñeta, la primera incluida');
-  assert.strictEqual((payload.params[1].match(/•/g) || []).length, 4, 'una viñeta por sponsor');
+  assert.ok(payload.params[1].startsWith('1) '), 'los sponsors van numerados');
+  assert.strictEqual((payload.params[1].match(/ \| /g) || []).length, 3, 'tres barras entre cuatro sponsors');
   assert.ok(
     !/[\r\n\t]/.test(payload.params[1]),
     'WhatsApp rechaza saltos de línea dentro de una variable'
   );
+  assert.ok(largoCuerpoOferta(payload.params[0], payload.params[1]) <= TOPE_CUERPO_META);
   assert.deepStrictEqual(sponsorsConsultados, [], 'la oferta ya no consulta disponibilidad');
   assert.ok(!JSON.stringify(resultado).match(/C1|C2|Reactivaci[oó]n/));
   assert.strictEqual(envios.length, 0);
@@ -612,7 +617,7 @@ async function casoParametroSaneadoParaWhatsApp() {
     modoSimulacion: true,
   });
   assert.strictEqual(payload.params[0], 'Ana');
-  assert.strictEqual(payload.params[1], '• *Revie* (Reseñas de clientes, Marketing por WhatsApp)');
+  assert.strictEqual(payload.params[1], '1) *Revie* (Reseñas de clientes, Marketing por WhatsApp)');
 }
 
 // Ticketópolis manda "NOMBRE APELLIDO" en mayúsculas al actualizar Notion.
@@ -645,12 +650,16 @@ async function casoSolucionesCruzadasConLoQueBusca() {
     ],
     modoSimulacion: true,
   });
-  assert.strictEqual(payload.params[1], '• *Blip* (Omnichannel, Pagos) • *Envia.com*');
+  assert.strictEqual(
+    payload.params[1],
+    '1) *Blip* (Omnichannel, Pagos) | 2) *Envia.com*'
+  );
 }
 
 async function casoSugerenciasNoPasanElMargen() {
   configurarOferta();
   const largo = (n) => ({
+    nombre: `Representante con varios apellidos extra número ${n} Uno Dos`,
     empresa: `Empresa con nombre larguísimo número ${n}`,
     solucion: ['Estrategia de marketing digital', 'Inteligencia artificial'],
   });
@@ -659,11 +668,45 @@ async function casoSugerenciasNoPasanElMargen() {
     sugerencias: [largo(1), largo(2), largo(3), largo(4)],
     modoSimulacion: true,
   });
-  assert.ok(payload.params[1].length <= 400, `midió ${payload.params[1].length}`);
+  const tope = maxLargoSugerencias(payload.params[0]);
+  assert.ok(payload.params[1].length <= tope, `{{2}} midió ${payload.params[1].length} (tope ${tope})`);
+  assert.ok(
+    largoCuerpoOferta(payload.params[0], payload.params[1]) <= TOPE_CUERPO_META,
+    'el cuerpo armado no puede pasar de 1024'
+  );
   assert.ok(payload.params[1].includes('Empresa con nombre larguísimo número 4'));
   assert.ok(
     !payload.params[1].includes('Inteligencia artificial'),
-    'al no caber, se recorta a una solución por sponsor'
+    'al no caber las dos soluciones, se recorta a una por sponsor antes de soltar gente'
+  );
+}
+
+async function casoNombreRepresentanteDosTokens() {
+  assert.strictEqual(nombreRepresentanteParaOferta('Marco Trujillo'), 'Marco Trujillo');
+  assert.strictEqual(nombreRepresentanteParaOferta('RODRIGO CERDA SOMOZA'), 'Rodrigo Cerda');
+  assert.strictEqual(
+    nombreRepresentanteParaOferta('Zuleyma Jessamine Chávez Coronado'),
+    'Zuleyma Chávez'
+  );
+  assert.strictEqual(nombreRepresentanteParaOferta('ANA-MARÍA SOTO'), 'Ana-María Soto');
+  assert.strictEqual(nombreRepresentanteParaOferta(''), '');
+
+  configurarOferta();
+  const payload = payloadPara({
+    contacto,
+    sugerencias: [
+      {
+        nombre: 'ZULEYMA JESSAMINE CHÁVEZ CORONADO',
+        empresa: 'Blip',
+        solucion: ['Omnichannel'],
+      },
+      { nombre: 'Marco Trujillo', empresa: 'Platica.mx', solucion: ['Omnichannel'] },
+    ],
+    modoSimulacion: true,
+  });
+  assert.strictEqual(
+    payload.params[1],
+    '1) *Zuleyma Chávez* de *Blip* (Omnichannel) | 2) *Marco Trujillo* de *Platica.mx* (Omnichannel)'
   );
 }
 
@@ -729,8 +772,10 @@ async function main() {
   console.log('✅ El saludo usa solo el primer nombre, capitalizado.');
   await casoSolucionesCruzadasConLoQueBusca();
   console.log('✅ {{2}} solo lleva las soluciones que el asistente buscaba, sin "Otro".');
+  await casoNombreRepresentanteDosTokens();
+  console.log('✅ El representante sale como nombre + apellido paterno, en negrita.');
   await casoSugerenciasNoPasanElMargen();
-  console.log('✅ {{2}} se recorta antes del margen que Meta rechaza.');
+  console.log('✅ {{2}} se recorta para no pasar el tope de 1024 del cuerpo.');
   await casoCampanaPreviaBloqueaReenvio();
   console.log('✅ Una campaña previa bloquea cualquier segundo envío automático.');
   await casoSinBloquesLibresIgualEnvia();

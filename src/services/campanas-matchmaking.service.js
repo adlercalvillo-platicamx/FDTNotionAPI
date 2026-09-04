@@ -67,18 +67,34 @@ function plantillaPara(modoSimulacion) {
 
 // WhatsApp rechaza el envío si el valor de una variable trae saltos de línea,
 // tabs o más de 4 espacios seguidos, así que la lista de sponsors va en un solo
-// renglón, con viñetas en línea. Los asteriscos sí se renderizan como negritas.
-// El '\r' pasa el filtro de Meta pero es retorno de carro, no salto: probado el
-// 2-sep contra un número propio y se comió los sponsors 2 a 4. No usarlo.
-const VINETA = '•';
-const SEPARADOR_SUGERENCIAS = ` ${VINETA} `;
+// renglón. Los asteriscos sí se renderizan como negritas. El '\r' pasa el
+// filtro de Meta pero es retorno de carro, no salto: probado el 2-sep y se
+// comió los sponsors 2 a 4. No usarlo.
+const SEPARADOR_SUGERENCIAS = ' | ';
 // Se muestran las soluciones que el asistente pidió y el sponsor ofrece, no el
 // catálogo completo del sponsor: con 4 sponsors de 5 soluciones cada uno el
 // cuerpo llegaba a 1035 caracteres y Meta lo rechazaba (tope 1024).
 const MAX_SOLUCIONES_POR_SPONSOR = 2;
-// El texto fijo de agendar_cita_inicial ocupa ~570 caracteres, así que este es
-// el margen que queda para {{2}} antes de acercarse al tope de Meta.
-const MAX_LARGO_SUGERENCIAS = 400;
+const TOPE_CUERPO_META = 1024;
+// El cuerpo aprobado de agendar_cita_inicial (28-ago). Sirve para calcular
+// cuánto queda para {{2}} en cada envío: 1024 − fijo − {{1}} − colchón.
+const PLANTILLA_CUERPO_OFERTA_INICIAL = [
+  'Hola {{1}}, te escribimos del equipo de Fashion Digital Talks, el congreso internacional de eCommerce, negocios y moda en el que ya estás registrado.',
+  '',
+  'Tu registro incluye citas de negocios 1 a 1: reuniones privadas de 30 minutos, dentro del evento y sin costo extra, con expertos de empresas que ya resuelven los retos que tienes en tu operación de acuerdo a las soluciones que buscas. Tú eliges con quién y a qué hora.',
+  '',
+  '👉 Según el perfil que registraste, esto es lo que encontramos para ti:',
+  '{{2}}',
+  '',
+  'Responde este mensaje y aquí mismo te ayudamos a apartar día y hora.',
+].join('\n');
+const LARGO_CUERPO_FIJO_OFERTA = PLANTILLA_CUERPO_OFERTA_INICIAL.replace('{{1}}', '').replace(
+  '{{2}}',
+  ''
+).length;
+// Emoji y diferencias de conteo de Meta. Mejor un cuerpo un poco más corto
+// que un rechazo (#100) en silencio.
+const COLCHON_CONTEO_META = 24;
 // 'Otro' es el comodín del multi-select: no le dice nada al asistente.
 const SOLUCION_COMODIN = 'Otro';
 
@@ -105,6 +121,37 @@ function primerNombreParaSaludo(nombreCompleto) {
     .join('');
 }
 
+function capitalizarTokenNombre(token) {
+  return token
+    .split(/([-'’])/)
+    .map((parte) => (/^[-'’]$/.test(parte) ? parte : capitalizarPalabra(parte)))
+    .join('');
+}
+
+// Primer nombre + apellido paterno. 2 tokens se quedan. 3+ usa el primero y
+// el penúltimo (Zuleyma Jessamine Chávez Coronado → Zuleyma Chávez;
+// Rodrigo Cerda Somoza → Rodrigo Cerda). Pedido Adler 4-sep.
+function nombreRepresentanteParaOferta(nombreCompleto) {
+  const tokens = limpiarParametroPlantilla(nombreCompleto)
+    .split(' ')
+    .filter(Boolean)
+    .map(capitalizarTokenNombre);
+  if (tokens.length === 0) return '';
+  if (tokens.length <= 2) return tokens.join(' ');
+  return `${tokens[0]} ${tokens[tokens.length - 2]}`;
+}
+
+function maxLargoSugerencias(param1) {
+  return Math.max(
+    0,
+    TOPE_CUERPO_META - LARGO_CUERPO_FIJO_OFERTA - String(param1 || '').length - COLCHON_CONTEO_META
+  );
+}
+
+function largoCuerpoOferta(param1, param2) {
+  return LARGO_CUERPO_FIJO_OFERTA + String(param1 || '').length + String(param2 || '').length;
+}
+
 function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
   const ofrece = (Array.isArray(sponsor.solucion) ? sponsor.solucion : [sponsor.solucion])
     .map((solucion) => limpiarParametroPlantilla(solucion))
@@ -116,39 +163,53 @@ function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
   return (coincidentes.length ? coincidentes : ofrece).slice(0, maxSoluciones);
 }
 
-function textoSugerencias(sugerencias, solucionesBuscadas) {
-  const armar = (maxSoluciones) => {
-    const partes = (sugerencias || []).map((sponsor) => {
-      const nombre = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'Sponsor';
+function textoSugerencias(sugerencias, solucionesBuscadas, maxLargo) {
+  const tope = Number.isFinite(maxLargo) ? maxLargo : maxLargoSugerencias('Asistente');
+
+  const armar = (lista, maxSoluciones) => {
+    const partes = (lista || []).map((sponsor, indice) => {
+      const empresa = limpiarParametroPlantilla(sponsor.empresa);
+      const persona = nombreRepresentanteParaOferta(sponsor.nombre);
       const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
-      return soluciones.length ? `*${nombre}* (${soluciones.join(', ')})` : `*${nombre}*`;
+      let quien;
+      if (persona && empresa && persona.localeCompare(empresa, 'es', { sensitivity: 'accent' }) !== 0) {
+        quien = `*${persona}* de *${empresa}*`;
+      } else if (empresa) {
+        quien = `*${empresa}*`;
+      } else if (persona) {
+        quien = `*${persona}*`;
+      } else {
+        quien = '*Sponsor*';
+      }
+      const nucleo = soluciones.length ? `${quien} (${soluciones.join(', ')})` : quien;
+      return `${indice + 1}) ${nucleo}`;
     });
-    if (!partes.length) return '';
-    return `${VINETA} ${partes.join(SEPARADOR_SUGERENCIAS)}`;
+    return partes.join(SEPARADOR_SUGERENCIAS);
   };
 
-  // Nombres de empresa muy largos podrían pasarse del margen incluso con el
-  // tope por sponsor: se recorta a una solución y, en el peor caso, a los
-  // nombres solos. Un mensaje escueto es mejor que uno que Meta rechaza.
-  for (const max of [MAX_SOLUCIONES_POR_SPONSOR, 1]) {
-    const texto = armar(max);
-    if (texto.length <= MAX_LARGO_SUGERENCIAS) return texto;
+  // Máxima información que quepa: 2 soluciones → 1 → solo nombres → soltar
+  // el último sponsor (el de menor score; ya vienen ordenados).
+  let lista = [...(sugerencias || [])];
+  while (lista.length > 0) {
+    for (const maxSol of [MAX_SOLUCIONES_POR_SPONSOR, 1, 0]) {
+      const texto = armar(lista, maxSol);
+      if (texto.length <= tope) return texto;
+    }
+    lista = lista.slice(0, -1);
   }
-  return armar(0);
+  return '';
 }
 
-// La plantilla lleva 2 variables: {{1}} nombre, {{2}} sponsors con la solución
-// que el asistente buscaba y ese sponsor ofrece.
+// La plantilla lleva 2 variables: {{1}} nombre, {{2}} representante de empresa
+// con la solución que el asistente buscaba y ese sponsor ofrece.
 // Ya no manda horarios: los ofrece el agente en la conversación con
 // consultar_disponibilidad_cita, que revalida contra Notion en ese momento.
 function payloadPara({ contacto, sugerencias, modoSimulacion }) {
+  const param1 = primerNombreParaSaludo(contacto.nombre) || 'Asistente';
   return {
     phone: contacto.whatsapp,
     templateName: plantillaPara(modoSimulacion),
-    params: [
-      primerNombreParaSaludo(contacto.nombre) || 'Asistente',
-      textoSugerencias(sugerencias, contacto.solucionesBuscadas),
-    ],
+    params: [param1, textoSugerencias(sugerencias, contacto.solucionesBuscadas, maxLargoSugerencias(param1))],
   };
 }
 
@@ -512,8 +573,12 @@ module.exports = {
   ESTATUS_YA_INTERACTUO,
   agruparPorAsistente,
   primerNombreParaSaludo,
+  nombreRepresentanteParaOferta,
   textoSugerencias,
   payloadPara,
+  maxLargoSugerencias,
+  largoCuerpoOferta,
+  TOPE_CUERPO_META,
   contactoYaInteractuo,
   dispararCampanasAprobadas,
   enviarRecordatorioEvento,
