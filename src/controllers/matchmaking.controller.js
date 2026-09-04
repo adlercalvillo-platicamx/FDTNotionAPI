@@ -1,7 +1,10 @@
 // src/controllers/matchmaking.controller.js
 
 const { sugerirMatchesParaSponsor, sugerirMatchesGlobal } = require('../services/matchmaking.service');
-const { enviarRecordatorioEvento } = require('../services/campanas-matchmaking.service');
+const {
+  enviarRecordatorioEvento,
+  enviarFollowups72h,
+} = require('../services/campanas-matchmaking.service');
 const { consultarSugerenciasAprobadasPorAsistente } = require('../services/citas.service');
 const { variantesTelefono } = require('../services/contactos.service');
 
@@ -99,6 +102,20 @@ async function enviarRecordatorioEventoHttp(req, res) {
   }
 }
 
+async function enviarFollowups72hHttp(_req, res) {
+  try {
+    // Sin overrides por body: las dos barreras salen solo del env de Coolify.
+    const resultado = await enviarFollowups72h();
+    return res.status(200).json(resultado);
+  } catch (error) {
+    console.error('[MatchmakingController] Error en follow-up 72h:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message || 'Error al procesar follow-ups de 72 horas.',
+    });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /matchmaking/sugerir-todos
 // Body opcional: { "topN": 3 }
@@ -138,5 +155,6 @@ module.exports = {
   sugerirMatches,
   sugerirMatchesTodos,
   enviarRecordatorioEventoHttp,
+  enviarFollowups72hHttp,
   sugerenciasAsistente,
 };

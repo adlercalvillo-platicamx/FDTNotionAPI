@@ -7,6 +7,7 @@
 // (Plática aún no expone cancelar un scheduled).
 
 const contactosService = require('./contactos.service');
+const { payloadCanalYAgente } = require('./platica-client.service');
 
 const BASE_URL = (process.env.PLATICA_API_BASE_URL || 'https://api.platica.mx').replace(/\/$/, '');
 const MINUTOS_ANTES = 15;
@@ -102,10 +103,8 @@ async function enviarPlantillaProgramada({ phone, templateName, params, schedule
   if (!conversationId) throw new Error('Teléfono vacío para WhatsApp');
   if (!templateName) throw new Error('Falta nombre de plantilla');
   if (!scheduleTime) throw new Error('Falta scheduleTime');
-  const channelId = process.env.PLATICA_CHANNEL_ID;
-  if (!channelId) throw new Error('Falta PLATICA_CHANNEL_ID');
   return platicaFetch('/v1/messages/template', {
-    channelId,
+    ...payloadCanalYAgente(),
     conversationId,
     template: {
       name: templateName,

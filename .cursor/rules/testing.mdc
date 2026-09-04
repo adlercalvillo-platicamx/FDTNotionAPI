@@ -12,6 +12,10 @@ Son scripts que se corren directo con `node tests/archivo.js`, no un framework d
 node tests/matchmaking.manual-test.js
 node tests/matchmaking-global.manual-test.js
 node tests/checklist.manual-test.js
+node tests/platica-respuestas-webhook.manual-test.js
+node tests/platica-client-conversations.manual-test.js
+node tests/platica-responder-agent.manual-test.js
+node tests/followup-72h.manual-test.js
 ```
 
 **Patrón importante si agregas una prueba nueva:** los tests de matchmaking inyectan mocks directo en `require.cache` ANTES de requerir el servicio real (ver el inicio de `matchmaking.manual-test.js`), para probar el archivo real que vive en `src/services/` y no una copia aparte. Sigue ese mismo patrón — no copies `matchmaking.service.js` a otra carpeta para probarlo, eso desincroniza la prueba del código real.
@@ -26,5 +30,9 @@ node tests/checklist.manual-test.js
 - `tamano-speaker.manual-test.js`: 16/16. Tamaño se lee desde `rich_text` o `select`, normaliza acentos y manda textos de Etapa al fallback Exa. Speaker entra solo con giro elegible y salta tamaño. Sin afinidad, Speaker/VIP/Presencial quedan en score 0 (el canal ya no suma 500/150).
 - `checklist.manual-test.js`: Carlos → incompleto, le faltan 5 campos del bloque Speaker (foto, logo, sitio web, Instagram, LinkedIn). Laura → completo. Checklist de sponsor nombra `etapaClienteBuscada` como “Tamaños de empresa buscados”.
 - `guardar-sugerencia-individual.manual-test.js` y el caso de matchmaking en `bloqueo-conferencias.manual-test.js`: el sponsor mock declara tamaños (`Grande`/`Mediana`); un Grande con `Etapa Cliente Buscada` vacía o con texto legacy de madurez ya no entra.
+- `platica-respuestas-webhook.manual-test.js`: firma inválida rechazada; largo distinto no tumba el proceso; outgoing y respuesta anterior ignorados; incoming posterior marcado; duplicado idempotente; body > 100kb → 413; flood por IP → 429.
+- `platica-client-conversations.manual-test.js`: lista todos los hilos por teléfono/canal y carga el historial de cada ID; tolera los envoltorios canónicos de respuesta.
+- `platica-responder-agent.manual-test.js`: POST `/v1/messages/template` lleva `channelId=wb-1167456423128610` y `responderAgentId=c1IYnFsr0Jzfqq4NeLAs`.
+- `followup-72h.manual-test.js`: 71:59 no vence y 72:00 sí; horario CDMX y fin de semana; respuesta recuperada por polling; cita confirmada; simulación sin escrituras; primer nombre; estados En curso/Enviado/Falló; reconciliación sin duplicado.
 
 Si algo de esto cambia inesperadamente, repórtalo antes de "corregir" el test para que vuelva a pasar — puede ser una regresión real, no un test mal escrito.

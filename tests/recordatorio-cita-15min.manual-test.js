@@ -8,6 +8,7 @@ const path = require('path');
 process.env.PLATICA_API_BASE_URL = 'https://api.platica.mx';
 process.env.PLATICA_API_KEY = 'test-key';
 process.env.PLATICA_CHANNEL_ID = 'wb-test';
+process.env.PLATICA_RESPONDER_AGENT_ID = 'c1IYnFsr0Jzfqq4NeLAs';
 process.env.PLATICA_TEMPLATE_CITA_15MIN = 'notificacion_cita_15min_antes';
 process.env.CITAS_ZONA_HORARIA_OFFSET = '-06:00';
 
@@ -131,6 +132,7 @@ async function okAsync(nombre, fn) {
     assert.deepStrictEqual(fetches[0].body.template.params, ['Juan', 'Infracommerce']);
     assert.strictEqual(fetches[0].body.conversationId, '5215512345678');
     assert.strictEqual(fetches[0].body.channelId, 'wb-test');
+    assert.strictEqual(fetches[0].body.responderAgentId, 'c1IYnFsr0Jzfqq4NeLAs');
     assert.ok(!('delay' in fetches[0].body));
   });
 

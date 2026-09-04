@@ -120,6 +120,10 @@ function parsearContacto(pagina) {
     ultimaCampanaEnviada: select(p['Última Campaña Enviada']),
     fechaUltimaCampana: fecha(p['Fecha Última Campaña']),
     reactivacionesEnviadas: numero(p['Reactivaciones Enviadas']) || 0,
+    respondioOfertaInicial: checkbox(p['Respondió Oferta Inicial']),
+    fechaRespuestaOfertaInicial: fecha(p['Fecha Respuesta Oferta Inicial']),
+    estadoFollowup72h: select(p['Estado Follow-up 72h']),
+    fechaFollowup72h: fecha(p['Fecha Follow-up 72h']),
     recordatorioEventoEnviado: checkbox(p['Recordatorio Evento Enviado']),
     bio: texto(p['Bio']),
     fotoSpeaker: url(p['Foto Speaker']),
@@ -537,6 +541,66 @@ async function incrementarReactivaciones(contactoId, valorActual) {
   });
 }
 
+async function marcarRespuestaOfertaInicial(contactoId, fechaRespuesta) {
+  requireDataSourceId();
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      properties: {
+        'Respondió Oferta Inicial': { checkbox: true },
+        'Fecha Respuesta Oferta Inicial': { date: { start: fechaRespuesta } },
+      },
+    }),
+  });
+}
+
+async function actualizarEstadoFollowup72h({
+  contactoId,
+  estado,
+  fecha,
+  reactivacionesEnviadas,
+}) {
+  requireDataSourceId();
+  const properties = {
+    'Estado Follow-up 72h': { select: estado ? { name: estado } : null },
+    'Fecha Follow-up 72h': { date: fecha ? { start: fecha } : null },
+  };
+  if (typeof reactivacionesEnviadas === 'number') {
+    properties['Reactivaciones Enviadas'] = { number: reactivacionesEnviadas };
+  }
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
+async function listarContactosConOfertaInicialVencida(fechaLimite) {
+  requireDataSourceId();
+  const resultados = [];
+  let startCursor;
+  do {
+    const body = {
+      filter: {
+        and: [
+          { property: 'Categoria', select: { equals: 'Asistente' } },
+          { property: 'Dado de Baja', checkbox: { equals: false } },
+          { property: 'Última Campaña Enviada', select: { equals: 'Oferta inicial' } },
+          { property: 'Fecha Última Campaña', date: { on_or_before: fechaLimite } },
+        ],
+      },
+      page_size: 100,
+    };
+    if (startCursor) body.start_cursor = startCursor;
+    const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    resultados.push(...(data.results || []).map(parsearContacto));
+    startCursor = data.has_more ? data.next_cursor : null;
+  } while (startCursor);
+  return resultados;
+}
+
 /**
  * Todos los Sponsor activos (excluye Dado de Baja) — universo que recorre
  * la orquestación global de matchmaking (sugerirMatchesGlobal). No excluye
@@ -685,6 +749,9 @@ module.exports = {
   listarSponsorsYSpeakersActivos,
   actualizarChecklist,
   actualizarEstadoCampana,
+  marcarRespuestaOfertaInicial,
+  actualizarEstadoFollowup72h,
+  listarContactosConOfertaInicialVencida,
   marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,
   listarSponsorsActivos,
