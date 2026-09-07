@@ -89,14 +89,23 @@ function crearHarness({
       }
       return false;
     },
-    async contarCitasEnBloque({ inicio }) {
-      let n = 0;
-      for (const page of porId.values()) {
-        if (['Confirmada', 'Confirmada sin notificar'].includes(page.estatus) && page.inicio === inicio) {
-          n += 1;
-        }
-      }
-      return n;
+    async obtenerOcupacionMesasEnBloque({ inicio, exceptPageId }) {
+      const activas = [...porId.values()].filter(
+        (page) =>
+          page.id !== exceptPageId &&
+          ['Confirmada', 'Confirmada sin notificar'].includes(page.estatus) &&
+          page.inicio === inicio
+      );
+      return {
+        cantidad: activas.length,
+        numerosOcupados: [
+          ...new Set(activas.map((page) => page.mesa).filter((mesa) => Number.isInteger(mesa))),
+        ],
+      };
+    },
+    async contarCitasEnBloque({ inicio, exceptPageId }) {
+      const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
+      return ocupacion.cantidad;
     },
     async crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, fin, mesa }) {
       seq += 1;
@@ -653,6 +662,9 @@ function baseParams(overrides = {}) {
       },
       async asistenteOcupadoEnBloque() {
         return false;
+      },
+      async obtenerOcupacionMesasEnBloque() {
+        return { cantidad: 0, numerosOcupados: [] };
       },
       async contarCitasEnBloque() {
         return 0;

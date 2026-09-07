@@ -156,7 +156,7 @@ function construirIndiceCitasConfirmadas(filasMapeadas) {
  * siempre de 30 min exactos alineados, hay que cambiar esto a un filtro de
  * rango (before/after) en vez de equals.
  */
-async function contarCitasEnBloque({ inicio, exceptPageId }) {
+async function obtenerOcupacionMesasEnBloque({ inicio, exceptPageId }) {
   requireDataSourceId();
   const and = [
     {
@@ -173,9 +173,24 @@ async function contarCitasEnBloque({ inicio, exceptPageId }) {
     method: 'POST',
     body: JSON.stringify({ filter: { and } }),
   });
-  return (data.results || [])
+  const filas = (data.results || [])
     .filter((fila) => !esMismaPagina(fila.id, exceptPageId))
-    .filter((fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal']))).length;
+    .filter((fila) => !esFilaBloqueoAgenda(primerRelacionId(fila.properties?.['Contacto Principal'])));
+  const numerosOcupados = filas
+    .map((fila) => textoRichText(fila.properties?.['Mesa / Ubicacion']).match(/^Mesa\s+(\d+)$/i))
+    .filter(Boolean)
+    .map((match) => Number(match[1]))
+    .filter((numero) => Number.isInteger(numero) && numero > 0);
+
+  return {
+    cantidad: filas.length,
+    numerosOcupados: [...new Set(numerosOcupados)].sort((a, b) => a - b),
+  };
+}
+
+async function contarCitasEnBloque({ inicio, exceptPageId }) {
+  const ocupacion = await obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
+  return ocupacion.cantidad;
 }
 
 /**
@@ -1772,6 +1787,7 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePag
 }
 
 module.exports = {
+  obtenerOcupacionMesasEnBloque,
   contarCitasEnBloque,
   sponsorOcupadoEnBloque,
   asistenteOcupadoEnBloque,

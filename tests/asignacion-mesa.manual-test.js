@@ -1,7 +1,7 @@
 // tests/asignacion-mesa.manual-test.js
 //
 // Asignación automática de Mesa / Ubicacion en reservarCita.
-// Cubre: orden de llegada, cancelación+reasignación por conteo, y
+// Cubre: orden de llegada, reutilización de huecos tras cancelar, y
 // concurrencia (mutex) — sin Notion ni Calendar reales.
 //
 //   node tests/asignacion-mesa.manual-test.js
@@ -91,12 +91,21 @@ function crearEstadoNotion() {
         }
         return false;
       },
-      async contarCitasEnBloque({ inicio }) {
-        let n = 0;
-        for (const page of porId.values()) {
-          if (page.estatus === 'Confirmada' && page.inicio === inicio) n += 1;
-        }
-        return n;
+      async obtenerOcupacionMesasEnBloque({ inicio, exceptPageId }) {
+        const activas = [...porId.values()].filter(
+          (page) =>
+            page.id !== exceptPageId && page.estatus === 'Confirmada' && page.inicio === inicio
+        );
+        return {
+          cantidad: activas.length,
+          numerosOcupados: [
+            ...new Set(activas.map((page) => page.mesa).filter((mesa) => Number.isInteger(mesa))),
+          ].sort((a, b) => a - b),
+        };
+      },
+      async contarCitasEnBloque({ inicio, exceptPageId }) {
+        const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
+        return ocupacion.cantidad;
       },
       async crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, mesa }) {
         seq += 1;
@@ -230,8 +239,8 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.mesa, 2);
   });
 
-  console.log('\n=== Cancelación + reasignación por conteo (no por hueco libre) ===');
-  // Reset parcial: 3 confirmadas mesas 1/2/3 → cancelar la de mesa 2 → nueva = Mesa 3
+  console.log('\n=== Cancelación + reutilización del hueco físico ===');
+  // 3 confirmadas mesas 1/2/3 → cancelar la de mesa 2 → nueva = Mesa 2.
   const bloqueCancel = '2026-10-07T11:00:00-06:00';
   const finCancel = '2026-10-07T11:30:00-06:00';
   estado.seedConfirmada({ id: 'seed-m1', sponsor: 's-c1', inicio: bloqueCancel, mesa: 1 });
@@ -243,7 +252,7 @@ function baseParams(overrides = {}) {
     const n = await estado.mock.contarCitasEnBloque({ inicio: bloqueCancel });
     assert.strictEqual(n, 2);
   });
-  await ok('Reserva nueva tras cancelar Mesa 2 → recibe Mesa 3 (no 2 ni 4)', async () => {
+  await ok('Reserva nueva tras cancelar Mesa 2 → reutiliza Mesa 2 sin duplicar Mesa 3', async () => {
     const r = await reservarCita(
       baseParams({
         sponsor: 's-c-nueva',
@@ -252,8 +261,8 @@ function baseParams(overrides = {}) {
         fin: finCancel,
       })
     );
-    assert.strictEqual(r.mesa, 3, `esperaba Mesa 3, got ${r.mesa}`);
-    assert.strictEqual(estado.porId.get(r.notion_page_id).mesa, 3);
+    assert.strictEqual(r.mesa, 2, `esperaba Mesa 2, got ${r.mesa}`);
+    assert.strictEqual(estado.porId.get(r.notion_page_id).mesa, 2);
   });
 
   console.log('\n=== Concurrencia (mutex) — mismo bloque, dos reservas en paralelo ===');

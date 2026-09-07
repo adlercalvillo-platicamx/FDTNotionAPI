@@ -67,6 +67,14 @@ const NOTA_CALENDARIO = NOTA_CALENDARIO_ACTUALIZAR;
 const REINTENTOS_INMEDIATOS_SMTP = 3;
 const bookingMutex = new Mutex();
 
+function primeraMesaLibre(numerosOcupados) {
+  const ocupadas = new Set(numerosOcupados);
+  for (let mesa = 1; mesa <= CAPACIDAD_MAXIMA_MESAS; mesa += 1) {
+    if (!ocupadas.has(mesa)) return mesa;
+  }
+  return null;
+}
+
 async function hidratarAsistenteSinBloquear(asistentePageId) {
   try {
     await hidratarPerfilPlatica({ asistentePageId });
@@ -498,10 +506,10 @@ async function reservarCita({
       citaPendiente = existenteEnLock;
     }
 
-    const [sponsorOcupado, asistenteOcupado, citasEnBloque] = await Promise.all([
+    const [sponsorOcupado, asistenteOcupado, ocupacionMesas] = await Promise.all([
       citasService.sponsorOcupadoEnBloque({ sponsorPageId: sponsor_notion_id, inicio }),
       citasService.asistenteOcupadoEnBloque({ asistentePageId: asistente_notion_id, inicio }),
-      citasService.contarCitasEnBloque({ inicio }),
+      citasService.obtenerOcupacionMesasEnBloque({ inicio }),
     ]);
 
     if (sponsorOcupado) {
@@ -513,14 +521,20 @@ async function reservarCita({
         'Ese asistente ya tiene una cita confirmada en ese mismo horario.'
       );
     }
-    if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
+    if (ocupacionMesas.cantidad >= CAPACIDAD_MAXIMA_MESAS) {
       throw new BookingError(
         'CAPACIDAD_MESAS_LLENA',
         `Ya se alcanzó el máximo de ${CAPACIDAD_MAXIMA_MESAS} mesas simultáneas en ese horario.`
       );
     }
 
-    const numeroMesa = citasEnBloque + 1;
+    const numeroMesa = primeraMesaLibre(ocupacionMesas.numerosOcupados);
+    if (!numeroMesa) {
+      throw new BookingError(
+        'CAPACIDAD_MESAS_LLENA',
+        `No hay una mesa libre entre Mesa 1 y Mesa ${CAPACIDAD_MAXIMA_MESAS} en ese horario.`
+      );
+    }
 
     if (!citaPendiente) {
       try {
@@ -1097,7 +1111,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
   validarDuracionYFecha(inicio, fin);
 
   return bookingMutex.runExclusive(async () => {
-    const [sponsorOcupado, asistenteOcupado, citasEnBloque] = await Promise.all([
+    const [sponsorOcupado, asistenteOcupado, ocupacionMesas] = await Promise.all([
       citasService.sponsorOcupadoEnBloque({
         sponsorPageId: cita.sponsorPageId,
         inicio,
@@ -1108,7 +1122,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
         inicio,
         exceptPageId: cita.id,
       }),
-      citasService.contarCitasEnBloque({ inicio, exceptPageId: cita.id }),
+      citasService.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId: cita.id }),
     ]);
 
     if (sponsorOcupado) {
@@ -1120,7 +1134,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
         'Ese asistente ya tiene otra cita confirmada en el horario nuevo.'
       );
     }
-    if (citasEnBloque >= CAPACIDAD_MAXIMA_MESAS) {
+    if (ocupacionMesas.cantidad >= CAPACIDAD_MAXIMA_MESAS) {
       throw new BookingError(
         'CAPACIDAD_MESAS_LLENA',
         `Ya se alcanzó el máximo de ${CAPACIDAD_MAXIMA_MESAS} mesas simultáneas en el horario nuevo.`
@@ -1136,7 +1150,13 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
       emailsExtra: [],
     });
 
-    const mesa = citasEnBloque + 1;
+    const mesa = primeraMesaLibre(ocupacionMesas.numerosOcupados);
+    if (!mesa) {
+      throw new BookingError(
+        'CAPACIDAD_MESAS_LLENA',
+        `No hay una mesa libre entre Mesa 1 y Mesa ${CAPACIDAD_MAXIMA_MESAS} en el horario nuevo.`
+      );
+    }
     const horarioAnterior = cita.inicio;
     await citasService.reprogramarCita({
       notionPageId: cita.id,

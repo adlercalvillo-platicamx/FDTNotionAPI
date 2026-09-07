@@ -178,10 +178,19 @@ Object.assign(citasReal, {
         p.properties['Fecha y Hora'].date.start === inicio
     );
   },
-  async contarCitasEnBloque({ inicio, exceptPageId }) {
-    return [...paginas.values()].filter(
+  async obtenerOcupacionMesasEnBloque({ inicio, exceptPageId }) {
+    const activas = [...paginas.values()].filter(
       (p) => p.id !== exceptPageId && esCitaReal(p) && p.properties['Fecha y Hora'].date.start === inicio
-    ).length;
+    );
+    const numerosOcupados = activas
+      .map((p) => p.properties['Mesa / Ubicacion'].rich_text?.[0]?.plain_text?.match(/^Mesa\s+(\d+)$/i))
+      .filter(Boolean)
+      .map((match) => Number(match[1]));
+    return { cantidad: activas.length, numerosOcupados: [...new Set(numerosOcupados)] };
+  },
+  async contarCitasEnBloque({ inicio, exceptPageId }) {
+    const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
+    return ocupacion.cantidad;
   },
   async reprogramarCita({ notionPageId, inicio, fin, mesa, horarioOriginal, horarioOriginalYaGuardado }) {
     const pagina = paginas.get(notionPageId);
@@ -383,6 +392,52 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(
       paginas.get('cita-seq').properties['Reprogramada Horario Original'].date.start,
       '2026-10-07T10:30:00-06:00'
+    );
+  });
+
+  await ok('Mover a un bloque con Mesa 2 cancelada → reutiliza Mesa 2', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-mover-hueco',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+    });
+    crearPagina({
+      id: 'destino-m1',
+      inicio: '2026-10-07T12:00:00-06:00',
+      fin: '2026-10-07T12:30:00-06:00',
+      mesa: 'Mesa 1',
+      sponsor: 'sponsor-m1',
+      asistente: 'asistente-m1',
+    });
+    crearPagina({
+      id: 'destino-m2-cancelada',
+      estatus: 'Cancelada',
+      inicio: '2026-10-07T12:00:00-06:00',
+      fin: '2026-10-07T12:30:00-06:00',
+      mesa: 'Mesa 2',
+      sponsor: 'sponsor-m2',
+      asistente: 'asistente-m2',
+    });
+    crearPagina({
+      id: 'destino-m3',
+      inicio: '2026-10-07T12:00:00-06:00',
+      fin: '2026-10-07T12:30:00-06:00',
+      mesa: 'Mesa 3',
+      sponsor: 'sponsor-m3',
+      asistente: 'asistente-m3',
+    });
+
+    const r = await modificarCita({
+      citaId: 'cita-mover-hueco',
+      nuevaFechaHora: '2026-10-07T12:00:00-06:00',
+      ahora: AHORA_ANTES_DEL_EVENTO,
+    });
+
+    assert.strictEqual(r.mesa, 2);
+    assert.strictEqual(
+      paginas.get('cita-mover-hueco').properties['Mesa / Ubicacion'].rich_text[0].plain_text,
+      'Mesa 2'
     );
   });
 
