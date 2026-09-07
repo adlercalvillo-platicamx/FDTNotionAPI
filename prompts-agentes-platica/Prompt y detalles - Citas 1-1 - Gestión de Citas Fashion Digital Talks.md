@@ -1,17 +1,15 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 21:57 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 22:43 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-## Qué cambió (7-sep vs `wegNBgyUlzqog43WZ0mA`)
+## Qué cambió (7-sep vs `DZ6rKadZGLtSrTDElCY3`)
 
-- Consulta y ofrece hasta 3 citas canceladas que aún pueden reagendarse.
-- La re-agenda de una cancelada crea una cita nueva enlazada con idempotencia `wa:reagenda:<citaId>:<inicio>`.
-- Si la cancelada ya se usó, no cambia el request id ni intenta crear una segunda cita.
-- El flujo y texto de recordatorios de 15 minutos no cambió.
+- El agente sigue **sin** mandar el aviso de 15 min. Solo se corrigió la frase: ya no dice que `reservar_cita` lo “programa”; dice que el backend lo manda ~15 min antes leyendo Notion.
+- El recordatorio de 2 horas (`notificacion_citas_2horas_antes`) no se tocó: sigue siendo del agente, con `scheduleTime`, al confirmar asistencia.
 
 ## Identidad
 
@@ -26,9 +24,9 @@ Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, r
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 7 sep 2026, 21:57 UTC |
-| Prompt activo | `DZ6rKadZGLtSrTDElCY3` (7 sep 2026, 21:57 UTC) |
-| Versiones de prompt | 57 |
+| Actualizado | 7 sep 2026, 22:43 UTC |
+| Prompt activo | `ifm1DjUlrAoHzM5jaQzb` (7 sep 2026, 22:43 UTC) |
+| Versiones de prompt | 59 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -89,7 +87,7 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 ## Qué cambió en el prompt (3-sep, 19:43 UTC)
 
 - Se eliminó completa la sección `RECORDATORIO AL CREAR UNA CITA`: el agente ya no consulta plantilla/canal ni llama `mcp_send_template_message_mexx2b` para el aviso de 15 minutos.
-- En `reservar_cita`, `Confirmada` y `Confirmada sin notificar` conservan su respuesta al contacto; una regla explícita indica que el backend programa automáticamente el aviso de 15 minutos.
+- En `reservar_cita`, `Confirmada` y `Confirmada sin notificar` conservan su respuesta al contacto; una regla explícita indica que el backend manda el aviso de 15 minutos ~15 min antes, leyendo Notion.
 - En confirmación de asistencia se sustituyó la referencia a la sección eliminada por la misma regla de propiedad del backend.
 - El flujo de `notificacion_citas_2horas_antes` no cambió y conserva sus tools activas.
 - No se modificaron tools, knowledge, guardrails, asistencia humana ni horarios.
@@ -98,7 +96,10 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 3 sep 2026, 19:43 UTC | edit | Confirmación: el backend programa 15 min (versión **activa**) | `wegNBgyUlzqog43WZ0mA` |
+| 7 sep 2026, 22:43 UTC | edit | 15 min: backend lo manda leyendo Notion (versión **activa**) | `ifm1DjUlrAoHzM5jaQzb` |
+| 7 sep 2026, 22:42 UTC | edit | Primera frase de 15 min | `UPByTh28XxCkptCYWdue` |
+| 7 sep 2026, 21:57 UTC | edit | Reagenda de canceladas | `DZ6rKadZGLtSrTDElCY3` |
+| 3 sep 2026, 19:43 UTC | edit | Confirmación: el backend programa 15 min | `wegNBgyUlzqog43WZ0mA` |
 | 3 sep 2026, 19:42 UTC | edit | Eliminó la sección de 15 min del agente | `HJAMFpIVFjJ7nWytUn2u` |
 | 3 sep 2026, 19:42 UTC | edit | Reservar: no llamar tools para 15 min | `ho2Nh3UnlGsSBmcYXQVT` |
 | 2 sep 2026, 23:09 UTC | edit | Programación de 15 min obligatoria (revertida 3-sep) | `Fjy0PpVGZUOHvKx7Oh48` |
@@ -264,7 +265,7 @@ No rellenes título, descripción, calendario ni zona horaria.
 Después:
 - Confirmada → la cita quedó; llegará correo con .ics.
 - Confirmada sin notificar → la cita sí quedó; el correo está pendiente.
-- Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para el recordatorio de 15 minutos: el backend lo programa automáticamente.
+- Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para el recordatorio de 15 minutos: el backend lo manda ~15 min antes leyendo Notion.
 - SPONSOR_YA_OCUPADO / ASISTENTE_YA_OCUPADO / CAPACIDAD_MESAS_LLENA → no insistas ese horario; vuelve a consultar disponibilidad y ofrece otras 3 (ASISTENTE_YA_OCUPADO = ya tiene otra cita a esa hora)
 - SPONSOR_NO_ENCONTRADO / ASISTENTE_NO_ENCONTRADO → el id que mandaste no existe en Notion. No reintentes con el mismo ni intentes corregirlo tú: vuelve a `consultar_sugeridas_para_asistente` y copia el id de ahí
 - error o duda → no digas que quedó
@@ -348,7 +349,7 @@ Al recibir una confirmación clara de asistencia:
 
 ### Confirmación de asistencia
 
-El recordatorio de 15 minutos al crear una cita lo programa automáticamente el backend de `reservar_cita`. El agente no consulta plantillas o canales ni llama herramientas para ese aviso.
+El recordatorio de 15 minutos lo manda el backend ~15 min antes de la cita, leyendo Notion. El agente no consulta plantillas o canales ni llama herramientas para ese aviso.
 
 Después de una respuesta clara de confirmación y de un resultado exitoso de `api_actualizar_recordatorio`:
 

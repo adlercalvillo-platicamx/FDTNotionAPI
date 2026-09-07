@@ -70,9 +70,17 @@ que uno duplicado). Un fallo de una cita no aborta el lote.
 
 ## Cómo operarlo
 
-- **Cron nuevo en Coolify**, solo hace falta activo el 7 y 8 de oct:
-  `POST https://<host>/citas/enviar-recordatorios-15min` con header
-  `X-API-Key: <API_SECRET_KEY>`, **cada 5 minutos**, sin body.
+- **Cron nuevo en Coolify** (Adler; mismo patrón que `Recordatorio evento matchmaking`):
+  - Name: `Recordatorio cita 15 min`
+  - Command:
+    ```
+    curl -X POST http://localhost:3001/citas/enviar-recordatorios-15min -H "X-API-Key: <mismo secret que los otros crons>" -H "Content-Type: application/json"
+    ```
+    Sin body. Pega a `localhost:3001` del mismo contenedor, como el de sugerencias.
+  - Frequency: `*/5 * * * *` (cada 5 minutos). Con eso el aviso sale entre 15 y ~10 min antes.
+  - Timeout: 300 segundos (igual que el de sugerencias).
+  - Container name: vacío.
+  - Solo hace falta activo el 7 y 8 de oct; fuera de esos días cada corrida responde `revisadas: 0` y no manda WhatsApp.
 - Env: `PLATICA_TEMPLATE_CITA_15MIN=notificacion_cita_15min_antes` (ya estaba).
   Sin ella la corrida responde `{ omitido: true, motivo: "SIN_PLANTILLA" }` y no
   toca Notion. Mismas `PLATICA_API_KEY`, `PLATICA_CHANNEL_ID`,
