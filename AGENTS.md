@@ -52,7 +52,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Disponibilidad (foto) | GET `/citas/disponibilidad` (opcional `asistente_notion_id`) | `consultar_disponibilidad_cita` (máx. 3; `hora=HH:MM` si pidió una hora concreta; exige `whatsapp` o `asistentePageId`; `hay_mas` + `excluirInicios`) |
 | Data WhatsApp Flow (legado) | POST `/webhooks/whatsapp-flows` (HMAC) | — |
 | Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron). El barrido y el reenvío por id omiten / rechazan filas de bloqueo de conferencia. |
-| Disparar oferta inicial aprobada | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (hasta 4 sponsors en 1 renglón; sin horarios) |
+| Disparar oferta inicial aprobada | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (hasta 4 sponsors en 1 renglón; sin horarios; detalle nominal con nombre, empresa y `sugerenciasInformadas`) |
 | Respuesta / follow-up 72h | Webhook `POST /webhooks/platica/mensajes`; cron `POST /matchmaking/enviar-followups-72h` (`X-API-Key`) | — |
 | Recordatorio del evento | POST `/matchmaking/enviar-recordatorio-evento` (`X-API-Key`; simulación por default; cron diario seguro) | — |
 

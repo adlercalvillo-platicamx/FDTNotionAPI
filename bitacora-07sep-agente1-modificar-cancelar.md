@@ -23,3 +23,19 @@ No se tocó código de backend. Laura/Liz identifican con `citaId` (sin teléfon
 ## Pendientes
 
 Probar en un chat de equipo (números de prueba): reservar sin sugerencia, con sugerencia, reagendar cancelada, mover confirmada, cancelar confirmada.
+
+## Reporte nominal de campañas (mismo hilo)
+
+Pedido adicional de Adler: después de `disparar_campanas_aprobadas`, no
+informar solo cuántas salieron. El backend ahora agrega en cada detalle
+enviado o simulado:
+
+- `destinatario.nombre`
+- `destinatario.empresa`
+- `sugerenciasInformadas`: texto exacto de `{{2}}`, después de los recortes por
+  el límite de Meta. Así no se reporta por error un sponsor que haya quedado
+  fuera del mensaje final por longitud.
+
+El prompt vivo del subagente (`uvWydll40ERU5Dx22jVV`) exige mostrar esos datos
+y separar simulados/enviados, omitidos y errores. No se disparó ninguna
+campaña durante el cambio.

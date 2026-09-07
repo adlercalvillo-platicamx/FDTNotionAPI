@@ -591,6 +591,15 @@ async function casoTopCuatroYParamsEstables() {
   assert.deepStrictEqual(resultado.detalle[0].ofrecidas, ['cita-1', 'cita-2', 'cita-3', 'cita-4']);
   assert.deepStrictEqual(resultado.detalle[0].omitidas, ['cita-5']);
   const payload = resultado.detalle[0].payload;
+  assert.deepStrictEqual(resultado.detalle[0].destinatario, {
+    nombre: 'Ana',
+    empresa: null,
+  });
+  assert.strictEqual(
+    resultado.detalle[0].sugerenciasInformadas,
+    payload.params[1],
+    'el reporte nominal debe mostrar exactamente el texto enviado en {{2}}'
+  );
   assert.strictEqual(payload.params.length, 2, 'la plantilla lleva solo nombre y sugerencias');
   assert.strictEqual(payload.params[0], 'Ana');
   assert.ok(payload.params[1].includes('1) *Persona 1* de *Empresa 1* (Solución 1)'));
@@ -737,6 +746,8 @@ async function casoEnvioRealMarcaTodoElGrupo() {
   assert.strictEqual(resultado.enviadosOfertaInicial, 1);
   assert.strictEqual(envios.length, 1);
   assert.strictEqual(envios[0].templateName, 'oferta-inicial-test');
+  assert.deepStrictEqual(resultado.detalle[0].destinatario, { nombre: 'Ana', empresa: null });
+  assert.strictEqual(resultado.detalle[0].sugerenciasInformadas, envios[0].params[1]);
   assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
   assert.strictEqual(actualizacionesContacto[0].campana, OFERTA_INICIAL);
   assert.strictEqual(incrementosReactivaciones.length, 0);

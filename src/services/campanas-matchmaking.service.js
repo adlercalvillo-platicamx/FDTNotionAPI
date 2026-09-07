@@ -221,6 +221,22 @@ function payloadPara({ contacto, sugerencias, modoSimulacion }) {
   };
 }
 
+/**
+ * Reporte legible para Laura/Liz. `sugerenciasInformadas` es exactamente
+ * {{2}} de la plantilla, ya con los recortes necesarios para el límite de
+ * Meta; no se reconstruye desde las filas porque eso podría reportar un
+ * sponsor que finalmente quedó fuera del texto por longitud.
+ */
+function detalleNominalOferta(contacto, payload) {
+  return {
+    destinatario: {
+      nombre: contacto.nombre || null,
+      empresa: contacto.empresa || null,
+    },
+    sugerenciasInformadas: payload?.params?.[1] || '',
+  };
+}
+
 function modoSimulacionCampanas(modoSimulacion) {
   return modoSimulacion !== undefined
     ? Boolean(modoSimulacion)
@@ -417,6 +433,7 @@ async function dispararCampanasAprobadas({
       // para enviarla. Antes se saltaba a quien no tuviera un bloque libre en
       // ese instante (SIN_HORARIOS_SUGERIDOS) y esa gente nunca recibía nada.
       const payload = payloadPara({ contacto, sugerencias, modoSimulacion: simulando });
+      const detalleNominal = detalleNominalOferta(contacto, payload);
       if (simulando) {
         resumen.simuladosOfertaInicial += 1;
         resumen.detalle.push({
@@ -427,6 +444,7 @@ async function dispararCampanasAprobadas({
           campana: OFERTA_INICIAL,
           payload,
           simulado: true,
+          ...detalleNominal,
         });
         continue;
       }
@@ -474,6 +492,7 @@ async function dispararCampanasAprobadas({
         omitidas: idsOmitidas,
         campana: OFERTA_INICIAL,
         simulado: false,
+        ...detalleNominal,
       });
     } catch (err) {
       resumen.errores.push({ asistentePageId, mensaje: err.message });

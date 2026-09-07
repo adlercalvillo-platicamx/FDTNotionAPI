@@ -479,7 +479,7 @@ function crearServidorMcp() {
 
   server.tool(
     'disparar_campanas_aprobadas',
-    'Procesa manualmente todas las filas Aprobado pendientes de campaña, agrupadas por asistente para enviar como máximo un mensaje por persona. Por default corre en simulación: devuelve payloads y decisiones sin llamar WhatsApp ni marcar Notion. El envío real solo se habilita mediante configuración explícita del backend, nunca por parámetros del agente.',
+    'Procesa manualmente todas las filas Aprobado pendientes de campaña, agrupadas por asistente para enviar como máximo un mensaje por persona. Por default corre en simulación: devuelve payloads y decisiones sin llamar WhatsApp ni marcar Notion. El envío real solo se habilita mediante configuración explícita del backend, nunca por parámetros del agente. Al responder, no informes solo conteos: para cada detalle enviado o simulado nombra destinatario.nombre, destinatario.empresa y sugerenciasInformadas (texto exacto de sponsors/soluciones que recibió o recibiría).',
     {},
     async () => {
       try {

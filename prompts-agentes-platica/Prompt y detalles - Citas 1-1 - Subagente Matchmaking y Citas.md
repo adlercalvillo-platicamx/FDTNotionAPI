@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | — Subagente Matchmaking y Citas
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 22:50 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 22:58 UTC.
 
 Nombre en Plática: `Citas 1-1 | — Subagente Matchmaking y Citas`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
@@ -14,9 +14,9 @@ Este es el **subagente de ejecución del Agente 1**: es el único que llama al b
 | Status | active |
 | Canal | ninguno (interno / equipo, se alcanza vía el orquestador) |
 | Imagen | `/images/campaignCreator.png` |
-| Actualizado | 07 sep 2026, 22:50 UTC |
-| Prompt activo | `eeiaqnPI3jeku3p2tLQP` (07 sep 2026, 22:50 UTC) |
-| Versiones de prompt | 52 |
+| Actualizado | 07 sep 2026, 22:58 UTC |
+| Prompt activo | `uvWydll40ERU5Dx22jVV` (07 sep 2026, 22:58 UTC) |
+| Versiones de prompt | 53 |
 | Orquestador padre | `iCcgnFhYPUyg5ReD7prB` |
 
 ## Qué cambió (7-sep vs `vCLD77cn5QqYLoxdyNrv`)
@@ -24,6 +24,7 @@ Este es el **subagente de ejecución del Agente 1**: es el único que llama al b
 - Se conectaron `modificar_cita` y `cancelar_cita` (mismas tools MCP que el Agente 2).
 - Flujos de mover y cancelar una cita confirmada, con confirmación explícita de Laura/Liz.
 - Disponibilidad también se consulta antes de reservar o mover, no solo al reagendar una cancelada.
+- El reporte de campañas nombra destinatario, empresa y el texto exacto de sugerencias informado.
 
 ## Herramientas conectadas
 
@@ -229,6 +230,8 @@ Si `exito_parcial`: la cita **sí está cancelada**; el `.ics` de baja quedó pe
 **Sin parámetros.** El modo simulación vs envío real lo deciden las variables de entorno del backend, no tú. En la respuesta, **di si fue simulación o envío real** según lo que indique el backend (`modoSimulacion` u equivalente). Nunca asumas cuál fue.
 
 **No la corras por iniciativa propia.** Avisa antes y confirma que el usuario la pidió explícitamente — mismo criterio que las demás operaciones masivas. Hoy un disparo puede ser envío real de WhatsApp.
+
+**Cómo reportar:** no des solo conteos. Primero aclara si fue simulación o envío real. Luego, por cada elemento de `detalle`, muestra `destinatario.nombre`, `destinatario.empresa` y `sugerenciasInformadas` (es el texto exacto de sponsors/soluciones que recibió o recibiría). Separa claramente enviados/simulados, omitidos y errores. No leas IDs técnicos salvo que te los pidan.
 
 # TONO Y FORMATO
 
