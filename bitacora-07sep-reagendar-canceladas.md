@@ -52,18 +52,14 @@ completos quedaron actualizados en `prompts-agentes-platica/`.
 - No se creó, modificó ni reactivó una cita real. No se enviaron correos,
   WhatsApp ni campañas.
 
-## Recordatorio de 15 minutos — aplazado
+## Recordatorio de 15 minutos — resuelto el mismo día
 
-Adler pidió revisar este tema por separado antes de cambiarlo. El código, la
-ruta y los prompts conservan el comportamiento actual: `reservar` programa el
-mensaje futuro en Plática.
+Se aplazó primero (Adler quería consultarlo con Luis, que escribió esa parte) y
+se implementó horas después con su ok: el aviso pasó de programado en Plática a
+un cron que lee Notion. Cierra el pendiente de que un mensaje programado
+sobreviviera a una cancelación o re-agenda. Ver
+[bitacora-07sep-recordatorio-15min-cron.md].
 
-Durante la ejecución inicial del plan se alcanzaron a crear en el schema tres
-campos vacíos (`Estado Recordatorio 15min`, `Fecha Recordatorio 15min`,
-`Notas Recordatorio 15min`). No tienen código ni cron conectado y no afectan
-operación. No se borraron porque en Notion borrar un custom field quema su ID
-y nombre técnico para recreaciones futuras.
-
-Pendiente específico: revisar con Adler el riesgo de que un mensaje de 15
-minutos ya programado sobreviva a una cancelación o re-agenda. No activar cron
-ni cambiar copy hasta esa decisión.
+Los tres campos que quedaron sueltos en el schema durante la planeación
+(`Estado Recordatorio 15min`, `Fecha Recordatorio 15min`,
+`Notas Recordatorio 15min`) ya tienen código detrás.

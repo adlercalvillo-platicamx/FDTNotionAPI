@@ -1,4 +1,9 @@
-// El controller dispara el recordatorio 15 min tras reservar, sin cambiar el HTTP.
+// Reservar NO toca los recordatorios (7-sep) y la ruta vieja contesta 410.
+//
+// Antes el controller programaba el aviso de 15 min en Plática tras reservar.
+// Se retiró porque un programado no se puede cancelar y quedaba suelto al
+// cancelar o mover la cita. Este test cuida que no vuelva a entrar por ahí:
+// el único camino es el cron POST /citas/enviar-recordatorios-15min.
 //
 //   node tests/reservar-recordatorio-15min.manual-test.js
 
@@ -16,8 +21,8 @@ class BookingError extends Error {
   }
 }
 
+/** Cualquier llamada al service de recordatorios desde reservar es una regresión. */
 const llamadasRecordatorio = [];
-let implRecordatorio = async () => ({ status: 'scheduled' });
 let implReservar;
 let ultimaReservaParams;
 
@@ -42,15 +47,20 @@ require.cache[recordatorioPath] = {
   filename: recordatorioPath,
   loaded: true,
   exports: {
-    async programarRecordatorioCita15min(args) {
+    MINUTOS_ANTES: 15,
+    async enviarRecordatorios15minPendientes(args) {
       llamadasRecordatorio.push(args);
-      return implRecordatorio(args);
+      return { enviados: 0 };
     },
   },
 };
 
 delete require.cache[controllerPath];
 const { reservar } = require('../src/controllers/citas.controller');
+const {
+  programarRecordatorio15min,
+  enviarRecordatorios15min,
+} = require('../src/controllers/recordatorio-cita-15min.controller');
 
 function mockRes() {
   return {
@@ -92,11 +102,10 @@ async function okAsync(nombre, fn) {
 }
 
 (async () => {
-  console.log('\n=== Controller reservar → recordatorio 15 min ===');
+  console.log('\n=== Reservar ya no programa recordatorios ===');
 
-  await okAsync('reserva Confirmada 201 dispara recordatorio con los mismos ids', async () => {
+  await okAsync('reserva Confirmada 201 sin tocar el service de recordatorios', async () => {
     llamadasRecordatorio.length = 0;
-    implRecordatorio = async () => ({ status: 'scheduled' });
     implReservar = async () => ({
       ya_existia: false,
       notion_page_id: 'cita-1',
@@ -107,19 +116,46 @@ async function okAsync(nombre, fn) {
     const res = mockRes();
     await reservar({ body: bodyReserva() }, res);
     assert.strictEqual(res.statusCode, 201);
-    assert.strictEqual(res.body.estado, 'Confirmada');
-    assert.strictEqual(res.body.recordatorio_15min, undefined);
-    await flushImmediate();
-    assert.strictEqual(llamadasRecordatorio.length, 1);
-    assert.deepStrictEqual(llamadasRecordatorio[0], {
-      asistente_notion_id: 'asistente-1',
-      sponsor_notion_id: 'sponsor-1',
-      inicio: '2026-10-07T10:30:00-06:00',
+    assert.deepStrictEqual(res.body, {
+      ya_existia: false,
+      notion_page_id: 'cita-1',
+      estado: 'Confirmada',
+      mesa: 1,
+      titulo: 'Cita — A - B',
     });
+    await flushImmediate();
+    assert.strictEqual(llamadasRecordatorio.length, 0);
   });
 
-  await okAsync('pasa cita_origen_cancelada_id canónico al service', async () => {
+  await okAsync('Confirmada sin notificar tampoco programa nada', async () => {
     llamadasRecordatorio.length = 0;
+    implReservar = async () => ({
+      ya_existia: false,
+      estado: 'Confirmada sin notificar',
+      notion_page_id: 'cita-3',
+    });
+    const res = mockRes();
+    await reservar({ body: bodyReserva() }, res);
+    assert.strictEqual(res.statusCode, 201);
+    await flushImmediate();
+    assert.strictEqual(llamadasRecordatorio.length, 0);
+  });
+
+  await okAsync('BookingError sigue mapeando a su status', async () => {
+    llamadasRecordatorio.length = 0;
+    implReservar = async () => {
+      throw new BookingError('SPONSOR_YA_OCUPADO', 'ocupado');
+    };
+    const res = mockRes();
+    await reservar({ body: bodyReserva() }, res);
+    assert.strictEqual(res.statusCode, 409);
+    await flushImmediate();
+    assert.strictEqual(llamadasRecordatorio.length, 0);
+  });
+
+  console.log('\n=== Reagenda: cita_origen_cancelada_id ===');
+
+  await okAsync('pasa cita_origen_cancelada_id canónico al service', async () => {
     implReservar = async () => ({
       ya_existia: false,
       notion_page_id: 'cita-reagendada',
@@ -130,7 +166,6 @@ async function okAsync(nombre, fn) {
     await reservar({ body: { ...bodyReserva(), cita_origen_cancelada_id: origen } }, res);
     assert.strictEqual(res.statusCode, 201);
     assert.strictEqual(ultimaReservaParams.cita_origen_cancelada_id, origen);
-    await flushImmediate();
   });
 
   await okAsync('rechaza cita_origen_cancelada_id mal formado antes del service', async () => {
@@ -142,70 +177,35 @@ async function okAsync(nombre, fn) {
     assert.strictEqual(ultimaReservaParams, null);
   });
 
-  await okAsync('Plática throw no cambia 201 ni el body de agendar', async () => {
-    llamadasRecordatorio.length = 0;
-    implRecordatorio = async () => {
-      throw new Error('Plática 500: boom');
-    };
-    implReservar = async () => ({
-      ya_existia: false,
-      notion_page_id: 'cita-2',
-      estado: 'Confirmada',
-      mesa: 2,
-      titulo: 'Cita — A - B',
-    });
-    const res = mockRes();
-    await reservar({ body: bodyReserva() }, res);
-    assert.strictEqual(res.statusCode, 201);
-    assert.deepStrictEqual(res.body, {
-      ya_existia: false,
-      notion_page_id: 'cita-2',
-      estado: 'Confirmada',
-      mesa: 2,
-      titulo: 'Cita — A - B',
-    });
-    await flushImmediate();
-    assert.strictEqual(llamadasRecordatorio.length, 1);
-  });
+  console.log('\n=== Rutas de recordatorio ===');
 
-  await okAsync('Confirmada sin notificar también encola', async () => {
+  await okAsync('la ruta vieja de programar contesta 410 y no llama a Plática', async () => {
     llamadasRecordatorio.length = 0;
-    implRecordatorio = async () => ({ status: 'scheduled' });
-    implReservar = async () => ({
-      ya_existia: false,
-      estado: 'Confirmada sin notificar',
-      notion_page_id: 'cita-3',
-    });
     const res = mockRes();
-    await reservar({ body: bodyReserva() }, res);
-    assert.strictEqual(res.statusCode, 201);
-    await flushImmediate();
-    assert.strictEqual(llamadasRecordatorio.length, 1);
-  });
-
-  await okAsync('ya_existia no vuelve a programar (idempotencia)', async () => {
-    llamadasRecordatorio.length = 0;
-    implReservar = async () => ({
-      ya_existia: true,
-      estado: 'Confirmada',
-      notion_page_id: 'cita-1',
-    });
-    const res = mockRes();
-    await reservar({ body: bodyReserva() }, res);
-    assert.strictEqual(res.statusCode, 200);
-    await flushImmediate();
+    await programarRecordatorio15min({ body: bodyReserva() }, res);
+    assert.strictEqual(res.statusCode, 410);
+    assert.strictEqual(res.body.error, 'RUTA_RETIRADA');
     assert.strictEqual(llamadasRecordatorio.length, 0);
   });
 
-  await okAsync('BookingError no dispara recordatorio', async () => {
+  await okAsync('el cron sin body corre con los defaults', async () => {
     llamadasRecordatorio.length = 0;
-    implReservar = async () => {
-      throw new BookingError('SPONSOR_YA_OCUPADO', 'ocupado');
-    };
     const res = mockRes();
-    await reservar({ body: bodyReserva() }, res);
-    assert.strictEqual(res.statusCode, 409);
-    await flushImmediate();
+    await enviarRecordatorios15min({}, res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(llamadasRecordatorio.length, 1);
+    assert.deepStrictEqual(llamadasRecordatorio[0], { ahora: undefined, minutos: undefined });
+  });
+
+  await okAsync('"minutos" fuera de rango o "ahora" basura → 400 sin correr', async () => {
+    llamadasRecordatorio.length = 0;
+    const resMinutos = mockRes();
+    await enviarRecordatorios15min({ body: { minutos: 0 } }, resMinutos);
+    assert.strictEqual(resMinutos.statusCode, 400);
+
+    const resAhora = mockRes();
+    await enviarRecordatorios15min({ body: { ahora: 'mañana' } }, resAhora);
+    assert.strictEqual(resAhora.statusCode, 400);
     assert.strictEqual(llamadasRecordatorio.length, 0);
   });
 

@@ -1,12 +1,22 @@
 // src/services/recordatorio-cita-15min.service.js
 //
-// Copia del envío de plantilla de platica-client.service.js, con
-// scheduleTime. No modifica enviarPlantilla ni booking.service.js.
-// El agente llama POST /citas/programar-recordatorio-15min DESPUÉS de
-// un reservar exitoso. Modificar/cancelar no anulan el programado
-// (Plática aún no expone cancelar un scheduled).
+// Recordatorio de 15 min antes de la cita, disparado por cron.
+//
+// Antes esto se programaba al reservar, con el scheduleTime de Plática. El
+// problema es que Plática no expone cancelar un mensaje ya programado: una
+// cita cancelada seguía avisando a su hora vieja, y una reprogramada avisaba
+// a la hora anterior y nunca a la nueva. Con la re-agenda de canceladas se
+// juntaban las dos cosas (dos avisos, uno equivocado).
+//
+// Ahora Notion es el que decide: POST /citas/enviar-recordatorios-15min
+// pregunta qué citas reales empiezan en los próximos MINUTOS_ANTES y manda la
+// plantilla en ese momento, sin scheduleTime. Una cancelada nunca entra a la
+// consulta y una reprogramada entra con su horario nuevo, sin que nadie tenga
+// que retirar nada en Plática. El estado idempotente vive en Notion
+// (Estado / Fecha / Notas Recordatorio 15min), ver citas.service.js.
 
 const contactosService = require('./contactos.service');
+const citasService = require('./citas.service');
 const { payloadCanalYAgente } = require('./platica-client.service');
 
 const BASE_URL = (process.env.PLATICA_API_BASE_URL || 'https://api.platica.mx').replace(/\/$/, '');
@@ -37,38 +47,26 @@ function primerNombreParaSaludo(nombreCompleto) {
     .join('');
 }
 
-function zonaHorariaOffset() {
-  return process.env.CITAS_ZONA_HORARIA_OFFSET || '-06:00';
-}
-
 /**
- * inicio menos 15 min, mismo formato ISO local + offset que el resto de citas.
- * Si cruza medianoche, usa Date para no inventar el día.
+ * Ventana de citas a avisar en esta corrida: las que empiezan después de
+ * ahora y hasta `minutos` adelante. Se comparan instantes (ISO en UTC), no
+ * texto, para que no importe el offset con el que Notion guardó la fecha.
+ *
+ * El aviso no cae exacto en el minuto 15: con un cron cada 5 min sale entre
+ * 15 y ~10 minutos antes. Es a propósito — mejor un aviso unos minutos
+ * temprano que uno programado que ya no se puede retirar.
  */
-function scheduleTimeDesdeInicio(inicioIso) {
-  const zona = zonaHorariaOffset();
-  const m = String(inicioIso || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
-  if (!m) return null;
-  const fecha = m[1];
-  const segundos = m[4] || '00';
-  const minutos = Number(m[2]) * 60 + Number(m[3]) - MINUTOS_ANTES;
-  if (minutos >= 0) {
-    const h = String(Math.floor(minutos / 60)).padStart(2, '0');
-    const min = String(minutos % 60).padStart(2, '0');
-    return `${fecha}T${h}:${min}:${segundos}${zona}`;
+function ventanaRecordatorio({ ahora, minutos = MINUTOS_ANTES }) {
+  const ahoraMs = Date.parse(ahora);
+  if (!Number.isFinite(ahoraMs)) {
+    const err = new Error('"ahora" debe ser ISO 8601.');
+    err.code = 'INVALID_INPUT';
+    throw err;
   }
-  const parsed = new Date(inicioIso);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const scheduled = new Date(parsed.getTime() - MINUTOS_ANTES * 60 * 1000);
-  return formatearIsoConOffset(scheduled, zona);
-}
-
-function formatearIsoConOffset(date, offset) {
-  const sign = offset.startsWith('-') ? -1 : 1;
-  const [oh, om] = offset.replace(/^[+-]/, '').split(':').map(Number);
-  const localMs = date.getTime() + sign * ((oh || 0) * 60 + (om || 0)) * 60 * 1000;
-  const iso = new Date(localMs).toISOString();
-  return `${iso.slice(0, 19)}${offset}`;
+  return {
+    desde: new Date(ahoraMs).toISOString(),
+    hasta: new Date(ahoraMs + minutos * 60 * 1000).toISOString(),
+  };
 }
 
 async function platicaFetch(path, body) {
@@ -98,11 +96,11 @@ async function platicaFetch(path, body) {
   return json;
 }
 
-async function enviarPlantillaProgramada({ phone, templateName, params, scheduleTime }) {
+/** Sin scheduleTime: el cron ya está parado en el minuto correcto. */
+async function enviarPlantillaRecordatorio({ phone, templateName, params }) {
   const conversationId = telefonoConversacion(phone);
   if (!conversationId) throw new Error('Teléfono vacío para WhatsApp');
   if (!templateName) throw new Error('Falta nombre de plantilla');
-  if (!scheduleTime) throw new Error('Falta scheduleTime');
   return platicaFetch('/v1/messages/template', {
     ...payloadCanalYAgente(),
     conversationId,
@@ -110,83 +108,130 @@ async function enviarPlantillaProgramada({ phone, templateName, params, schedule
       name: templateName,
       params: params || [],
     },
-    scheduleTime,
   });
 }
 
-async function programarRecordatorioCita15min({
-  asistente_notion_id,
-  sponsor_notion_id,
-  inicio,
-}) {
-  if (!asistente_notion_id || !sponsor_notion_id || !inicio) {
-    const err = new Error('Los campos "asistente_notion_id", "sponsor_notion_id" e "inicio" son requeridos.');
-    err.code = 'INVALID_INPUT';
-    throw err;
-  }
-
-  const templateName = process.env[TEMPLATE_ENV];
-  if (!templateName) {
-    console.warn('[Recordatorio15min] Falta PLATICA_TEMPLATE_CITA_15MIN; se omite');
-    return { omitido: true, motivo: 'SIN_PLANTILLA' };
-  }
-
-  const scheduleTime = scheduleTimeDesdeInicio(inicio);
-  if (!scheduleTime) {
-    const err = new Error('"inicio" debe ser ISO 8601 (ej. "2026-10-07T10:30:00-06:00").');
-    err.code = 'INVALID_INPUT';
-    throw err;
-  }
-
-  if (new Date(scheduleTime).getTime() <= Date.now()) {
-    console.warn('[Recordatorio15min] scheduleTime en el pasado; se omite', scheduleTime);
-    return { omitido: true, motivo: 'HORARIO_PASADO', scheduleTime };
-  }
-
+/** Los dos params de la plantilla: primer nombre del asistente y empresa del sponsor. */
+async function paramsDeRecordatorio({ asistentePageId, sponsorPageId }) {
   const [asistente, sponsor] = await Promise.all([
-    contactosService.obtenerContacto(asistente_notion_id),
-    contactosService.obtenerContacto(sponsor_notion_id),
+    contactosService.obtenerContacto(asistentePageId),
+    contactosService.obtenerContacto(sponsorPageId),
   ]);
-
-  if (!telefonoConversacion(asistente?.whatsapp)) {
-    console.warn('[Recordatorio15min] Asistente sin WhatsApp; se omite', asistente_notion_id);
-    return { omitido: true, motivo: 'SIN_WHATSAPP' };
-  }
-
-  const param1 = primerNombreParaSaludo(asistente.nombre) || 'Asistente';
-  const param2 = limpiarParametroPlantilla(sponsor.empresa || sponsor.nombre) || 'el sponsor';
-
-  const respuesta = await enviarPlantillaProgramada({
-    phone: asistente.whatsapp,
-    templateName,
-    params: [param1, param2],
-    scheduleTime,
-  });
-
-  console.log(
-    '[Recordatorio15min] Programado',
-    JSON.stringify({
-      asistente_notion_id,
-      sponsor_notion_id,
-      scheduleTime,
-      status: respuesta.status || 'scheduled',
-      messageId: respuesta.messageId || null,
-    })
-  );
-
   return {
-    status: respuesta.status || 'scheduled',
-    messageId: respuesta.messageId || null,
-    executeAt: respuesta.executeAt || null,
-    scheduledTime: respuesta.scheduledTime || scheduleTime,
-    params: [param1, param2],
+    whatsapp: asistente?.whatsapp || '',
+    params: [
+      primerNombreParaSaludo(asistente?.nombre) || 'Asistente',
+      limpiarParametroPlantilla(sponsor?.empresa || sponsor?.nombre) || 'el sponsor',
+    ],
   };
 }
 
+/**
+ * Una corrida del cron. Cada cita se resuelve por separado: un fallo de
+ * Plática o de un contacto marca esa fila y sigue con las demás, porque
+ * abortar el lote dejaría sin aviso a citas que sí se podían mandar.
+ *
+ * Un fallo queda en "Falló" y la siguiente corrida lo reintenta mientras la
+ * cita siga dentro de la ventana. "Omitido" es terminal: no hay a dónde
+ * mandarlo (asistente sin WhatsApp) y reintentar no cambiaría nada.
+ */
+async function enviarRecordatorios15minPendientes({ ahora, minutos = MINUTOS_ANTES } = {}) {
+  const momento = ahora || new Date().toISOString();
+  const templateName = process.env[TEMPLATE_ENV];
+  if (!templateName) {
+    console.warn('[Recordatorio15min] Falta PLATICA_TEMPLATE_CITA_15MIN; se omite la corrida');
+    return { omitido: true, motivo: 'SIN_PLANTILLA', ahora: momento };
+  }
+
+  const { desde, hasta } = ventanaRecordatorio({ ahora: momento, minutos });
+  const citas = await citasService.buscarCitasParaRecordatorio15min({ desde, hasta, ahora: momento });
+
+  const resultado = {
+    ahora: momento,
+    ventana: { desde, hasta, minutos },
+    revisadas: citas.length,
+    enviados: 0,
+    omitidos: 0,
+    fallidos: 0,
+    detalle: [],
+  };
+
+  for (const cita of citas) {
+    const marca = new Date().toISOString();
+    try {
+      await citasService.marcarEstadoRecordatorio15min({
+        notionPageId: cita.id,
+        estado: citasService.ESTADO_RECORDATORIO_EN_CURSO,
+        fecha: marca,
+      });
+    } catch (error) {
+      // Sin reclamo no se manda: preferimos no avisar a arriesgar un doble
+      // envío si otra corrida está tomando la misma fila.
+      resultado.fallidos += 1;
+      resultado.detalle.push({ citaId: cita.id, inicio: cita.inicio, estado: 'Falló', motivo: `RECLAMO: ${error.message}` });
+      continue;
+    }
+
+    try {
+      const { whatsapp, params } = await paramsDeRecordatorio({
+        asistentePageId: cita.asistentePageId,
+        sponsorPageId: cita.sponsorPageId,
+      });
+
+      if (!telefonoConversacion(whatsapp)) {
+        await citasService.marcarEstadoRecordatorio15min({
+          notionPageId: cita.id,
+          estado: citasService.ESTADO_RECORDATORIO_OMITIDO,
+          notas: 'SIN_WHATSAPP: el asistente no tiene teléfono en Contactos.',
+        });
+        resultado.omitidos += 1;
+        resultado.detalle.push({ citaId: cita.id, inicio: cita.inicio, estado: 'Omitido', motivo: 'SIN_WHATSAPP' });
+        continue;
+      }
+
+      const respuesta = await enviarPlantillaRecordatorio({ phone: whatsapp, templateName, params });
+      await citasService.marcarEstadoRecordatorio15min({
+        notionPageId: cita.id,
+        estado: citasService.ESTADO_RECORDATORIO_ENVIADO,
+        notas: '',
+      });
+      resultado.enviados += 1;
+      resultado.detalle.push({
+        citaId: cita.id,
+        inicio: cita.inicio,
+        estado: 'Enviado',
+        messageId: respuesta?.messageId || null,
+        params,
+      });
+      console.log(
+        '[Recordatorio15min] Enviado',
+        JSON.stringify({ citaId: cita.id, inicio: cita.inicio, messageId: respuesta?.messageId || null })
+      );
+    } catch (error) {
+      console.error('[Recordatorio15min] Falló', JSON.stringify({ citaId: cita.id, error: error.message }));
+      try {
+        await citasService.marcarEstadoRecordatorio15min({
+          notionPageId: cita.id,
+          estado: citasService.ESTADO_RECORDATORIO_FALLO,
+          notas: error.message,
+        });
+      } catch (errorAlMarcar) {
+        // La fila se queda "En curso" y el reclamo vencido la vuelve a tomar.
+        console.error('[Recordatorio15min] Tampoco se pudo marcar el fallo:', errorAlMarcar.message);
+      }
+      resultado.fallidos += 1;
+      resultado.detalle.push({ citaId: cita.id, inicio: cita.inicio, estado: 'Falló', motivo: error.message });
+    }
+  }
+
+  console.log('[Recordatorio15min] Corrida', JSON.stringify({ ...resultado, detalle: undefined }));
+  return resultado;
+}
+
 module.exports = {
-  programarRecordatorioCita15min,
-  enviarPlantillaProgramada,
-  scheduleTimeDesdeInicio,
+  enviarRecordatorios15minPendientes,
+  enviarPlantillaRecordatorio,
+  ventanaRecordatorio,
   primerNombreParaSaludo,
   limpiarParametroPlantilla,
   telefonoConversacion,

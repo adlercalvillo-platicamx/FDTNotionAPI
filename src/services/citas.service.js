@@ -600,6 +600,8 @@ function datosDeCita(pagina) {
     asistentePageId: primerRelacionId(props['Contacto Principal']),
     citaOrigenCanceladaId: primerRelacionId(props['Cita Origen Cancelada']),
     checkInRealizado: props['Check-in Realizado']?.checkbox === true,
+    estadoRecordatorio15min: props['Estado Recordatorio 15min']?.select?.name || null,
+    fechaRecordatorio15min: props['Fecha Recordatorio 15min']?.date?.start || null,
     // Histórico: ya no se escribe ni se usa. Lo deja datosDeCita por si
     // hay que leer filas viejas; no hay consumidores nuevos.
     googleEventId: textoRichText(props['Google Event ID']) || null,
@@ -1305,6 +1307,94 @@ async function obtenerAsistentesConCitaConfirmada() {
   return asistentes;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Recordatorio 15 min antes — estado en Notion (7-sep)
+//
+// Plática no expone cancelar un mensaje ya programado con scheduleTime, así
+// que el aviso no se puede agendar al reservar: una cancelación o un cambio
+// de horario dejaría un recordatorio suelto imposible de retirar. En su lugar
+// un cron pregunta a Notion, que sí sabe el estado real de la cita, y manda
+// la plantilla en el momento. El estado idempotente vive en la propia fila:
+//
+//   Estado Recordatorio 15min: En curso → Enviado | Falló | Omitido
+//   Fecha Recordatorio 15min:  cuándo se escribió ese estado
+//   Notas Recordatorio 15min:  motivo, cuando no fue Enviado
+//
+// "En curso" es un reclamo: se escribe ANTES de llamar a Plática para que dos
+// corridas traslapadas no manden doble. Si el proceso muere entre el reclamo y
+// el envío, la fila quedaría trabada, así que un reclamo más viejo que
+// RECLAMO_RECORDATORIO_VENCIDO_MINUTOS se vuelve a tomar.
+// ═══════════════════════════════════════════════════════════════
+
+const ESTADO_RECORDATORIO_EN_CURSO = 'En curso';
+const ESTADO_RECORDATORIO_ENVIADO = 'Enviado';
+const ESTADO_RECORDATORIO_FALLO = 'Falló';
+const ESTADO_RECORDATORIO_OMITIDO = 'Omitido';
+const RECLAMO_RECORDATORIO_VENCIDO_MINUTOS = 10;
+
+/** Un reclamo "En curso" abandonado se puede volver a tomar; los demás no. */
+function recordatorioSePuedeTomar(cita, ahoraMs) {
+  const estado = cita.estadoRecordatorio15min;
+  if (!estado || estado === ESTADO_RECORDATORIO_FALLO) return true;
+  if (estado !== ESTADO_RECORDATORIO_EN_CURSO) return false;
+  const reclamadoMs = Date.parse(cita.fechaRecordatorio15min || '');
+  if (!Number.isFinite(reclamadoMs)) return true;
+  return ahoraMs - reclamadoMs >= RECLAMO_RECORDATORIO_VENCIDO_MINUTOS * 60 * 1000;
+}
+
+/**
+ * Citas reales que empiezan dentro de la ventana (desde, hasta] y a las que
+ * todavía les toca recordatorio. Notion filtra estatus, fecha y estado; el
+ * post-filtro en JS descarta bloqueos de conferencia, filas sin par resuelto
+ * y reclamos ajenos todavía vigentes.
+ */
+async function buscarCitasParaRecordatorio15min({ desde, hasta, ahora }) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      {
+        or: ESTATUS_CITA_REAL.map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+      { property: 'Fecha y Hora', date: { after: desde } },
+      { property: 'Fecha y Hora', date: { on_or_before: hasta } },
+      {
+        or: [
+          { property: 'Estado Recordatorio 15min', select: { is_empty: true } },
+          { property: 'Estado Recordatorio 15min', select: { equals: ESTADO_RECORDATORIO_FALLO } },
+          { property: 'Estado Recordatorio 15min', select: { equals: ESTADO_RECORDATORIO_EN_CURSO } },
+        ],
+      },
+    ],
+  });
+
+  const ahoraMs = Date.parse(ahora) || Date.now();
+  return filas
+    .map((fila) => datosDeCita(fila))
+    .filter((cita) => cita.sponsorPageId && cita.asistentePageId)
+    .filter((cita) => !esFilaBloqueoAgenda(cita.asistentePageId))
+    .filter((cita) => recordatorioSePuedeTomar(cita, ahoraMs))
+    .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')));
+}
+
+async function marcarEstadoRecordatorio15min({ notionPageId, estado, fecha, notas }) {
+  const properties = {
+    'Estado Recordatorio 15min': { select: { name: estado } },
+    'Fecha Recordatorio 15min': { date: { start: fecha || new Date().toISOString() } },
+  };
+  if (notas !== undefined) {
+    properties['Notas Recordatorio 15min'] = {
+      rich_text: notas ? [{ text: { content: String(notas).slice(0, 1900) } }] : [],
+    };
+  }
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
 async function actualizarEstadoEnvioCampana(notionPageIds, { estado, fechaInicioEnvio, campanaEnviada } = {}) {
   requireDataSourceId();
   for (const notionPageId of notionPageIds) {
@@ -1947,6 +2037,13 @@ module.exports = {
   cargarCitasPorAsistenteParaRecordatorio,
   scoreDeFilaCita,
   obtenerAsistentesConCitaConfirmada,
+  buscarCitasParaRecordatorio15min,
+  marcarEstadoRecordatorio15min,
+  ESTADO_RECORDATORIO_EN_CURSO,
+  ESTADO_RECORDATORIO_ENVIADO,
+  ESTADO_RECORDATORIO_FALLO,
+  ESTADO_RECORDATORIO_OMITIDO,
+  RECLAMO_RECORDATORIO_VENCIDO_MINUTOS,
   actualizarEstadoEnvioCampana,
   marcarCampanaEnviada,
   ESTADO_ENVIO_EN_CURSO,

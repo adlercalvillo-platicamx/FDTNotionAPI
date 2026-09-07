@@ -45,7 +45,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
-| Recordatorio WhatsApp 15 min | Camino feliz: **POST `/citas/reservar`** (fire-and-forget en el controller). Reintento: **POST `/citas/programar-recordatorio-15min`**. No cambia JSON/status de agendar. | — |
+| Recordatorio WhatsApp 15 min | **POST `/citas/enviar-recordatorios-15min`** (`X-API-Key`; cron cada 5 min los días del evento). Lee Notion, no depende de lo que pasó al reservar. `POST /citas/programar-recordatorio-15min` quedó en **410**. | — |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). | `consultar_sugeridas_para_asistente` (`whatsapp`; `sugeridas` = solo `Aprobado`; + `citasConfirmadas` + `citasCanceladas`; topes 4/3/3) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
@@ -106,6 +106,26 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
   activo del mismo par con `CITA_PARA_YA_ACTIVA`.
 - Todas las validaciones de disponibilidad, mesa y correo siguen pasando por
   `reservarCita` dentro del mismo mutex.
+
+## Recordatorio 15 min (7-sep, cron)
+
+- **Plática no expone cancelar un mensaje programado con `scheduleTime`.** Por eso
+  el aviso ya no se agenda al reservar: una cancelada seguía avisando a su hora
+  vieja y una reprogramada nunca avisaba a la nueva. No reintroducir `scheduleTime`
+  para esto.
+- Único camino: cron cada 5 min a `POST /citas/enviar-recordatorios-15min` con
+  `X-API-Key`. Manda `PLATICA_TEMPLATE_CITA_15MIN` a las citas `Confirmada` /
+  `Confirmada sin notificar` que empiezan en los próximos 15 min. Con cadencia de
+  5 min el aviso sale entre 15 y ~10 min antes; es a propósito.
+- Estado idempotente en la fila de Citas: `Estado Recordatorio 15min`
+  (`En curso` → `Enviado` / `Falló` / `Omitido`), `Fecha` y `Notas`. `En curso` se
+  escribe **antes** de llamar a Plática; un reclamo de más de 10 min se vuelve a
+  tomar. `Falló` reintenta mientras la cita siga en ventana; `Omitido`
+  (asistente sin WhatsApp) es terminal.
+- Un fallo de una cita no aborta el lote. Sin `PLATICA_TEMPLATE_CITA_15MIN` la
+  corrida devuelve `{ omitido: true, motivo: 'SIN_PLANTILLA' }` sin tocar Notion.
+- Filas de bloqueo de conferencia quedan fuera. `reservar`, `modificar` y
+  `cancelar` no tocan recordatorios: el estado real lo pone Notion.
 
 ## Matchmaking
 

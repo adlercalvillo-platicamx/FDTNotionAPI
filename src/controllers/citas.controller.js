@@ -10,35 +10,11 @@ const {
 const { obtenerDisponibilidadSponsor, consultarSugeridasPorIdentificador } = require('../services/citas.service');
 const { variantesTelefono } = require('../services/contactos.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
-const { programarRecordatorioCita15min } = require('../services/recordatorio-cita-15min.service');
 
-const ESTADOS_CITA_AGENDADA = new Set(['Confirmada', 'Confirmada sin notificar']);
-
-function encolarRecordatorio15minTrasReserva({ asistente_notion_id, sponsor_notion_id, inicio, resultado }) {
-  if (resultado.ya_existia) return;
-  if (!ESTADOS_CITA_AGENDADA.has(resultado.estado)) return;
-  setImmediate(() => {
-    programarRecordatorioCita15min({
-      asistente_notion_id,
-      sponsor_notion_id,
-      inicio,
-    })
-      .then((resultado15min) => {
-        if (resultado15min?.omitido) {
-          console.warn(
-            '[CitasController] Recordatorio 15 min omitido:',
-            JSON.stringify({ motivo: resultado15min.motivo, asistente_notion_id, sponsor_notion_id, inicio })
-          );
-        }
-      })
-      .catch((err) => {
-        console.error(
-          '[CitasController] Recordatorio 15 min falló (la cita no se toca):',
-          JSON.stringify({ asistente_notion_id, sponsor_notion_id, inicio, error: err.message })
-        );
-      });
-  });
-}
+// El recordatorio de 15 min ya no se dispara aquí. Se programaba en Plática al
+// reservar, y como Plática no deja cancelar un programado, una cita cancelada o
+// movida seguía avisando a la hora vieja. Ahora lo manda el cron
+// POST /citas/enviar-recordatorios-15min leyendo el estado real en Notion.
 
 const STATUS_POR_CODIGO_NEGOCIO = {
   INVALID_INPUT: 400,
@@ -137,13 +113,6 @@ async function reservar(req, res) {
       titulo,
       descripcion,
       asistentes_email,
-    });
-
-    encolarRecordatorio15minTrasReserva({
-      asistente_notion_id,
-      sponsor_notion_id,
-      inicio,
-      resultado,
     });
 
     return res.status(resultado.ya_existia ? 200 : 201).json(resultado);
