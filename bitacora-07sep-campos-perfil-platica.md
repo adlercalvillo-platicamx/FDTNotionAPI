@@ -111,9 +111,14 @@ Decisiones de Adler ante eso:
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar
   primero. Si la hidratación falla, la plantilla no se bloquea.
-- El webhook `message.created` hidrata un incoming sin campaña previa y
-  también plantillas programadas/campañas originadas fuera del backend
+- El webhook `message.created` hidrata **cualquier** incoming (decisión Adler
+  7-sep; antes solo el de quien no tenía campaña, así que el perfil de quien
+  ya recibió la oferta se quedaba viejo por más que escribiera). Un fallo de
+  hidratación no impide marcar `Respondió Oferta Inicial`. También cubre las
+  plantillas programadas y campañas originadas fuera del backend
   (`scheduler.scheduled_event.created` / `campaign.message.received`).
+- **La simulación de campañas no hidrata nada**: `enviarPlantilla` solo se
+  llama en envío real, así que un dry-run no sirve para probar los campos.
 - `booking.service.js` intenta sincronizar después de confirmar, mover o
   cancelar. Un fallo de CRM no revierte la cita ni cambia su estatus.
 
@@ -144,6 +149,28 @@ Después del redeploy con el campo de texto: dos hidrataciones seguidas de
 Adler dejaron **un solo** valor en `citas_confirmadas_del_asistente`, con
 las cuatro citas en viñetas. Ahí se vio que `solucionesEscritas` seguía en
 `true` las dos veces, lo que destapó el bug de forma de respuesta.
+
+## Cómo probar sin tocar asistentes reales
+
+No usar `POST /webhooks/notion/enviar-campanas-aprobadas` como prueba: su
+cola es `buscarCitasAprobadasSinCampana()`, o sea **todas** las filas
+`Aprobado` sin campaña, e incluye asistentes reales. Y en simulación no
+hidrata, así que tampoco sirve.
+
+Estado de los contactos de prueba en Contactos de Laura (7-sep):
+
+| Contacto | WhatsApp | Última Campaña | Respondió |
+|---|---|---|---|
+| ADLER CALVILLO | +52 4492867741 | Oferta inicial (4-sep) | sí |
+| ERNESTO MAYAGOITIA | +52 4492124591 | — | no |
+
+Con la hidratación en cualquier incoming, los dos sirven para probar el
+webhook. Antes del cambio, un mensaje de Adler caía en
+`RESPUESTA_YA_REGISTRADA` sin refrescar nada.
+
+Para el camino de plantilla hace falta **envío real**; la forma segura es un
+one-shot con la lista explícita de teléfonos de prueba, no el webhook de
+campañas.
 
 ## Operación y pendientes
 

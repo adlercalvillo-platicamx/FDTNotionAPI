@@ -56,11 +56,25 @@ async function registrarRespuestaOfertaInicial(payload) {
 
   const contacto = await contactosService.buscarAsistentePorWhatsApp(telefono);
   if (!contacto) return { procesado: false, motivo: 'ASISTENTE_NO_ENCONTRADO' };
-  if (!contacto.ultimaCampanaEnviada) {
-    const hidratacion = await hidratarPerfilPlatica({
+
+  // Cualquier mensaje entrante refresca el perfil (decisión Adler 7-sep). Antes
+  // solo hidrataba a quien no tenía campaña, así que el perfil de alguien que ya
+  // recibió la oferta se quedaba viejo por más que escribiera. La respuesta a la
+  // oferta se sigue evaluando abajo con su propia lógica.
+  let hidratacion = null;
+  try {
+    hidratacion = await hidratarPerfilPlatica({
       whatsapp: telefono,
       asistentePageId: contacto.id,
     });
+  } catch (error) {
+    console.warn(
+      `[PlaticaRespuestas] No se pudo hidratar ${telefono} en el incoming:`,
+      error.message
+    );
+  }
+
+  if (!contacto.ultimaCampanaEnviada) {
     return {
       procesado: true,
       motivo: 'PERFIL_HIDRATADO_SIN_PLANTILLA',
@@ -69,13 +83,18 @@ async function registrarRespuestaOfertaInicial(payload) {
     };
   }
   if (contacto.ultimaCampanaEnviada !== OFERTA_INICIAL || !contacto.fechaUltimaCampana) {
-    return { procesado: false, motivo: 'SIN_OFERTA_INICIAL', contactoId: contacto.id };
+    return { procesado: false, motivo: 'SIN_OFERTA_INICIAL', contactoId: contacto.id, hidratacion };
   }
 
   const fechaMensaje = fechaValida(message.creationDate || payload.timestamp);
   const fechaOferta = fechaValida(contacto.fechaUltimaCampana);
   if (!fechaMensaje || !fechaOferta || fechaMensaje.getTime() <= fechaOferta.getTime()) {
-    return { procesado: false, motivo: 'RESPUESTA_ANTERIOR_A_OFERTA', contactoId: contacto.id };
+    return {
+      procesado: false,
+      motivo: 'RESPUESTA_ANTERIOR_A_OFERTA',
+      contactoId: contacto.id,
+      hidratacion,
+    };
   }
 
   if (contacto.respondioOfertaInicial) {
@@ -84,6 +103,7 @@ async function registrarRespuestaOfertaInicial(payload) {
       actualizado: false,
       motivo: 'RESPUESTA_YA_REGISTRADA',
       contactoId: contacto.id,
+      hidratacion,
     };
   }
 
@@ -93,6 +113,7 @@ async function registrarRespuestaOfertaInicial(payload) {
     actualizado: true,
     contactoId: contacto.id,
     fechaRespuesta: fechaMensaje.toISOString(),
+    hidratacion,
   };
 }
 

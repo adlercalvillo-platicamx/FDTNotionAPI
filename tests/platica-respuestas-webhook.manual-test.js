@@ -14,6 +14,7 @@ const respuestasPath = require.resolve('../src/services/platica-respuestas.servi
 const controllerPath = require.resolve('../src/controllers/platica-webhook.controller');
 
 let contacto;
+let fallarHidratacion = false;
 const escrituras = [];
 const hidrataciones = [];
 
@@ -40,6 +41,7 @@ require.cache[perfilPath] = {
   exports: {
     async hidratarPerfilPlatica(datos) {
       hidrataciones.push(datos);
+      if (fallarHidratacion) throw new Error('Plática 500');
       return { actualizado: true };
     },
   },
@@ -163,8 +165,19 @@ async function main() {
   resultado = await registrarRespuestaOfertaInicial(evento());
   assert.strictEqual(resultado.actualizado, true);
   assert.strictEqual(escrituras.length, 1);
+  assert.strictEqual(hidrataciones.length, 1, 'un incoming con oferta previa también hidrata');
   resultado = await registrarRespuestaOfertaInicial(evento());
   assert.strictEqual(resultado.motivo, 'RESPUESTA_YA_REGISTRADA');
+  assert.strictEqual(escrituras.length, 1);
+  assert.strictEqual(hidrataciones.length, 2, 'quien ya respondió sigue refrescando su perfil');
+
+  // Si la hidratación truena, el registro de respuesta no se pierde.
+  reset();
+  fallarHidratacion = true;
+  resultado = await registrarRespuestaOfertaInicial(evento());
+  fallarHidratacion = false;
+  assert.strictEqual(resultado.actualizado, true);
+  assert.strictEqual(resultado.hidratacion, null);
   assert.strictEqual(escrituras.length, 1);
 
   reset();
@@ -215,6 +228,7 @@ async function main() {
 
   console.log('✅ Firma HMAC y workspace/canal se validan.');
   console.log('✅ Solo incoming posterior a la oferta marca respuesta.');
+  console.log('✅ Cualquier incoming hidrata, y si la hidratación falla la respuesta se guarda.');
   console.log('✅ Plantillas programadas fuera del backend también hidratan el perfil.');
   console.log('✅ Eventos duplicados son idempotentes.');
   console.log('✅ Body > 100kb y flood por IP se rechazan antes de Notion.');

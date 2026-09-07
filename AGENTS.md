@@ -40,7 +40,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Capacidad | REST | MCP (`POST /mcp`, Streamable HTTP, stateless) |
 |---|---|---|
 | Buscar contacto (Liz/Laura) | GET `/contactos/buscar` | REST en Plática (`buscar_contacto`); **no** MCP — mismo criterio que `reservar_cita` |
-| Hidratar perfil Plática | POST `/contactos/hidratar-perfil-platica` | —. Notion → nombre/correo/empresa/custom fields. Automático antes de plantillas, en incoming sin campaña y después de reservar/modificar/cancelar. |
+| Hidratar perfil Plática | POST `/contactos/hidratar-perfil-platica` | —. Notion → nombre/correo/empresa/custom fields. Automático antes de plantillas, en **cualquier** incoming y después de reservar/modificar/cancelar. La simulación de campañas **no** hidrata: `enviarPlantilla` solo corre en envío real. |
 | Checklist consultar / barrido | GET `/checklist/consultar`, POST `/checklist/revisar-pendientes` | `consultar_checklist`, `revisar_checklists_pendientes` |
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
