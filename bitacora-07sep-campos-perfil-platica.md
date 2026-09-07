@@ -52,9 +52,12 @@ ejecutado en producción; no volver a correr salvo auditoría idempotente.
 
 - `perfil-platica.service.js` construye y escribe el perfil completo en
   `PATCH /v1/clients/{telefono}` de Plática.
-- Sincroniza nombre completo, primer nombre, correo, empresa, área,
-  asistencia, tamaño, puesto, soluciones, giro, redes y citas confirmadas.
-  No sincroniza `Bio` ni `Quiere Citas 1a1`.
+- Sincroniza nombre completo, primer nombre, apellido (Title Case contra
+  Ticketópolis en mayúsculas), correo, empresa, área, asistencia, tamaño,
+  puesto, soluciones, giro, redes y citas confirmadas.
+  No sincroniza `Bio` ni `Quiere Citas 1a1`. Puesto va en Title Case;
+  redes en minúsculas; empresa solo se Title Case si Ticketópolis la
+  mandó toda en mayúsculas.
 - `POST /contactos/hidratar-perfil-platica`, con `X-API-Key`, permite
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar

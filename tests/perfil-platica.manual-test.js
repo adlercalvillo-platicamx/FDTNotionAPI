@@ -14,13 +14,13 @@ const contacto = {
   email: 'ana@example.com',
   whatsapp: '+52 1 449 000 0000',
   area: 'Ecommerce',
-  rolPuesto: 'Directora',
+  rolPuesto: 'DIRECTOR DE TECNOLOGIA',
   solucionesBuscadas: ['Pagos', 'Logística'],
   tamanoNegocio: 'Mediana - 50 a 250 empleados',
   ticketTipo: 'Presencial VIP',
   giroIndustria: 'Marca de moda',
-  linkedinInstagram: '@modamx',
-  webRedes: 'modamx.example',
+  linkedinInstagram: '@ADLERCALVILLO',
+  webRedes: 'EMPRESAADLER.MX',
 };
 
 require.cache[contactosPath] = {
@@ -62,12 +62,27 @@ require.cache[citasPath] = {
 };
 
 delete require.cache[perfilPath];
-const { hidratarPerfilPlatica, payloadPerfil } = require(perfilPath);
+const { hidratarPerfilPlatica, payloadPerfil, nombreParaPerfilPlatica } = require(perfilPath);
 
 async function main() {
+  assert.deepStrictEqual(nombreParaPerfilPlatica('ADLER CALVILLO'), {
+    name: 'Adler Calvillo',
+    firstname: 'Adler',
+    lastname: 'Calvillo',
+  });
+  assert.deepStrictEqual(nombreParaPerfilPlatica('ANA MARIA PEREZ LOPEZ'), {
+    name: 'Ana Maria Perez Lopez',
+    firstname: 'Ana Maria',
+    lastname: 'Perez Lopez',
+  });
+
   const directo = payloadPerfil(contacto, []);
-  assert.strictEqual(directo.name, 'ANA MARIA PEREZ');
-  assert.strictEqual(directo.firstname, 'Ana');
+  assert.strictEqual(directo.name, 'Ana Maria Perez');
+  assert.strictEqual(directo.firstname, 'Ana Maria');
+  assert.strictEqual(directo.lastname, 'Perez');
+  assert.strictEqual(directo.company, 'Moda MX');
+  assert.strictEqual(directo.customFields.role_puesto, 'Director De Tecnologia');
+  assert.strictEqual(directo.customFields.redes_sociales, '@adlercalvillo | empresaadler.mx');
   assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
   assert.strictEqual(directo.customFields.quiere_cita_1_a_1, undefined);
 
@@ -86,10 +101,11 @@ async function main() {
     'Sponsor A — 2026-10-07T10:30',
     'Sponsor B — 2026-10-08T09:00',
   ]);
-  assert.strictEqual(escritura.customFields.redes_sociales, '@modamx | modamx.example');
+  assert.strictEqual(directo.customFields.role_puesto, 'Director De Tecnologia');
+  assert.strictEqual(directo.customFields.redes_sociales, '@adlercalvillo | empresaadler.mx');
   assert.strictEqual(escritura.customFields.bio_antecedentes, undefined);
 
-  console.log('✅ Perfil base y campos personalizados salen de Notion.');
+  console.log('✅ Nombre Ticketópolis se parte en Title Case, primer+segundo nombre y apellido.');
   console.log('✅ Citas confirmadas se ordenan y se guardan como lista para viñetas.');
   console.log('✅ Quiere Citas 1a1 no viaja al perfil de Plática.');
 }

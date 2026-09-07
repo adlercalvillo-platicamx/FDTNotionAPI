@@ -17,14 +17,67 @@ const CAMPOS = {
   numeroCitasConfirmadas: 'numero_de_citas_confirmadas',
 };
 
-function primerNombre(nombreCompleto) {
-  const primero = String(nombreCompleto || '').trim().split(/\s+/)[0] || '';
-  if (!primero) return '';
-  return primero.charAt(0).toLocaleUpperCase('es') + primero.slice(1).toLocaleLowerCase('es');
+function capitalizarPalabra(palabra) {
+  if (!palabra) return palabra;
+  return palabra.charAt(0).toLocaleUpperCase('es') + palabra.slice(1).toLocaleLowerCase('es');
+}
+
+function capitalizarTokenNombre(token) {
+  return token
+    .split(/([-'’])/)
+    .map((parte) => (/^[-'’]$/.test(parte) ? parte : capitalizarPalabra(parte)))
+    .join('');
+}
+
+function tokensNombre(nombreCompleto) {
+  return String(nombreCompleto || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map(capitalizarTokenNombre);
+}
+
+// Ticketópolis vuelca "ANA MARIA PEREZ LOPEZ". Nombre completo en Title Case.
+// Primer nombre = primer token + segundo token si hay 3+ (Ana Maria);
+// apellido = el resto (Perez Lopez). 2 tokens: Adler / Calvillo.
+function nombreParaPerfilPlatica(nombreCompleto) {
+  const tokens = tokensNombre(nombreCompleto);
+  const name = tokens.join(' ');
+  if (tokens.length === 0) return { name: '', firstname: '', lastname: '' };
+  if (tokens.length === 1) return { name, firstname: tokens[0], lastname: '' };
+  if (tokens.length === 2) {
+    return { name, firstname: tokens[0], lastname: tokens[1] };
+  }
+  return {
+    name,
+    firstname: `${tokens[0]} ${tokens[1]}`,
+    lastname: tokens.slice(2).join(' '),
+  };
 }
 
 function unirTextos(...valores) {
   return [...new Set(valores.map((v) => String(v || '').trim()).filter(Boolean))].join(' | ');
+}
+
+function textoEnTitulo(valor) {
+  return tokensNombre(valor).join(' ');
+}
+
+function estaGritado(valor) {
+  const letras = String(valor || '').replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, '');
+  return letras.length > 0 && letras === letras.toLocaleUpperCase('es');
+}
+
+function textoEnTituloSiGritado(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto) return '';
+  return estaGritado(texto) ? textoEnTitulo(texto) : texto;
+}
+
+function redesEnMinusculas(...valores) {
+  return unirTextos(...valores).toLocaleLowerCase('es');
 }
 
 function lineaCita(cita) {
@@ -39,18 +92,20 @@ function payloadPerfil(contacto, citasConfirmadas) {
   const citasOrdenadas = [...(citasConfirmadas || [])].sort((a, b) =>
     String(a.inicio || '').localeCompare(String(b.inicio || ''))
   );
+  const { name, firstname, lastname } = nombreParaPerfilPlatica(contacto.nombre);
   const payload = {
-    name: contacto.nombre || '',
-    firstname: primerNombre(contacto.nombre),
-    company: contacto.empresa || '',
+    name,
+    firstname,
+    lastname,
+    company: textoEnTituloSiGritado(contacto.empresa),
     customFields: {
       [CAMPOS.area]: contacto.area || '',
-      [CAMPOS.rolPuesto]: contacto.rolPuesto || '',
+      [CAMPOS.rolPuesto]: textoEnTitulo(contacto.rolPuesto),
       [CAMPOS.solucionesBuscadas]: contacto.solucionesBuscadas || [],
       [CAMPOS.tamanoNegocio]: contacto.tamanoNegocio || '',
       [CAMPOS.tipoAsistencia]: contacto.ticketTipo || '',
       [CAMPOS.giroIndustria]: contacto.giroIndustria || '',
-      [CAMPOS.redesSociales]: unirTextos(contacto.linkedinInstagram, contacto.webRedes),
+      [CAMPOS.redesSociales]: redesEnMinusculas(contacto.linkedinInstagram, contacto.webRedes),
       [CAMPOS.citasConfirmadas]: citasOrdenadas.map(lineaCita),
       [CAMPOS.numeroCitasConfirmadas]: citasOrdenadas.length,
     },
@@ -105,7 +160,7 @@ async function hidratarPerfilPlatica({
 
 module.exports = {
   CAMPOS,
-  primerNombre,
+  nombreParaPerfilPlatica,
   lineaCita,
   payloadPerfil,
   hidratarPerfilPlatica,
