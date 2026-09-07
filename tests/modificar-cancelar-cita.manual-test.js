@@ -857,6 +857,20 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     );
   });
 
+  await ok('Una cancelada usada no vuelve a ofrecerse, aunque la hija también se canceló', async () => {
+    const disponibles = citasReal.filtrarCanceladasReagendables(
+      [
+        { id: 'origen', citaOrigenCanceladaId: null },
+        { id: 'hija-cancelada', citaOrigenCanceladaId: 'origen' },
+      ],
+      []
+    );
+    assert.deepStrictEqual(
+      disponibles.map((cita) => cita.id),
+      ['hija-cancelada']
+    );
+  });
+
   console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);
   process.exit(fallos === 0 ? 0 : 1);
 })();

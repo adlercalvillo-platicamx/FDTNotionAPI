@@ -41,6 +41,7 @@ function crearEstadoNotion() {
         estatus: 'Confirmada',
         mesa,
         requestId: requestId || `seed-${id}`,
+        origenCancelada: null,
       };
       porId.set(id, page);
       porRequestId.set(page.requestId, id);
@@ -64,6 +65,51 @@ function crearEstadoNotion() {
               : { rich_text: [] },
           },
         };
+      },
+      async obtenerCitaPorId(id) {
+        const page = porId.get(id);
+        if (!page) {
+          const err = new Error('No encontrada');
+          err.status = 404;
+          throw err;
+        }
+        return {
+          id: page.id,
+          properties: {
+            Nombre: { title: [{ plain_text: `Cita ${page.id}` }] },
+            Estatus: { select: { name: page.estatus } },
+            'Fecha y Hora': { date: { start: page.inicio, end: null } },
+            'Mesa / Ubicacion': page.mesa
+              ? { rich_text: [{ plain_text: `Mesa ${page.mesa}` }] }
+              : { rich_text: [] },
+            'Contacto Match': { relation: [{ id: page.sponsor }] },
+            'Contacto Principal': { relation: [{ id: page.asistente }] },
+            'Cita Origen Cancelada': {
+              relation: page.origenCancelada ? [{ id: page.origenCancelada }] : [],
+            },
+            'Check-in Realizado': { checkbox: false },
+            'Notas Envio Email': { rich_text: [] },
+            'Reprogramada Horario Original': { date: null },
+          },
+        };
+      },
+      async buscarReagendaActivaDeCancelada(origenId) {
+        const activa = [...porId.values()].find(
+          (page) =>
+            page.origenCancelada === origenId &&
+            ['Pendiente Calendar', 'Confirmada', 'Confirmada sin notificar', 'Cancelada'].includes(page.estatus)
+        );
+        return activa ? this.obtenerCitaPorId(activa.id) : null;
+      },
+      async buscarCitaRealActivaDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
+        const activa = [...porId.values()].find(
+          (page) =>
+            page.id !== exceptPageId &&
+            page.sponsor === sponsorPageId &&
+            page.asistente === asistentePageId &&
+            ['Pendiente Calendar', 'Confirmada', 'Confirmada sin notificar'].includes(page.estatus)
+        );
+        return activa ? this.obtenerCitaPorId(activa.id) : null;
       },
       async sponsorOcupadoEnBloque({ sponsorPageId, inicio }) {
         for (const page of porId.values()) {
@@ -107,7 +153,14 @@ function crearEstadoNotion() {
         const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
         return ocupacion.cantidad;
       },
-      async crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, mesa }) {
+      async crearCitaPendiente({
+        requestId,
+        sponsorPageId,
+        asistentePageId,
+        inicio,
+        mesa,
+        citaOrigenCanceladaId,
+      }) {
         seq += 1;
         const id = `cita-mock-${seq}`;
         const page = {
@@ -118,6 +171,7 @@ function crearEstadoNotion() {
           estatus: 'Pendiente Calendar',
           mesa: mesa ?? null,
           requestId,
+          origenCancelada: citaOrigenCanceladaId || null,
         };
         porId.set(id, page);
         porRequestId.set(requestId, id);
@@ -263,6 +317,116 @@ function baseParams(overrides = {}) {
     );
     assert.strictEqual(r.mesa, 2, `esperaba Mesa 2, got ${r.mesa}`);
     assert.strictEqual(estado.porId.get(r.notion_page_id).mesa, 2);
+  });
+
+  console.log('\n=== Reagendar una cancelada como cita nueva enlazada ===');
+  const origenCancelado = 'cita-cancelada-origen';
+  const asistenteReagenda = 'asistente-reagenda';
+  const sponsorReagenda = 'sponsor-reagenda';
+  estado.seedConfirmada({
+    id: origenCancelado,
+    sponsor: sponsorReagenda,
+    asistente: asistenteReagenda,
+    inicio: '2026-10-07T12:00:00-06:00',
+    mesa: 1,
+  });
+  estado.cancelar(origenCancelado);
+
+  await ok('crea otra fila, conserva la cancelada y enlaza el origen', async () => {
+    const r = await reservarCita(
+      baseParams({
+        sponsor: sponsorReagenda,
+        asistente_notion_id: asistenteReagenda,
+        inicio: '2026-10-07T12:30:00-06:00',
+        fin: '2026-10-07T13:00:00-06:00',
+        request_id: `wa:reagenda:${origenCancelado}:2026-10-07T12:30:00-06:00`,
+        cita_origen_cancelada_id: origenCancelado,
+      })
+    );
+    assert.notStrictEqual(r.notion_page_id, origenCancelado);
+    assert.strictEqual(estado.porId.get(origenCancelado).estatus, 'Cancelada');
+    assert.strictEqual(estado.porId.get(r.notion_page_id).origenCancelada, origenCancelado);
+    assert.strictEqual(r.cita_origen_cancelada_id, origenCancelado);
+  });
+
+  await ok('el mismo origen no puede producir dos citas activas', async () => {
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: sponsorReagenda,
+            asistente_notion_id: asistenteReagenda,
+            inicio: '2026-10-07T13:00:00-06:00',
+            fin: '2026-10-07T13:30:00-06:00',
+            request_id: 'wa:reagenda:segundo-intento',
+            cita_origen_cancelada_id: origenCancelado,
+          })
+        ),
+      (err) => err instanceof BookingError && err.code === 'CITA_CANCELADA_YA_REAGENDADA'
+    );
+  });
+
+  await ok('omitir el origen tampoco permite duplicar el mismo par', async () => {
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: sponsorReagenda,
+            asistente_notion_id: asistenteReagenda,
+            inicio: '2026-10-07T13:00:00-06:00',
+            fin: '2026-10-07T13:30:00-06:00',
+            request_id: 'wa:intento-sin-origen',
+          })
+        ),
+      (err) => err instanceof BookingError && err.code === 'CITA_PARA_YA_ACTIVA'
+    );
+  });
+
+  await ok('aunque la cita nueva se cancele, el origen viejo no vuelve a habilitarse', async () => {
+    const hija = [...estado.porId.values()].find(
+      (page) => page.origenCancelada === origenCancelado
+    );
+    estado.cancelar(hija.id);
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: sponsorReagenda,
+            asistente_notion_id: asistenteReagenda,
+            inicio: '2026-10-07T13:00:00-06:00',
+            fin: '2026-10-07T13:30:00-06:00',
+            request_id: 'wa:reagenda:tercer-intento',
+            cita_origen_cancelada_id: origenCancelado,
+          })
+        ),
+      (err) => err instanceof BookingError && err.code === 'CITA_CANCELADA_YA_REAGENDADA'
+    );
+  });
+
+  await ok('rechaza un origen cancelado de otro asistente', async () => {
+    const otroOrigen = 'cita-cancelada-ajena';
+    estado.seedConfirmada({
+      id: otroOrigen,
+      sponsor: sponsorReagenda,
+      asistente: 'asistente-ajeno',
+      inicio: '2026-10-07T13:30:00-06:00',
+      mesa: 1,
+    });
+    estado.cancelar(otroOrigen);
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: sponsorReagenda,
+            asistente_notion_id: asistenteReagenda,
+            inicio: '2026-10-07T14:00:00-06:00',
+            fin: '2026-10-07T14:30:00-06:00',
+            request_id: 'wa:reagenda:origen-ajeno',
+            cita_origen_cancelada_id: otroOrigen,
+          })
+        ),
+      (err) => err instanceof BookingError && err.code === 'CITA_ORIGEN_NO_COINCIDE'
+    );
   });
 
   console.log('\n=== Concurrencia (mutex) — mismo bloque, dos reservas en paralelo ===');

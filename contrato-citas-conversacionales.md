@@ -5,8 +5,8 @@ hablando con el agente. No se usan botones ni WhatsApp Flows en el camino
 activo.
 
 **Opciones en el chat:** como máximo **4** sponsors a la vez (`sugeridas_para_ofrecer`)
-y como máximo **3** horarios o citas a elegir. Si `hay_mas_sugeridas` /
-`hay_mas` / `hay_mas_citas`, pregunta si quiere ver más. Nunca pegues
+y como máximo **3** horarios, citas confirmadas o canceladas a elegir. Si `hay_mas_sugeridas` /
+`hay_mas` / `hay_mas_citas` / `hay_mas_canceladas`, pregunta si quiere ver más. Nunca pegues
 la grilla completa ni una lista larga.
 
 ## Camino de reserva
@@ -15,7 +15,9 @@ la grilla completa ni una lista larga.
 2. `consultar_sugeridas_para_asistente` devuelve:
    - `sugeridas`: únicamente pares `Aprobado`;
    - `sugeridas_para_ofrecer`: las primeras 4;
-   - `citasConfirmadas` / `citas_para_ofrecer`: compromisos reales.
+   - `citasConfirmadas` / `citas_para_ofrecer`: compromisos reales;
+   - `citasCanceladas` / `canceladas_para_ofrecer`: canceladas que todavía
+     pueden originar una nueva cita.
 3. Presenta como máximo 4 sponsors (nombre/empresa). Si `hay_mas_sugeridas`
    y pide más, nombra las siguientes de `sugeridas`.
 4. Cuando elige uno, llama `consultar_disponibilidad_cita` con el
@@ -49,6 +51,8 @@ la grilla completa ni una lista larga.
 - `inicio` / `fin`: copiar del mismo bloque de `opciones_para_ofrecer`.
 - `request_id`: estable para el mismo intento:
   `wa:<telefono>:<sponsor_notion_id>:<inicio>`.
+- Al reagendar una cancelada: `cita_origen_cancelada_id` = `citaId` de la
+  cancelada y `request_id` = `wa:reagenda:<citaIdCancelada>:<inicio>`.
 - `asistentes_email`: `[]` si no hay correos adicionales.
 - `sponsor_calendario_id`, `zona_horaria`, `titulo` y `descripcion` no son
   necesarios. Google Calendar propio se retiró.
@@ -82,6 +86,19 @@ vuelta a ISO: copiar los campos exactos de las tools.
 No hay ventana mínima de anticipación sobre la cita original. El destino no
 puede estar más de 5 minutos en el pasado. Una cita original ya pasada solo
 se mueve si `Check-in Realizado` es falso.
+
+## Reagendar una cancelada (`reservar_cita`)
+
+1. Consulta `canceladas_para_ofrecer` y elige máximo 3.
+2. Consulta disponibilidad con el mismo sponsor y asistente.
+3. Repite par, fecha y hora y exige confirmación explícita.
+4. Crea una fila nueva con `cita_origen_cancelada_id`; la cancelada conserva
+   horario, mesa e historial.
+5. Una cancelada que ya originó otra cita deja de consultarse como disponible
+   y el backend rechaza cualquier reutilización con
+   `CITA_CANCELADA_YA_REAGENDADA`, incluso si la cita hija se canceló después.
+   Omitir el origen tampoco permite duplicar el mismo par mientras ya exista
+   una cita activa (`CITA_PARA_YA_ACTIVA`).
 
 ## Cancelar (`cancelar_cita`)
 

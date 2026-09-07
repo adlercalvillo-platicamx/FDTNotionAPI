@@ -111,6 +111,14 @@ citasService.consultarSugeridasPorIdentificador = async (args) => {
         checkInRealizado: false,
       },
     ],
+    citasCanceladas: [1, 2, 3, 4].map((n) => ({
+      sponsorNombre: `Cancelada ${n}`,
+      sponsor_notion_id: `sponsor-cancelado-${n}`,
+      fechaHora: `2026-10-07T${String(9 + n).padStart(2, '0')}:00:00-06:00`,
+      mesa: `Mesa ${n}`,
+      citaId: `cita-cancelada-${n}`,
+      estatus: 'Cancelada',
+    })),
   };
 };
 const obtenerDisponibilidadOriginal = citasService.obtenerDisponibilidadSponsor;
@@ -348,7 +356,7 @@ async function ok(nombre, fn) {
   });
 
   console.log('\n=== consultar_sugeridas_para_asistente ===');
-  await ok('incluye citasConfirmadas además de sugeridas', async () => {
+  await ok('incluye confirmadas y canceladas además de sugeridas', async () => {
     const r = await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' });
     assert.ok(!r.isError);
     const body = parse(r);
@@ -357,6 +365,10 @@ async function ok(nombre, fn) {
     assert.ok(body.sugeridas.every((s) => s.estatus === 'Aprobado'));
     assert.ok(Array.isArray(body.citasConfirmadas));
     assert.strictEqual(body.citasConfirmadas[0].citaId, 'cita-ok');
+    assert.ok(Array.isArray(body.citasCanceladas));
+    assert.strictEqual(body.canceladas_para_ofrecer.length, 3);
+    assert.strictEqual(body.canceladas_para_ofrecer[0].citaId, 'cita-cancelada-1');
+    assert.strictEqual(body.hay_mas_canceladas, true);
     assert.strictEqual(body.sugeridas_para_ofrecer.length, 1);
     assert.strictEqual(body.hay_mas_sugeridas, false);
     assert.ok(!JSON.stringify(body).includes('calendarioGoogleId'));

@@ -283,13 +283,16 @@ function empresaOTituloFallback(empresa, nombre, fallback) {
   return String(empresa || nombre || fallback).trim();
 }
 
-function propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }) {
+function propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa, citaOrigenCanceladaId }) {
   return {
     Nombre: { title: [{ text: { content: titulo || `Cita — ${requestId}` } }] },
     'Idempotency Key': { rich_text: [{ text: { content: requestId } }] },
     Estatus: { select: { name: 'Pendiente Calendar' } },
     'Fecha y Hora': { date: { start: inicio, end: fin } },
     ...(mesa ? { 'Mesa / Ubicacion': { rich_text: [{ text: { content: `Mesa ${mesa}` } }] } } : {}),
+    ...(citaOrigenCanceladaId
+      ? { 'Cita Origen Cancelada': { relation: [{ id: citaOrigenCanceladaId }] } }
+      : {}),
   };
 }
 
@@ -340,7 +343,16 @@ function elegirSugerenciaAPromover(filas) {
  * sigue viendo "Aprobados sin agendar" y vuelve a ofrecer el mismo match
  * aunque la cita real ya esté Confirmada (bug visto 19-ago).
  */
-async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, inicio, fin, titulo, mesa }) {
+async function crearCitaPendiente({
+  requestId,
+  sponsorPageId,
+  asistentePageId,
+  inicio,
+  fin,
+  titulo,
+  mesa,
+  citaOrigenCanceladaId,
+}) {
   requireDataSourceId();
   const sugerencias = await buscarSugerenciasDelPar({ sponsorPageId, asistentePageId });
   const aPromover = elegirSugerenciaAPromover(sugerencias);
@@ -351,7 +363,14 @@ async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, i
     const pagina = await notionFetch(`/pages/${aPromover.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        properties: propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }),
+        properties: propiedadesReservaPendiente({
+          requestId,
+          inicio,
+          fin,
+          titulo,
+          mesa,
+          citaOrigenCanceladaId,
+        }),
       }),
     });
     return {
@@ -367,7 +386,14 @@ async function crearCitaPendiente({ requestId, sponsorPageId, asistentePageId, i
     body: JSON.stringify({
       parent: { type: 'data_source_id', data_source_id: CITAS_DATA_SOURCE_ID },
       properties: {
-        ...propiedadesReservaPendiente({ requestId, inicio, fin, titulo, mesa }),
+        ...propiedadesReservaPendiente({
+          requestId,
+          inicio,
+          fin,
+          titulo,
+          mesa,
+          citaOrigenCanceladaId,
+        }),
         'Contacto Match': { relation: [{ id: sponsorPageId }] },
         'Contacto Principal': { relation: [{ id: asistentePageId }] },
       },
@@ -404,6 +430,7 @@ async function revertirCitaPendienteAMatch({ notionPageId, estatusPrevio, nombre
     'Idempotency Key': { rich_text: [] },
     'Fecha y Hora': { date: null },
     'Mesa / Ubicacion': { rich_text: [] },
+    'Cita Origen Cancelada': { relation: [] },
   };
   if (nombrePrevio) {
     properties.Nombre = { title: [{ text: { content: nombrePrevio } }] };
@@ -571,6 +598,7 @@ function datosDeCita(pagina) {
     mesa: textoRichText(props['Mesa / Ubicacion']) || null,
     sponsorPageId: primerRelacionId(props['Contacto Match']),
     asistentePageId: primerRelacionId(props['Contacto Principal']),
+    citaOrigenCanceladaId: primerRelacionId(props['Cita Origen Cancelada']),
     checkInRealizado: props['Check-in Realizado']?.checkbox === true,
     // Histórico: ya no se escribe ni se usa. Lo deja datosDeCita por si
     // hay que leer filas viejas; no hay consumidores nuevos.
@@ -725,6 +753,68 @@ async function listarCitasRealesPorAsistente(asistentePageId, { incluirCompletad
     });
   }
   return citas;
+}
+
+async function listarCitasCanceladasPorAsistente(asistentePageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      { property: 'Estatus', select: { equals: 'Cancelada' } },
+    ],
+  });
+
+  const contactos = require('./contactos.service');
+  const citas = [];
+  for (const fila of filas) {
+    const datos = datosDeCita(fila);
+    if (datos.estatus !== 'Cancelada' || !datos.sponsorPageId) continue;
+    let sponsor = null;
+    try {
+      sponsor = await contactos.obtenerContacto(datos.sponsorPageId);
+    } catch (err) {
+      console.warn(`[Citas] No se pudo hidratar sponsor ${datos.sponsorPageId}:`, err.message);
+    }
+    citas.push({
+      ...datos,
+      sponsorEmpresa: sponsor?.empresa || null,
+      sponsorNombre: sponsor?.nombre || null,
+    });
+  }
+  return citas;
+}
+
+async function buscarReagendaActivaDeCancelada(citaOrigenCanceladaId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Cita Origen Cancelada', relation: { contains: citaOrigenCanceladaId } },
+      {
+        or: ['Pendiente Calendar', 'Confirmada', 'Confirmada sin notificar', 'Cancelada'].map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+    ],
+  });
+  return filas[0] || null;
+}
+
+async function buscarCitaRealActivaDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      {
+        or: ['Pendiente Calendar', 'Confirmada', 'Confirmada sin notificar'].map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+    ],
+  });
+  return filas.find((fila) => !esMismaPagina(fila.id, exceptPageId)) || null;
 }
 
 /**
@@ -947,14 +1037,23 @@ async function consultarSugeridasPorIdentificador({
     asistente = await contactos.obtenerContacto(id);
   }
 
-  const [sugeridas, citasReales] = await Promise.all([
+  const [sugeridas, citasReales, canceladas] = await Promise.all([
     listarSugeridasPorAsistente(id, { soloAprobado }),
     listarCitasRealesPorAsistente(id),
+    listarCitasCanceladasPorAsistente(id),
   ]);
   const citasConfirmadas = citasReales
     .slice()
     .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')))
     .map(formatearCitaConfirmadaAsistente);
+  const citasCanceladas = filtrarCanceladasReagendables(canceladas, citasReales)
+    .slice()
+    .sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || '')))
+    .map((cita) => ({
+      ...formatearCitaConfirmadaAsistente(cita),
+      estatus: 'Cancelada',
+      avisoPendiente: cita.notasEnvioEmail.startsWith(MARCA_CANCELACION_PENDIENTE),
+    }));
   return {
     asistente_notion_id: id,
     asistente_nombre: asistente?.nombre || null,
@@ -962,6 +1061,7 @@ async function consultarSugeridasPorIdentificador({
     whatsapp: asistente?.whatsapp || phone || null,
     sugeridas,
     citasConfirmadas,
+    citasCanceladas,
   };
 }
 
@@ -992,6 +1092,18 @@ function formatearCitaConfirmadaAsistente(cita) {
     citaId: cita.id,
     checkInRealizado: cita.checkInRealizado === true,
   };
+}
+
+function filtrarCanceladasReagendables(canceladas, citasReales) {
+  const origenesYaConsumidos = new Set(
+    [...(citasReales || []), ...(canceladas || [])]
+      .map((cita) => cita.citaOrigenCanceladaId)
+      .filter(Boolean)
+      .map((idOrigen) => pageIdCanonico(idOrigen))
+  );
+  return (canceladas || []).filter(
+    (cita) => !origenesYaConsumidos.has(pageIdCanonico(cita.id))
+  );
 }
 
 async function listarSugerenciasAprobadasPorAsistente(asistentePageId) {
@@ -1811,6 +1923,9 @@ module.exports = {
   buscarCancelacionesSinNotificar,
   tieneCancelacionPendienteDeAviso,
   listarCitasRealesPorAsistente,
+  listarCitasCanceladasPorAsistente,
+  buscarReagendaActivaDeCancelada,
+  buscarCitaRealActivaDelPar,
   MARCA_CANCELACION_PENDIENTE,
   ESTATUS_CITA_REAL,
   contarCitasConfirmadasPorSponsor,
@@ -1826,6 +1941,7 @@ module.exports = {
   consultarSugeridasPorIdentificador,
   formatearSugerenciaAprobada,
   formatearCitaConfirmadaAsistente,
+  filtrarCanceladasReagendables,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,

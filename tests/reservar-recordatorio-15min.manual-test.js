@@ -19,6 +19,7 @@ class BookingError extends Error {
 const llamadasRecordatorio = [];
 let implRecordatorio = async () => ({ status: 'scheduled' });
 let implReservar;
+let ultimaReservaParams;
 
 require.cache[bookingPath] = {
   id: bookingPath,
@@ -27,6 +28,7 @@ require.cache[bookingPath] = {
   exports: {
     BookingError,
     async reservarCita(params) {
+      ultimaReservaParams = params;
       return implReservar(params);
     },
     async modificarCita() {},
@@ -114,6 +116,30 @@ async function okAsync(nombre, fn) {
       sponsor_notion_id: 'sponsor-1',
       inicio: '2026-10-07T10:30:00-06:00',
     });
+  });
+
+  await okAsync('pasa cita_origen_cancelada_id canónico al service', async () => {
+    llamadasRecordatorio.length = 0;
+    implReservar = async () => ({
+      ya_existia: false,
+      notion_page_id: 'cita-reagendada',
+      estado: 'Confirmada',
+    });
+    const origen = '3d162dda-199a-8124-a828-fd1d957ede2b';
+    const res = mockRes();
+    await reservar({ body: { ...bodyReserva(), cita_origen_cancelada_id: origen } }, res);
+    assert.strictEqual(res.statusCode, 201);
+    assert.strictEqual(ultimaReservaParams.cita_origen_cancelada_id, origen);
+    await flushImmediate();
+  });
+
+  await okAsync('rechaza cita_origen_cancelada_id mal formado antes del service', async () => {
+    ultimaReservaParams = null;
+    const res = mockRes();
+    await reservar({ body: { ...bodyReserva(), cita_origen_cancelada_id: 'inventado' } }, res);
+    assert.strictEqual(res.statusCode, 400);
+    assert.strictEqual(res.body.error, 'INVALID_INPUT');
+    assert.strictEqual(ultimaReservaParams, null);
   });
 
   await okAsync('Plática throw no cambia 201 ni el body de agendar', async () => {

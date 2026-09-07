@@ -47,7 +47,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
 | Recordatorio WhatsApp 15 min | Camino feliz: **POST `/citas/reservar`** (fire-and-forget en el controller). Reintento: **POST `/citas/programar-recordatorio-15min`**. No cambia JSON/status de agendar. | — |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
-| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). El WhatsApp Flow de reserva arma el dropdown en proceso, solo `Aprobado`. | `consultar_sugeridas_para_asistente` (`whatsapp`; campo **`sugeridas`** = solo `Aprobado`; + `citasConfirmadas`) |
+| Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). | `consultar_sugeridas_para_asistente` (`whatsapp`; `sugeridas` = solo `Aprobado`; + `citasConfirmadas` + `citasCanceladas`; topes 4/3/3) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` (opcional `asistente_notion_id`) | `consultar_disponibilidad_cita` (máx. 3; `hora=HH:MM` si pidió una hora concreta; exige `whatsapp` o `asistentePageId`; `hay_mas` + `excluirInicios`) |
 | Data WhatsApp Flow (legado) | POST `/webhooks/whatsapp-flows` (HMAC) | — |
@@ -91,6 +91,21 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Dos reglas de tiempo, independientes entre sí: el horario **destino** no puede estar más de `CITAS_MARGEN_MODIFICACION_MINUTOS` (5) en el pasado; y una cita **original** ya pasada solo se puede mover si `Check-in Realizado` está en falso. No hay ventana mínima de anticipación sobre la cita original.
 - ICS: mismo UID (`page_id@fashiondigitaltalks.com`), `SEQUENCE` de `siguienteSecuenciaIcs()` (timestamp con garantía de incremento en el mismo segundo), `CONFIRMED` al modificar y `METHOD:CANCEL` + `STATUS:CANCELLED` al cancelar. No hay campo de secuencia en Notion y no hace falta. `LOCATION` del `.ics` es siempre Club France (dirección completa); la mesa va en `DESCRIPTION` (= cuerpo del correo). Confirmar y modificar incluyen mesa + sede en el cuerpo; cancelar solo el horario cancelado. El aviso de abrir el `.ics` va en el cuerpo (modificar: actualizar; cancelar: quitar), no en la respuesta HTTP.
 - MCP (`modificar_cita` / `cancelar_cita`): misma función que REST. Si hay varias citas, la tool devuelve la lista y el agente pregunta. Si el correo falla, `exito_parcial` + `aviso` — no reportar que el aviso ya se envió. `reservar_cita` sigue fuera del MCP.
+
+## Reagendar una cancelada (7-sep, `reservar_cita`)
+
+- Una fila `Cancelada` nunca revive. `reservar_cita` recibe
+  `cita_origen_cancelada_id`, exige mismo sponsor/asistente y crea otra fila
+  enlazada mediante `Cita Origen Cancelada`.
+- Idempotencia: `wa:reagenda:<citaIdCancelada>:<inicio>`. No reutilizar el
+  request id original.
+- El origen solo se consume una vez. Si ya tiene una hija en `Pendiente
+  Calendar`, `Confirmada`, `Confirmada sin notificar` o `Cancelada`, responde
+  `CITA_CANCELADA_YA_REAGENDADA`; además deja de salir en `citasCanceladas`.
+- Aun omitiendo el origen, `reservar_cita` rechaza un segundo compromiso
+  activo del mismo par con `CITA_PARA_YA_ACTIVA`.
+- Todas las validaciones de disponibilidad, mesa y correo siguen pasando por
+  `reservarCita` dentro del mismo mutex.
 
 ## Matchmaking
 

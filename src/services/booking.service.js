@@ -441,6 +441,59 @@ function errorDeContactoInexistente(error, { sponsorPageId, asistentePageId }) {
   );
 }
 
+async function validarOrigenDeReagenda({
+  citaOrigenCanceladaId,
+  sponsorPageId,
+  asistentePageId,
+}) {
+  if (!citaOrigenCanceladaId) return null;
+
+  let pagina;
+  try {
+    pagina = await citasService.obtenerCitaPorId(citaOrigenCanceladaId);
+  } catch (error) {
+    if (error?.status === 404) {
+      throw new BookingError(
+        'CITA_ORIGEN_NO_ENCONTRADA',
+        `La cita cancelada de origen "${citaOrigenCanceladaId}" no existe en Notion.`
+      );
+    }
+    throw error;
+  }
+
+  const origen = citasService.datosDeCita(pagina);
+  if (origen.estatus !== 'Cancelada') {
+    throw new BookingError(
+      'CITA_ORIGEN_NO_CANCELADA',
+      `La cita de origen está en estatus "${origen.estatus}", no en "Cancelada".`
+    );
+  }
+  if (
+    !sonElMismoContacto(origen.sponsorPageId, sponsorPageId) ||
+    !sonElMismoContacto(origen.asistentePageId, asistentePageId)
+  ) {
+    throw new BookingError(
+      'CITA_ORIGEN_NO_COINCIDE',
+      'La cita cancelada de origen no corresponde al mismo asistente y sponsor de la nueva reserva.'
+    );
+  }
+
+  const reagendaExistente = await citasService.buscarReagendaActivaDeCancelada(citaOrigenCanceladaId);
+  if (reagendaExistente) {
+    const datosReagenda = citasService.datosDeCita(reagendaExistente);
+    throw new BookingError(
+      'CITA_CANCELADA_YA_REAGENDADA',
+      'Esta cita cancelada ya fue usada para crear otra cita y no puede reutilizarse.',
+      {
+        cita_nueva_id: datosReagenda.id,
+        inicio: datosReagenda.inicio,
+        estatus: datosReagenda.estatus,
+      }
+    );
+  }
+  return origen;
+}
+
 /**
  * Reserva una cita 1-a-1 entre un sponsor y un asistente.
  *
@@ -454,6 +507,7 @@ function errorDeContactoInexistente(error, { sponsorPageId, asistentePageId }) {
  * @param {string} [params.zona_horaria]        - legado; ya no se usa
  * @param {string} params.request_id            - clave de idempotencia, generada por quien llama
  *                                                 (el mismo valor en un reintento debe ser el mismo string)
+ * @param {string} [params.cita_origen_cancelada_id] - fila Cancelada que origina esta nueva cita
  * @param {string} [params.titulo]
  * @param {string} [params.descripcion]         - ya no alimenta el correo (descripción auto); se conserva en la firma por compatibilidad
  * @param {string[]} [params.asistentes_email]  - emails extra (se suman a Contactos)
@@ -466,6 +520,7 @@ async function reservarCita({
   fin,
   zona_horaria, // eslint-disable-line no-unused-vars -- legado 27-ago
   request_id,
+  cita_origen_cancelada_id,
   titulo,
   descripcion, // eslint-disable-line no-unused-vars -- firma pública; descripción real = auto desde Contactos
   asistentes_email,
@@ -506,12 +561,31 @@ async function reservarCita({
       citaPendiente = existenteEnLock;
     }
 
-    const [sponsorOcupado, asistenteOcupado, ocupacionMesas] = await Promise.all([
+    await validarOrigenDeReagenda({
+      citaOrigenCanceladaId: cita_origen_cancelada_id,
+      sponsorPageId: sponsor_notion_id,
+      asistentePageId: asistente_notion_id,
+    });
+
+    const [sponsorOcupado, asistenteOcupado, ocupacionMesas, citaActivaDelPar] = await Promise.all([
       citasService.sponsorOcupadoEnBloque({ sponsorPageId: sponsor_notion_id, inicio }),
       citasService.asistenteOcupadoEnBloque({ asistentePageId: asistente_notion_id, inicio }),
       citasService.obtenerOcupacionMesasEnBloque({ inicio }),
+      citasService.buscarCitaRealActivaDelPar({
+        sponsorPageId: sponsor_notion_id,
+        asistentePageId: asistente_notion_id,
+        exceptPageId: citaPendiente?.id,
+      }),
     ]);
 
+    if (citaActivaDelPar) {
+      const activa = citasService.datosDeCita(citaActivaDelPar);
+      throw new BookingError(
+        'CITA_PARA_YA_ACTIVA',
+        'Este asistente ya tiene una cita activa con el mismo sponsor.',
+        { cita_existente_id: activa.id, inicio: activa.inicio, estatus: activa.estatus }
+      );
+    }
     if (sponsorOcupado) {
       throw new BookingError('SPONSOR_YA_OCUPADO', 'Este sponsor ya tiene una cita confirmada en ese horario.');
     }
@@ -546,6 +620,7 @@ async function reservarCita({
           fin,
           titulo: titulo || `Cita — ${request_id}`,
           mesa: numeroMesa,
+          citaOrigenCanceladaId: cita_origen_cancelada_id,
         });
       } catch (error) {
         throw errorDeContactoInexistente(error, {
@@ -658,6 +733,9 @@ async function reservarCita({
               estado: 'Confirmada sin notificar',
               mesa: numeroMesa,
               titulo: notificacion.tituloCita,
+              ...(cita_origen_cancelada_id
+                ? { cita_origen_cancelada_id }
+                : {}),
               notificacion_error: {
                 categoria: emailError.categoria || 'DESCONOCIDO',
                 mensaje: emailError.message,
@@ -672,6 +750,9 @@ async function reservarCita({
           estado: 'Confirmada',
           mesa: numeroMesa,
           titulo: notificacion.tituloCita,
+          ...(cita_origen_cancelada_id
+            ? { cita_origen_cancelada_id }
+            : {}),
         };
       } catch (notionError) {
         ultimoError = notionError;

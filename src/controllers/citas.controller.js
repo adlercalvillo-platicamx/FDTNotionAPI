@@ -54,6 +54,11 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   SPONSOR_NO_ENCONTRADO: 404, // page_id que no existe en Contactos (agente armando ids, 2-sep)
   SPONSOR_CATEGORIA_INVALIDA: 400,
   CITA_NO_ENCONTRADA: 404,
+  CITA_ORIGEN_NO_ENCONTRADA: 404,
+  CITA_ORIGEN_NO_CANCELADA: 409,
+  CITA_ORIGEN_NO_COINCIDE: 409,
+  CITA_CANCELADA_YA_REAGENDADA: 409,
+  CITA_PARA_YA_ACTIVA: 409,
   SIN_CITAS_ACTIVAS: 404,
   CITA_NO_PERTENECE: 403, // el teléfono no corresponde al Contacto Principal de esa cita
   VARIAS_CITAS_ACTIVAS: 409,
@@ -86,6 +91,7 @@ async function reservar(req, res) {
     fin,
     zona_horaria,
     request_id,
+    cita_origen_cancelada_id,
     titulo,
     descripcion,
     asistentes_email,
@@ -109,6 +115,12 @@ async function reservar(req, res) {
       message: 'Los campos "inicio" y "fin" son requeridos en formato ISO 8601 (ej. "2026-10-07T10:30:00-06:00").',
     });
   }
+  if (cita_origen_cancelada_id && !esUuidCanonico(cita_origen_cancelada_id)) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: '"cita_origen_cancelada_id" debe ser un UUID válido de Notion.',
+    });
+  }
   if (asistentes_email !== undefined && !Array.isArray(asistentes_email)) {
     return res.status(400).json({ error: 'INVALID_INPUT', message: '"asistentes_email" debe ser un arreglo de emails' });
   }
@@ -121,6 +133,7 @@ async function reservar(req, res) {
       fin,
       zona_horaria,
       request_id,
+      cita_origen_cancelada_id,
       titulo,
       descripcion,
       asistentes_email,
@@ -136,10 +149,12 @@ async function reservar(req, res) {
     return res.status(resultado.ya_existia ? 200 : 201).json(resultado);
   } catch (error) {
     if (error instanceof BookingError) {
-      return res.status(STATUS_POR_CODIGO_NEGOCIO[error.code] || 400).json({
+      const cuerpo = {
         error: error.code,
         message: error.message,
-      });
+      };
+      if (error.detalle) Object.assign(cuerpo, error.detalle);
+      return res.status(STATUS_POR_CODIGO_NEGOCIO[error.code] || 400).json(cuerpo);
     }
 
     console.error('[CitasController] Error inesperado:', error);

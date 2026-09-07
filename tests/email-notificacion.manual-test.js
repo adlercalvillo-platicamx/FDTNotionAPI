@@ -103,6 +103,9 @@ function crearHarness({
         ],
       };
     },
+    async buscarCitaRealActivaDelPar() {
+      return null;
+    },
     async contarCitasEnBloque({ inicio, exceptPageId }) {
       const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
       return ocupacion.cantidad;
@@ -665,6 +668,9 @@ function baseParams(overrides = {}) {
       },
       async obtenerOcupacionMesasEnBloque() {
         return { cantidad: 0, numerosOcupados: [] };
+      },
+      async buscarCitaRealActivaDelPar() {
+        return null;
       },
       async contarCitasEnBloque() {
         return 0;
