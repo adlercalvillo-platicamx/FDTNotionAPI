@@ -22,12 +22,21 @@ function encolarRecordatorio15minTrasReserva({ asistente_notion_id, sponsor_noti
       asistente_notion_id,
       sponsor_notion_id,
       inicio,
-    }).catch((err) => {
-      console.error(
-        '[CitasController] Recordatorio 15 min falló (la cita no se toca):',
-        err.message
-      );
-    });
+    })
+      .then((resultado15min) => {
+        if (resultado15min?.omitido) {
+          console.warn(
+            '[CitasController] Recordatorio 15 min omitido:',
+            JSON.stringify({ motivo: resultado15min.motivo, asistente_notion_id, sponsor_notion_id, inicio })
+          );
+        }
+      })
+      .catch((err) => {
+        console.error(
+          '[CitasController] Recordatorio 15 min falló (la cita no se toca):',
+          JSON.stringify({ asistente_notion_id, sponsor_notion_id, inicio, error: err.message })
+        );
+      });
   });
 }
 
