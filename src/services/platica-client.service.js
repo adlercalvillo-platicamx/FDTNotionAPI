@@ -50,6 +50,32 @@ async function platicaFetch(path, body) {
   return json;
 }
 
+async function platicaPatch(path, body) {
+  if (!API_KEY) throw new Error('Falta PLATICA_API_KEY');
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    const err = new Error(`Plática ${res.status}: ${text.slice(0, 400)}`);
+    err.status = res.status;
+    err.body = json;
+    throw err;
+  }
+  return json;
+}
+
 async function platicaGet(path) {
   if (!API_KEY) throw new Error('Falta PLATICA_API_KEY');
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -154,6 +180,18 @@ async function enviarPlantilla({ phone, templateName, params }) {
   const conversationId = telefonoConversacion(phone);
   if (!conversationId) throw new Error('Teléfono vacío para WhatsApp');
   if (!templateName) throw new Error('Falta nombre de plantilla');
+  // Toda plantilla enviada por este backend intenta hidratar primero el
+  // perfil. El fallo de sincronización no bloquea un recordatorio/oferta:
+  // se registra y el envío conserva su semántica previa.
+  try {
+    const { hidratarPerfilPlatica } = require('./perfil-platica.service');
+    await hidratarPerfilPlatica({
+      whatsapp: conversationId,
+      actualizarClienteFn: actualizarCliente,
+    });
+  } catch (error) {
+    console.warn(`[Platica] No se pudo hidratar ${conversationId} antes de la plantilla:`, error.message);
+  }
   return platicaFetch('/v1/messages/template', {
     ...payloadCanalYAgente(),
     conversationId,
@@ -162,6 +200,12 @@ async function enviarPlantilla({ phone, templateName, params }) {
       params: params || [],
     },
   });
+}
+
+async function actualizarCliente({ phone, ...cambios }) {
+  const cliente = telefonoConversacion(phone);
+  if (!cliente) throw new Error('Teléfono vacío para actualizar cliente de Plática');
+  return platicaPatch(`/v1/clients/${encodeURIComponent(cliente)}`, cambios);
 }
 
 /**
@@ -203,4 +247,5 @@ module.exports = {
   cargarMensajesCliente,
   conversacionesDeRespuesta,
   payloadCanalYAgente,
+  actualizarCliente,
 };

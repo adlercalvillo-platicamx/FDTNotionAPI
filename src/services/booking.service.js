@@ -37,6 +37,7 @@
 const { Mutex } = require('async-mutex');
 const citasService = require('./citas.service');
 const contactosService = require('./contactos.service');
+const { hidratarPerfilPlatica } = require('./perfil-platica.service');
 const emailService = require('./email.service');
 const { UBICACION_ICS_EVENTO } = require('../utils/sede-evento');
 
@@ -65,6 +66,19 @@ const NOTA_CALENDARIO = NOTA_CALENDARIO_ACTUALIZAR;
 // cuantas veces haga falta tras corregir el dato (Adler, 18-ago).
 const REINTENTOS_INMEDIATOS_SMTP = 3;
 const bookingMutex = new Mutex();
+
+async function hidratarAsistenteSinBloquear(asistentePageId) {
+  try {
+    await hidratarPerfilPlatica({ asistentePageId });
+  } catch (error) {
+    // La cita ya cambió en Notion. Una falla de perfil de CRM no puede
+    // revertir ni degradar la reserva/cancelación ni alterar el correo.
+    console.warn(
+      `[Booking] Cita guardada, pero no se pudo hidratar el perfil ${asistentePageId}:`,
+      error.message
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // DURACIÓN + DÍA DEL EVENTO + HORARIO OPERATIVO (misma fuente que
@@ -600,6 +614,7 @@ async function reservarCita({
       try {
         await citasService.confirmarCita({ notionPageId: citaPendiente.id });
         await archivarSugerenciasHermanas();
+        await hidratarAsistenteSinBloquear(asistente_notion_id);
 
         // Cita real en Notion. A partir de aquí, cualquier falla de correo
         // NUNCA revierte la reserva — solo degrada el Estatus a
@@ -1131,6 +1146,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
       horarioOriginal: horarioAnterior,
       horarioOriginalYaGuardado: Boolean(cita.horarioOriginal),
     });
+    await hidratarAsistenteSinBloquear(cita.asistentePageId);
 
     const respuesta = {
       notion_page_id: cita.id,
@@ -1207,6 +1223,7 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
     });
 
     await citasService.marcarCitaCancelada({ notionPageId: cita.id });
+    await hidratarAsistenteSinBloquear(cita.asistentePageId);
 
     const respuesta = {
       notion_page_id: cita.id,

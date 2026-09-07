@@ -28,6 +28,8 @@ const texto = (prop) => {
 const select = (prop) => prop?.select?.name || null;
 const multiSelect = (prop) => (prop?.multi_select || []).map((o) => o.name);
 const numero = (prop) => (typeof prop?.number === 'number' ? prop.number : null);
+const numeroFormula = (prop) =>
+  typeof prop?.formula?.number === 'number' ? prop.formula.number : null;
 const checkbox = (prop) => prop?.checkbox === true;
 const relacionIds = (prop) => (prop?.relation || []).map((r) => r.id);
 const email = (prop) => prop?.email || '';
@@ -81,6 +83,10 @@ function parsearContacto(pagina) {
     clientesPotencialesDeseados: texto(p['Clientes Potenciales Deseados']),
     nivelPatrocinio: select(p['Nivel de Patrocinio']),
     citasMinimasPrometidas: numero(p['Citas Minimas Prometidas']) || 0,
+    // Conteo del contacto en su rol de ASISTENTE. No confundir con
+    // "Citas Confirmadas (Count)", que usa la relación del sponsor.
+    citasConfirmadasAsistente:
+      numeroFormula(p['Citas Confirmadas Asistente (Count)']) || 0,
     // Agregado 12 de agosto — soporte multi-calendario. Un ID por sponsor,
     // en vez de un solo sponsor_calendario_id fijo por .env. Vacío = sponsor
     // todavía sin calendario dedicado creado (ver 09-matchmaking-directo-2026.md).

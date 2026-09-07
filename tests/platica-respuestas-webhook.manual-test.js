@@ -9,11 +9,13 @@ process.env.PLATICA_WORKSPACE_ID = 'workspace-test';
 process.env.PLATICA_CHANNEL_ID = 'channel-test';
 
 const contactosPath = require.resolve('../src/services/contactos.service');
+const perfilPath = require.resolve('../src/services/perfil-platica.service');
 const respuestasPath = require.resolve('../src/services/platica-respuestas.service');
 const controllerPath = require.resolve('../src/controllers/platica-webhook.controller');
 
 let contacto;
 const escrituras = [];
+const hidrataciones = [];
 
 require.cache[contactosPath] = {
   id: contactosPath,
@@ -31,6 +33,18 @@ require.cache[contactosPath] = {
   },
 };
 
+require.cache[perfilPath] = {
+  id: perfilPath,
+  filename: perfilPath,
+  loaded: true,
+  exports: {
+    async hidratarPerfilPlatica(datos) {
+      hidrataciones.push(datos);
+      return { actualizado: true };
+    },
+  },
+};
+
 delete require.cache[respuestasPath];
 delete require.cache[controllerPath];
 const { registrarRespuestaOfertaInicial } = require(respuestasPath);
@@ -43,6 +57,7 @@ const {
 
 function reset() {
   escrituras.length = 0;
+  hidrataciones.length = 0;
   contacto = {
     id: 'contacto-1',
     ultimaCampanaEnviada: 'Oferta inicial',
@@ -123,10 +138,25 @@ async function main() {
   assert.strictEqual(escrituras.length, 0);
 
   reset();
+  const plantillaProgramada = evento({ direction: 'outgoing' });
+  plantillaProgramada.source = 'scheduler.scheduled_event.created';
+  resultado = await registrarRespuestaOfertaInicial(plantillaProgramada);
+  assert.strictEqual(resultado.motivo, 'PERFIL_HIDRATADO_POR_PLANTILLA_EXTERNA');
+  assert.strictEqual(hidrataciones.length, 1);
+
+  reset();
   resultado = await registrarRespuestaOfertaInicial(
     evento({ creationDate: '2026-09-01T14:59:59.000Z' })
   );
   assert.strictEqual(resultado.motivo, 'RESPUESTA_ANTERIOR_A_OFERTA');
+  assert.strictEqual(escrituras.length, 0);
+
+  reset();
+  contacto.ultimaCampanaEnviada = null;
+  contacto.fechaUltimaCampana = null;
+  resultado = await registrarRespuestaOfertaInicial(evento());
+  assert.strictEqual(resultado.motivo, 'PERFIL_HIDRATADO_SIN_PLANTILLA');
+  assert.strictEqual(hidrataciones.length, 1);
   assert.strictEqual(escrituras.length, 0);
 
   reset();
@@ -185,6 +215,7 @@ async function main() {
 
   console.log('✅ Firma HMAC y workspace/canal se validan.');
   console.log('✅ Solo incoming posterior a la oferta marca respuesta.');
+  console.log('✅ Plantillas programadas fuera del backend también hidratan el perfil.');
   console.log('✅ Eventos duplicados son idempotentes.');
   console.log('✅ Body > 100kb y flood por IP se rechazan antes de Notion.');
 }

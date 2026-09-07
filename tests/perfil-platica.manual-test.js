@@ -1,0 +1,101 @@
+// Perfil de Plática hidratado desde Notion, sin llamadas reales.
+// node tests/perfil-platica.manual-test.js
+
+const assert = require('assert');
+
+const contactosPath = require.resolve('../src/services/contactos.service');
+const citasPath = require.resolve('../src/services/citas.service');
+const perfilPath = require.resolve('../src/services/perfil-platica.service');
+
+const contacto = {
+  id: 'asistente-1',
+  nombre: 'ANA MARIA PEREZ',
+  empresa: 'Moda MX',
+  email: 'ana@example.com',
+  whatsapp: '+52 1 449 000 0000',
+  area: 'Ecommerce',
+  quiereCitas1a1: 'Sí',
+  rolPuesto: 'Directora',
+  solucionesBuscadas: ['Pagos', 'Logística'],
+  tamanoNegocio: 'Mediana - 50 a 250 empleados',
+  ticketTipo: 'Presencial VIP',
+  giroIndustria: 'Marca de moda',
+  linkedinInstagram: '@modamx',
+  webRedes: 'modamx.example',
+  bio: 'Opera una marca nacional.',
+};
+
+require.cache[contactosPath] = {
+  id: contactosPath,
+  filename: contactosPath,
+  loaded: true,
+  exports: {
+    async obtenerContacto() {
+      return contacto;
+    },
+    async buscarAsistentePorWhatsApp() {
+      return contacto;
+    },
+  },
+};
+
+require.cache[citasPath] = {
+  id: citasPath,
+  filename: citasPath,
+  loaded: true,
+  exports: {
+    async listarCitasRealesPorAsistente(_id, opciones) {
+      assert.deepStrictEqual(opciones, { incluirCompletadas: true });
+      return [
+        {
+          inicio: '2026-10-08T09:00:00-06:00',
+          sponsorEmpresa: 'Sponsor B',
+        },
+        {
+          inicio: '2026-10-07T10:30:00-06:00',
+          sponsorEmpresa: 'Sponsor A',
+        },
+      ];
+    },
+    formatearHorarioLegible(inicio) {
+      return inicio.slice(0, 16);
+    },
+  },
+};
+
+delete require.cache[perfilPath];
+const { hidratarPerfilPlatica, payloadPerfil } = require(perfilPath);
+
+async function main() {
+  const directo = payloadPerfil(contacto, []);
+  assert.strictEqual(directo.name, 'ANA MARIA PEREZ');
+  assert.strictEqual(directo.firstname, 'Ana');
+  assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
+  assert.strictEqual(directo.customFields.quiere_cita_1_a_1, 'Sí');
+
+  let escritura;
+  const resultado = await hidratarPerfilPlatica({
+    asistentePageId: contacto.id,
+    actualizarClienteFn: async (payload) => {
+      escritura = payload;
+    },
+  });
+
+  assert.strictEqual(resultado.numeroCitasConfirmadas, 2);
+  assert.strictEqual(escritura.phone, contacto.whatsapp);
+  assert.strictEqual(escritura.customFields.numero_de_citas_confirmadas, 2);
+  assert.deepStrictEqual(escritura.customFields.citas_confirmadas, [
+    'Sponsor A — 2026-10-07T10:30',
+    'Sponsor B — 2026-10-08T09:00',
+  ]);
+  assert.strictEqual(escritura.customFields.redes_sociales, '@modamx | modamx.example');
+
+  console.log('✅ Perfil base y campos personalizados salen de Notion.');
+  console.log('✅ Citas confirmadas se ordenan y se guardan como lista para viñetas.');
+  console.log('✅ Sí/No de Quiere Citas 1a1 conserva el contrato de Notion.');
+}
+
+main().catch((error) => {
+  console.error('❌', error);
+  process.exit(1);
+});

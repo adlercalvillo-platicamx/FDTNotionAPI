@@ -32,6 +32,7 @@ src/
 │   ├── email.service.js              # ICS + SMTP (nodemailer); 3 reintentos inmediatos por envío
 │   ├── matchmaking.service.js        # Capa 1 + Capa 2; guardarSugerenciaIndividual (19-ago); global con explicación
 │   ├── campanas-matchmaking.service.js # Oferta inicial única: hasta 4 sponsors, sin horarios; simulación por default
+│   ├── perfil-platica.service.js      # Hidrata perfil/custom fields desde Contactos + citas confirmadas
 │   └── checklist.service.js          # Evaluación de completitud Sponsor/Speaker
 ├── mcp/
 │   ├── server.js                     # 12 herramientas MCP — capa delgada sobre services/
@@ -78,7 +79,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | GET | `/citas/disponibilidad?sponsor_notion_id=...&fecha=YYYY-MM-DD` | **Nueva (14 de agosto).** Solo lectura — lista de bloques de 30 min del día con `disponible` / `motivo` (`SPONSOR_YA_OCUPADO` \| `ASISTENTE_YA_OCUPADO` \| `CAPACIDAD_MESAS_LLENA` \| `null`). Query opcional `asistente_notion_id` para marcar bloques donde esa persona ya tiene cita. **No reemplaza** `POST /citas/reservar`. `Confirmada` / `Confirmada sin notificar` ocupan al sponsor y al asistente; las filas de bloqueo de conferencia no restan de las 11 mesas. Sin horario en env → `503`. Desde el 2-sep valida el sponsor antes de calcular: page_id que no existe → `404 SPONSOR_NO_ENCONTRADO`, contacto que no es Sponsor → `400 SPONSOR_CATEGORIA_INVALIDA` (antes devolvía el día entero libre para un id inventado). |
 | POST | `/webhooks/whatsapp-flows` | **Legado/rollback desde 27-ago.** Data API del Flow anterior. Sigue desplegado con HMAC, pero el Agente 2 ya no lo usa. |
 | POST | `/webhooks/notion/enviar-campanas-aprobadas` | Disparo manual de la oferta inicial para filas `Aprobado`, agrupadas por asistente. Hasta 4 sponsors por score, **sin horarios** (los ofrece el agente en la conversación). **Sin** `X-API-Key`; exige `X-Notion-Campanas-Secret`. Simulación por default. |
-| POST | `/webhooks/platica/mensajes` | Recibe `message.created` de Plática. Sin `X-API-Key`; exige HMAC `X-Webhook-Signature` con `PLATICA_WEBHOOK_SECRET`. Solo `incoming` del workspace/canal configurados y posterior a la oferta marca `Respondió Oferta Inicial`. |
+| POST | `/webhooks/platica/mensajes` | Recibe `message.created` de Plática. Sin `X-API-Key`; exige HMAC `X-Webhook-Signature` con `PLATICA_WEBHOOK_SECRET`. Un `incoming` sin campaña previa hidrata el perfil desde Notion; uno posterior a la oferta marca `Respondió Oferta Inicial`. Las plantillas de campaña/programadas fuera del backend también disparan hidratación. |
 | POST | `/citas/reintentar-notificaciones-pendientes` | **Nueva (18 de agosto).** A demanda (no cron): reenvía correo/.ics de las citas `Confirmada sin notificar` y (desde 27-ago) de las `Cancelada` cuyo aviso de baja nunca salió. Omite filas de bloqueo de conferencia. Sin tope de llamadas. 200 si hay éxitos (aunque mixto); 502 si todas fallan. El detalle trae categoría SMTP + mensaje. |
 | POST | `/citas/:id/reenviar-notificacion` | Reenvía el par de correos de **una** cita. Misma semántica que el barrido. La ruta estática de arriba va **antes** de `/:id` a propósito. |
 | POST | `/matchmaking/sponsors/:sponsorId/sugerir-matches` | Corre Capa 1 + Capa 2 para un sponsor. REST escribe el bloque (`escribirEnNotion` explícito `true`). MCP es dry-run por default; para **una** sugerencia usar la tool `guardar_sugerencia_individual` (no hay ruta REST equivalente). Ya NO escribe en `Match Sugerido` (desuso desde el 9 de agosto). |
@@ -86,6 +87,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | POST | `/matchmaking/enviar-recordatorio-evento` | Recordatorio-reactivación. `X-API-Key`. Simulación por default. Seguro como **cron diario**: si faltan más de 14 días para el 7-oct (`CITAS_FECHAS_EVENTO`), responde `{ disparado: false, motivo: 'VENTANA_NO_CUMPLIDA' }` sin Notion ni Plática. No hay tool MCP. |
 | POST | `/matchmaking/enviar-followups-72h` | Follow-up para oferta inicial sin respuesta. `X-API-Key`; cron cada 15 min. Tras 72 horas naturales, solo lun–vie 09:00–18:00 CDMX. Reconsulta el historial de Plática antes de enviar `followup_72hrs`; omite si respondió o ya tiene cita. Simulación por default; sin overrides en body. |
 | GET | `/contactos/buscar?categoria=Asistente\|Sponsor&telefono=\|nombre=\|empresa=` | **Nueva (31 ago).** Solo lectura. Resuelve `page_id` de un Asistente o Sponsor para Liz/Laura antes de `reservar_cita`. `categoria` obligatorio. Orden: teléfono → nombre → empresa (para en el primero que traiga resultados). Array vacío = no encontrado (200). |
+| POST | `/contactos/hidratar-perfil-platica` | Sincroniza un asistente de Notion hacia su perfil de Plática por `whatsapp` o `asistente_notion_id`: nombre completo, primer nombre, correo, empresa, datos de matchmaking y citas confirmadas (lista empresa/fecha/hora + conteo). También se ejecuta automáticamente antes de plantillas y al reservar, modificar o cancelar. |
 | GET | `/checklist/consultar?nombre=...` | Consulta bajo demanda — "cómo va fulano". |
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
 
@@ -188,6 +190,7 @@ node tests/flow-reserva.manual-test.js
 node tests/titulos-empresa.manual-test.js
 node tests/rechazado-pares-activos.manual-test.js
 node tests/campanas-matchmaking.manual-test.js
+node tests/perfil-platica.manual-test.js
 node tests/horarios-oferta.manual-test.js
 node tests/recordatorio-evento.manual-test.js
 node tests/sugerencias-asistente.manual-test.js

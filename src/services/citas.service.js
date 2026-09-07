@@ -672,13 +672,19 @@ async function buscarCancelacionesSinNotificar() {
  * hidratadas con la empresa del sponsor. Sirve para resolver "la cita de
  * Platica" cuando el agente identifica por teléfono y no trae citaId.
  */
-async function listarCitasRealesPorAsistente(asistentePageId) {
+async function listarCitasRealesPorAsistente(asistentePageId, { incluirCompletadas = false } = {}) {
   requireDataSourceId();
+  const estatusIncluidos = incluirCompletadas
+    ? [...ESTATUS_CITA_REAL, 'Completada']
+    : ESTATUS_CITA_REAL;
   const filas = await queryCitasPaginado({
     and: [
       { property: 'Contacto Principal', relation: { contains: asistentePageId } },
       {
-        or: ESTATUS_CITA_REAL.map((estatus) => ({ property: 'Estatus', select: { equals: estatus } })),
+        or: estatusIncluidos.map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
       },
     ],
   });
@@ -687,7 +693,7 @@ async function listarCitasRealesPorAsistente(asistentePageId) {
   const citas = [];
   for (const fila of filas) {
     const datos = datosDeCita(fila);
-    if (!ESTATUS_CITA_REAL.includes(datos.estatus)) continue;
+    if (!estatusIncluidos.includes(datos.estatus)) continue;
     let sponsor = null;
     if (datos.sponsorPageId) {
       try {

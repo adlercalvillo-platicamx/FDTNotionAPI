@@ -1,6 +1,11 @@
 const contactosService = require('./contactos.service');
+const { hidratarPerfilPlatica } = require('./perfil-platica.service');
 
 const OFERTA_INICIAL = 'Oferta inicial';
+const FUENTES_PLANTILLA_EXTERNAS = new Set([
+  'campaign.message.received',
+  'scheduler.scheduled_event.created',
+]);
 
 function telefonoDelEvento(payload) {
   const data = payload?.data || {};
@@ -24,15 +29,45 @@ async function registrarRespuestaOfertaInicial(payload) {
   }
 
   const message = payload?.data?.message || {};
+  const telefono = telefonoDelEvento(payload);
+  if (!telefono) return { procesado: false, motivo: 'SIN_TELEFONO' };
+
+  // Las campañas y la herramienta de programación de Plática no pasan por
+  // platica-client.service.js. Sus eventos permiten aplicar la misma
+  // hidratación aunque la plantilla se haya originado fuera del backend.
+  if (message.direction === 'outgoing' && FUENTES_PLANTILLA_EXTERNAS.has(payload?.source)) {
+    const contacto = await contactosService.buscarAsistentePorWhatsApp(telefono);
+    if (!contacto) return { procesado: false, motivo: 'ASISTENTE_NO_ENCONTRADO' };
+    const hidratacion = await hidratarPerfilPlatica({
+      whatsapp: telefono,
+      asistentePageId: contacto.id,
+    });
+    return {
+      procesado: true,
+      motivo: 'PERFIL_HIDRATADO_POR_PLANTILLA_EXTERNA',
+      contactoId: contacto.id,
+      hidratacion,
+    };
+  }
+
   if (message.direction !== 'incoming') {
     return { procesado: false, motivo: 'MENSAJE_NO_ENTRANTE' };
   }
 
-  const telefono = telefonoDelEvento(payload);
-  if (!telefono) return { procesado: false, motivo: 'SIN_TELEFONO' };
-
   const contacto = await contactosService.buscarAsistentePorWhatsApp(telefono);
   if (!contacto) return { procesado: false, motivo: 'ASISTENTE_NO_ENCONTRADO' };
+  if (!contacto.ultimaCampanaEnviada) {
+    const hidratacion = await hidratarPerfilPlatica({
+      whatsapp: telefono,
+      asistentePageId: contacto.id,
+    });
+    return {
+      procesado: true,
+      motivo: 'PERFIL_HIDRATADO_SIN_PLANTILLA',
+      contactoId: contacto.id,
+      hidratacion,
+    };
+  }
   if (contacto.ultimaCampanaEnviada !== OFERTA_INICIAL || !contacto.fechaUltimaCampana) {
     return { procesado: false, motivo: 'SIN_OFERTA_INICIAL', contactoId: contacto.id };
   }
@@ -63,6 +98,7 @@ async function registrarRespuestaOfertaInicial(payload) {
 
 module.exports = {
   OFERTA_INICIAL,
+  FUENTES_PLANTILLA_EXTERNAS,
   telefonoDelEvento,
   registrarRespuestaOfertaInicial,
 };
