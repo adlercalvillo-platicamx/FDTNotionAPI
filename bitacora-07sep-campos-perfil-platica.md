@@ -101,7 +101,12 @@ Decisiones de Adler ante eso:
   redes en minúsculas; empresa solo se Title Case si Ticketópolis la
   mandó toda en mayúsculas.
 - `platica-client.service.js` expone `obtenerCliente` (`GET /v1/clients/{id}`)
-  para esa lectura previa; `platicaGet` ya devuelve `null` en 404.
+  para esa lectura previa; `platicaGet` ya devuelve `null` en 404. Ojo con la
+  forma: la respuesta es `{ workspaces: [ { id, clients: [ … ] } ] }`, no el
+  cliente pelón. La primera versión leía el sobre, no encontraba
+  `customFields` y por eso volvió a escribir soluciones (visto en vivo con
+  Adler). Si la forma no se reconoce, `obtenerCliente` **lanza** en vez de
+  devolver `null`, para no confundir «no lo encontré» con «no tiene nada».
 - `POST /contactos/hidratar-perfil-platica`, con `X-API-Key`, permite
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar
@@ -135,6 +140,11 @@ quedó `Adler Calvillo`, puesto `Director De Tecnologia`, redes en
 minúsculas, empresa sin recasing (`Empresa Adler`). Esa misma corrida
 destapó el apilado: tres entradas idénticas en los dos `textList`.
 
+Después del redeploy con el campo de texto: dos hidrataciones seguidas de
+Adler dejaron **un solo** valor en `citas_confirmadas_del_asistente`, con
+las cuatro citas en viñetas. Ahí se vio que `solucionesEscritas` seguía en
+`true` las dos veces, lo que destapó el bug de forma de respuesta.
+
 ## Operación y pendientes
 
 1. Desplegar el código en Coolify con las variables actuales de producción.
@@ -142,9 +152,9 @@ destapó el apilado: tres entradas idénticas en los dos `textList`.
    `POST /contactos/hidratar-perfil-platica` deja **una** sola versión de
    las citas y que hidratar dos veces no agrega tarjetas.
 3. `soluciones_buscadas` quedó con entradas apiladas en los perfiles que ya
-   se hidrataron (Adler entre ellos). No se pueden borrar por API; si
-   estorban, hay que limpiarlas desde la interfaz de Plática. El backend ya
-   no las vuelve a escribir cuando el campo trae algo.
+   se hidrataron. No se pueden borrar por API; si estorban, hay que
+   limpiarlas desde la interfaz de Plática. Con el arreglo de forma de
+   respuesta, el backend ya no las reescribe cuando el campo trae algo.
 4. Ningún snapshot de `prompts-agentes-platica/` nombra `citas_confirmadas`,
    así que el rename no pide editar prompts. Si algún agente empieza a
    citar el campo, usar el id nuevo.

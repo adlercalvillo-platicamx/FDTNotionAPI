@@ -208,11 +208,39 @@ async function actualizarCliente({ phone, ...cambios }) {
   return platicaPatch(`/v1/clients/${encodeURIComponent(cliente)}`, cambios);
 }
 
+// GET /v1/clients/{id} responde { workspaces: [ { id, clients: [ … ] } ] },
+// no el cliente pelón. Si la API key es multi-workspace, gana el configurado.
+function clienteDeRespuesta(respuesta, phoneDigits) {
+  const workspaces = Array.isArray(respuesta?.workspaces) ? respuesta.workspaces : [];
+  const propio = String(process.env.PLATICA_WORKSPACE_ID || '').trim();
+  const candidatos = workspaces
+    .filter((ws) => !propio || ws?.id === propio)
+    .flatMap((ws) => (Array.isArray(ws?.clients) ? ws.clients : []));
+  const clientes = candidatos.length
+    ? candidatos
+    : workspaces.flatMap((ws) => (Array.isArray(ws?.clients) ? ws.clients : []));
+  return (
+    clientes.find((c) => telefonoConversacion(c?.phoneNumber) === phoneDigits) ||
+    clientes[0] ||
+    null
+  );
+}
+
 async function obtenerCliente(phone) {
-  const cliente = telefonoConversacion(phone);
-  if (!cliente) return null;
-  const respuesta = await platicaGet(`/v1/clients/${encodeURIComponent(cliente)}`);
-  return respuesta?.data || respuesta || null;
+  const phoneDigits = telefonoConversacion(phone);
+  if (!phoneDigits) return null;
+  const respuesta = await platicaGet(`/v1/clients/${encodeURIComponent(phoneDigits)}`);
+  if (!respuesta) return null; // 404: el cliente no existe todavía en Plática.
+  if (respuesta.customFields || respuesta.phoneNumber) return respuesta;
+  const cliente = clienteDeRespuesta(respuesta, phoneDigits);
+  if (cliente) return cliente;
+  // Preferimos fallar antes que confundir "no lo encontré" con "no tiene nada":
+  // quien lee esto decide si escribe un campo que no se puede limpiar.
+  throw new Error(
+    `Plática devolvió una forma inesperada en GET /v1/clients/${phoneDigits}: ${Object.keys(
+      respuesta
+    ).join(',')}`
+  );
 }
 
 /**
@@ -256,4 +284,5 @@ module.exports = {
   payloadCanalYAgente,
   actualizarCliente,
   obtenerCliente,
+  clienteDeRespuesta,
 };

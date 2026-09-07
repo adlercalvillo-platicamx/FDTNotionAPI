@@ -63,6 +63,7 @@ require.cache[citasPath] = {
 
 delete require.cache[perfilPath];
 const { hidratarPerfilPlatica, payloadPerfil, nombreParaPerfilPlatica } = require(perfilPath);
+const { clienteDeRespuesta } = require('../src/services/platica-client.service');
 
 async function main() {
   assert.deepStrictEqual(nombreParaPerfilPlatica('ADLER CALVILLO'), {
@@ -85,6 +86,21 @@ async function main() {
   assert.strictEqual(directo.customFields.redes_sociales, '@adlercalvillo | empresaadler.mx');
   assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
   assert.strictEqual(directo.customFields.quiere_cita_1_a_1, undefined);
+
+  // GET /v1/clients responde { workspaces: [ { clients: [ … ] } ] }. Leer el
+  // sobre en vez del cliente hacía creer que no tenía soluciones (7-sep).
+  const sobre = {
+    workspaces: [
+      { id: 'otro-ws', clients: [{ phoneNumber: '5299999999', customFields: { a: 1 } }] },
+      {
+        id: 'ws-fdt',
+        clients: [{ phoneNumber: '524492867741', customFields: { soluciones_buscadas: ['x'] } }],
+      },
+    ],
+  };
+  assert.deepStrictEqual(clienteDeRespuesta(sobre, '524492867741').customFields, {
+    soluciones_buscadas: ['x'],
+  });
 
   // El textList de Plática apila en cada PATCH: si ya trae algo, no se reescribe.
   const conSoluciones = payloadPerfil(contacto, [], {
