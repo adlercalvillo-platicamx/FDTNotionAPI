@@ -117,6 +117,11 @@ Decisiones de Adler ante eso:
   hidratación no impide marcar `Respondió Oferta Inicial`. También cubre las
   plantillas programadas y campañas originadas fuera del backend
   (`scheduler.scheduled_event.created` / `campaign.message.received`).
+- Incoming **sin** `Última Campaña Enviada` aplica la etiqueta
+  `Citas 1a1 - Escribió sin campaña` (`LuYgSqtTX9nuzBCk4RHh`, `automatic=false`).
+  Es procedencia, no cola: Plática combina tags y no hay API para quitarlas.
+  No se aplica al hidratar por plantilla ni por el endpoint manual, para no
+  marcar a quien todavía no escribe. No toca `Respondió Oferta Inicial`.
 - **La simulación de campañas no hidrata nada**: `enviarPlantilla` solo se
   llama en envío real, así que un dry-run no sirve para probar los campos.
 - `booking.service.js` intenta sincronizar después de confirmar, mover o
@@ -175,9 +180,8 @@ campañas.
 ## Operación y pendientes
 
 1. Desplegar el código en Coolify con las variables actuales de producción.
-2. Verificar con un número interno que una llamada manual a
-   `POST /contactos/hidratar-perfil-platica` deja **una** sola versión de
-   las citas y que hidratar dos veces no agrega tarjetas.
+2. Verificado 7-sep: hidratar dos veces deja **una** sola versión de las
+   citas; `solucionesEscritas: false` en la segunda corrida de Ernesto.
 3. `soluciones_buscadas` quedó con entradas apiladas en los perfiles que ya
    se hidrataron. No se pueden borrar por API; si estorban, hay que
    limpiarlas desde la interfaz de Plática. Con el arreglo de forma de
@@ -189,3 +193,5 @@ campañas.
 6. Si se desea poblar todos los perfiles históricos sin esperar mensajes,
    construir primero un backfill con dry-run nominal; no reutilizar el
    one-shot de schema para eso.
+7. Redeploy a este commit para que los siguientes incoming sin campaña
+   lleven la etiqueta. Ernesto ya está etiquetado a mano (`+52 4492124591`).

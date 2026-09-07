@@ -1,7 +1,9 @@
 const contactosService = require('./contactos.service');
 const { hidratarPerfilPlatica } = require('./perfil-platica.service');
+const platicaClient = require('./platica-client.service');
 
 const OFERTA_INICIAL = 'Oferta inicial';
+const ETIQUETA_ESCRIBIO_SIN_CAMPANA = 'Citas 1a1 - Escribió sin campaña';
 const FUENTES_PLANTILLA_EXTERNAS = new Set([
   'campaign.message.received',
   'scheduler.scheduled_event.created',
@@ -75,11 +77,29 @@ async function registrarRespuestaOfertaInicial(payload) {
   }
 
   if (!contacto.ultimaCampanaEnviada) {
+    // Señal permanente de procedencia, no una cola: Plática no deja quitar
+    // etiquetas por API. Solo aquí — hidratar por plantilla o endpoint
+    // manual no debe marcar a quien todavía no escribe.
+    let etiquetaAplicada = false;
+    try {
+      await platicaClient.agregarEtiquetas({
+        phone: telefono,
+        tags: [ETIQUETA_ESCRIBIO_SIN_CAMPANA],
+      });
+      etiquetaAplicada = true;
+    } catch (error) {
+      console.warn(
+        `[PlaticaRespuestas] No se pudo etiquetar ${telefono} como ${ETIQUETA_ESCRIBIO_SIN_CAMPANA}:`,
+        error.message
+      );
+    }
     return {
       procesado: true,
       motivo: 'PERFIL_HIDRATADO_SIN_PLANTILLA',
       contactoId: contacto.id,
       hidratacion,
+      etiqueta: ETIQUETA_ESCRIBIO_SIN_CAMPANA,
+      etiquetaAplicada,
     };
   }
   if (contacto.ultimaCampanaEnviada !== OFERTA_INICIAL || !contacto.fechaUltimaCampana) {
@@ -119,6 +139,7 @@ async function registrarRespuestaOfertaInicial(payload) {
 
 module.exports = {
   OFERTA_INICIAL,
+  ETIQUETA_ESCRIBIO_SIN_CAMPANA,
   FUENTES_PLANTILLA_EXTERNAS,
   telefonoDelEvento,
   registrarRespuestaOfertaInicial,

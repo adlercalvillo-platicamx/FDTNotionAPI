@@ -10,13 +10,16 @@ process.env.PLATICA_CHANNEL_ID = 'channel-test';
 
 const contactosPath = require.resolve('../src/services/contactos.service');
 const perfilPath = require.resolve('../src/services/perfil-platica.service');
+const platicaClientPath = require.resolve('../src/services/platica-client.service');
 const respuestasPath = require.resolve('../src/services/platica-respuestas.service');
 const controllerPath = require.resolve('../src/controllers/platica-webhook.controller');
 
 let contacto;
 let fallarHidratacion = false;
+let fallarEtiqueta = false;
 const escrituras = [];
 const hidrataciones = [];
+const etiquetas = [];
 
 require.cache[contactosPath] = {
   id: contactosPath,
@@ -47,9 +50,22 @@ require.cache[perfilPath] = {
   },
 };
 
+require.cache[platicaClientPath] = {
+  id: platicaClientPath,
+  filename: platicaClientPath,
+  loaded: true,
+  exports: {
+    async agregarEtiquetas(datos) {
+      etiquetas.push(datos);
+      if (fallarEtiqueta) throw new Error('Plática PATCH tags 500');
+      return { ok: true };
+    },
+  },
+};
+
 delete require.cache[respuestasPath];
 delete require.cache[controllerPath];
-const { registrarRespuestaOfertaInicial } = require(respuestasPath);
+const { registrarRespuestaOfertaInicial, ETIQUETA_ESCRIBIO_SIN_CAMPANA } = require(respuestasPath);
 const {
   mensajesPlatica,
   verificarFirmaWebhook,
@@ -60,6 +76,8 @@ const {
 function reset() {
   escrituras.length = 0;
   hidrataciones.length = 0;
+  etiquetas.length = 0;
+  fallarEtiqueta = false;
   contacto = {
     id: 'contacto-1',
     ultimaCampanaEnviada: 'Oferta inicial',
@@ -145,6 +163,7 @@ async function main() {
   resultado = await registrarRespuestaOfertaInicial(plantillaProgramada);
   assert.strictEqual(resultado.motivo, 'PERFIL_HIDRATADO_POR_PLANTILLA_EXTERNA');
   assert.strictEqual(hidrataciones.length, 1);
+  assert.strictEqual(etiquetas.length, 0, 'una plantilla no marca escribio sin campana');
 
   reset();
   resultado = await registrarRespuestaOfertaInicial(
@@ -160,12 +179,26 @@ async function main() {
   assert.strictEqual(resultado.motivo, 'PERFIL_HIDRATADO_SIN_PLANTILLA');
   assert.strictEqual(hidrataciones.length, 1);
   assert.strictEqual(escrituras.length, 0);
+  assert.strictEqual(resultado.etiquetaAplicada, true);
+  assert.deepStrictEqual(etiquetas, [
+    { phone: '5214490000000', tags: [ETIQUETA_ESCRIBIO_SIN_CAMPANA] },
+  ]);
+
+  reset();
+  contacto.ultimaCampanaEnviada = null;
+  contacto.fechaUltimaCampana = null;
+  fallarEtiqueta = true;
+  resultado = await registrarRespuestaOfertaInicial(evento());
+  assert.strictEqual(resultado.motivo, 'PERFIL_HIDRATADO_SIN_PLANTILLA');
+  assert.strictEqual(resultado.etiquetaAplicada, false);
+  assert.strictEqual(hidrataciones.length, 1);
 
   reset();
   resultado = await registrarRespuestaOfertaInicial(evento());
   assert.strictEqual(resultado.actualizado, true);
   assert.strictEqual(escrituras.length, 1);
   assert.strictEqual(hidrataciones.length, 1, 'un incoming con oferta previa también hidrata');
+  assert.strictEqual(etiquetas.length, 0, 'quien ya recibió campaña no lleva esa etiqueta');
   resultado = await registrarRespuestaOfertaInicial(evento());
   assert.strictEqual(resultado.motivo, 'RESPUESTA_YA_REGISTRADA');
   assert.strictEqual(escrituras.length, 1);
@@ -228,7 +261,7 @@ async function main() {
 
   console.log('✅ Firma HMAC y workspace/canal se validan.');
   console.log('✅ Solo incoming posterior a la oferta marca respuesta.');
-  console.log('✅ Cualquier incoming hidrata, y si la hidratación falla la respuesta se guarda.');
+  console.log('✅ Incoming sin campaña hidrata y etiqueta; con campaña no etiqueta.');
   console.log('✅ Plantillas programadas fuera del backend también hidratan el perfil.');
   console.log('✅ Eventos duplicados son idempotentes.');
   console.log('✅ Body > 100kb y flood por IP se rechazan antes de Notion.');

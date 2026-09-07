@@ -208,6 +208,13 @@ async function actualizarCliente({ phone, ...cambios }) {
   return platicaPatch(`/v1/clients/${encodeURIComponent(cliente)}`, cambios);
 }
 
+// `tags` se combina con las existentes, sin duplicar. No hay API para quitarlas.
+async function agregarEtiquetas({ phone, tags }) {
+  const lista = [...new Set((tags || []).map((t) => String(t || '').trim()).filter(Boolean))];
+  if (!lista.length) return { omitido: true };
+  return actualizarCliente({ phone, tags: lista });
+}
+
 // GET /v1/clients/{id} responde { workspaces: [ { id, clients: [ … ] } ] },
 // no el cliente pelón. Si la API key es multi-workspace, gana el configurado.
 function clienteDeRespuesta(respuesta, phoneDigits) {
@@ -283,6 +290,7 @@ module.exports = {
   conversacionesDeRespuesta,
   payloadCanalYAgente,
   actualizarCliente,
+  agregarEtiquetas,
   obtenerCliente,
   clienteDeRespuesta,
 };
