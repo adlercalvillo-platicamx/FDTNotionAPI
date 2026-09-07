@@ -22,7 +22,6 @@ const contacto = {
   giroIndustria: 'Marca de moda',
   linkedinInstagram: '@modamx',
   webRedes: 'modamx.example',
-  bio: 'Opera una marca nacional.',
 };
 
 require.cache[contactosPath] = {
@@ -89,6 +88,7 @@ async function main() {
     'Sponsor B — 2026-10-08T09:00',
   ]);
   assert.strictEqual(escritura.customFields.redes_sociales, '@modamx | modamx.example');
+  assert.strictEqual(escritura.customFields.bio_antecedentes, undefined);
 
   console.log('✅ Perfil base y campos personalizados salen de Notion.');
   console.log('✅ Citas confirmadas se ordenan y se guardan como lista para viñetas.');

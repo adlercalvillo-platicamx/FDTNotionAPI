@@ -14,7 +14,6 @@ const CAMPOS = {
   tipoAsistencia: 'tipo_de_asistencia',
   giroIndustria: 'giro_industria',
   redesSociales: 'redes_sociales',
-  bioAntecedentes: 'bio_antecedentes',
   citasConfirmadas: 'citas_confirmadas',
   numeroCitasConfirmadas: 'numero_de_citas_confirmadas',
 };
@@ -54,7 +53,6 @@ function payloadPerfil(contacto, citasConfirmadas) {
       [CAMPOS.tipoAsistencia]: contacto.ticketTipo || '',
       [CAMPOS.giroIndustria]: contacto.giroIndustria || '',
       [CAMPOS.redesSociales]: unirTextos(contacto.linkedinInstagram, contacto.webRedes),
-      [CAMPOS.bioAntecedentes]: contacto.bio || '',
       [CAMPOS.citasConfirmadas]: citasOrdenadas.map(lineaCita),
       [CAMPOS.numeroCitasConfirmadas]: citasOrdenadas.length,
     },

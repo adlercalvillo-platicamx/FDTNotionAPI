@@ -20,9 +20,11 @@ que incluye `Confirmada`, `Confirmada sin notificar` y `Completada`; excluye
 Plática, workspace Fashion Digital Talks (`yay7N6Iejg62P9h0nJaU`):
 
 - Nuevos campos manuales y sobrescribibles por sincronización:
-  `giro_industria`, `redes_sociales`, `bio_antecedentes`,
-  `citas_confirmadas` (`textList`) y
+  `giro_industria`, `redes_sociales`, `citas_confirmadas` (`textList`) y
   `numero_de_citas_confirmadas` (`number`).
+  `bio_antecedentes` se creó y **se borró el mismo día**: `Bio` en Notion
+  es la reseña de speaker, no un antecedente de asistente. Plática
+  `delete_custom_field` → `clientsUpdated: 0`.
 - Se mantuvo `quiere_cita_1_a_1` como texto para no destruir valores
   existentes; el backend escribe exactamente `Sí`, `No` o vacío, igual que
   el select de Notion.
@@ -51,8 +53,8 @@ ejecutado en producción; no volver a correr salvo auditoría idempotente.
 - `perfil-platica.service.js` construye y escribe el perfil completo en
   `PATCH /v1/clients/{telefono}` de Plática.
 - Sincroniza nombre completo, primer nombre, correo, empresa, área,
-  asistencia, tamaño, preferencia 1a1, puesto, soluciones, giro, redes,
-  bio y citas confirmadas.
+  asistencia, tamaño, preferencia 1a1, puesto, soluciones, giro, redes
+  y citas confirmadas. No sincroniza `Bio`.
 - `POST /contactos/hidratar-perfil-platica`, con `X-API-Key`, permite
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar
