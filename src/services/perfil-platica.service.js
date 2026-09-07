@@ -7,7 +7,6 @@ const citasService = require('./citas.service');
 
 const CAMPOS = {
   area: 'area',
-  quiereCitas: 'quiere_cita_1_a_1',
   rolPuesto: 'role_puesto',
   solucionesBuscadas: 'soluciones_buscadas',
   tamanoNegocio: 'tamano_de_negocio',
@@ -46,7 +45,6 @@ function payloadPerfil(contacto, citasConfirmadas) {
     company: contacto.empresa || '',
     customFields: {
       [CAMPOS.area]: contacto.area || '',
-      [CAMPOS.quiereCitas]: contacto.quiereCitas1a1 || '',
       [CAMPOS.rolPuesto]: contacto.rolPuesto || '',
       [CAMPOS.solucionesBuscadas]: contacto.solucionesBuscadas || [],
       [CAMPOS.tamanoNegocio]: contacto.tamanoNegocio || '',

@@ -25,12 +25,12 @@ Plática, workspace Fashion Digital Talks (`yay7N6Iejg62P9h0nJaU`):
   `bio_antecedentes` se creó y **se borró el mismo día**: `Bio` en Notion
   es la reseña de speaker, no un antecedente de asistente. Plática
   `delete_custom_field` → `clientsUpdated: 0`.
-- Se mantuvo `quiere_cita_1_a_1` como texto para no destruir valores
-  existentes; el backend escribe exactamente `Sí`, `No` o vacío, igual que
-  el select de Notion.
-- `area`, `tipo_de_asistencia`, `tamano_de_negocio`,
-  `quiere_cita_1_a_1`, `role_puesto` y `soluciones_buscadas` quedaron
-  `automatic=false`, sobrescribibles. La IA no los inventa.
+- `quiere_cita_1_a_1` también se **borró** el mismo día: el agente de
+  citas no debe leer un Sí/No de ficha (VIP/Speaker entran por boleto;
+  el filtro real sigue en Notion). Plática `delete_custom_field` →
+  `clientsUpdated: 0`.
+- `area`, `tipo_de_asistencia`, `tamano_de_negocio`, `role_puesto` y
+  `soluciones_buscadas` quedaron `automatic=false`, sobrescribibles.
 - `Interes detectado` y `Tipo de contacto` no se cambiaron: pertenecen al
   flujo de Marketing/Luis.
 
@@ -53,8 +53,8 @@ ejecutado en producción; no volver a correr salvo auditoría idempotente.
 - `perfil-platica.service.js` construye y escribe el perfil completo en
   `PATCH /v1/clients/{telefono}` de Plática.
 - Sincroniza nombre completo, primer nombre, correo, empresa, área,
-  asistencia, tamaño, preferencia 1a1, puesto, soluciones, giro, redes
-  y citas confirmadas. No sincroniza `Bio`.
+  asistencia, tamaño, puesto, soluciones, giro, redes y citas confirmadas.
+  No sincroniza `Bio` ni `Quiere Citas 1a1`.
 - `POST /contactos/hidratar-perfil-platica`, con `X-API-Key`, permite
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar

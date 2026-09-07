@@ -14,7 +14,6 @@ const contacto = {
   email: 'ana@example.com',
   whatsapp: '+52 1 449 000 0000',
   area: 'Ecommerce',
-  quiereCitas1a1: 'Sí',
   rolPuesto: 'Directora',
   solucionesBuscadas: ['Pagos', 'Logística'],
   tamanoNegocio: 'Mediana - 50 a 250 empleados',
@@ -70,7 +69,7 @@ async function main() {
   assert.strictEqual(directo.name, 'ANA MARIA PEREZ');
   assert.strictEqual(directo.firstname, 'Ana');
   assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
-  assert.strictEqual(directo.customFields.quiere_cita_1_a_1, 'Sí');
+  assert.strictEqual(directo.customFields.quiere_cita_1_a_1, undefined);
 
   let escritura;
   const resultado = await hidratarPerfilPlatica({
@@ -92,7 +91,7 @@ async function main() {
 
   console.log('✅ Perfil base y campos personalizados salen de Notion.');
   console.log('✅ Citas confirmadas se ordenan y se guardan como lista para viñetas.');
-  console.log('✅ Sí/No de Quiere Citas 1a1 conserva el contrato de Notion.');
+  console.log('✅ Quiere Citas 1a1 no viaja al perfil de Plática.');
 }
 
 main().catch((error) => {
