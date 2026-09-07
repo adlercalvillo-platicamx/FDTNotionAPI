@@ -86,27 +86,71 @@ async function main() {
   assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
   assert.strictEqual(directo.customFields.quiere_cita_1_a_1, undefined);
 
+  // El textList de Plática apila en cada PATCH: si ya trae algo, no se reescribe.
+  const conSoluciones = payloadPerfil(contacto, [], {
+    perfilActual: { customFields: { soluciones_buscadas: [{ content: ['Pagos'] }] } },
+  });
+  assert.strictEqual(conSoluciones.customFields.soluciones_buscadas, undefined);
+  const listaVacia = payloadPerfil(contacto, [], {
+    perfilActual: { customFields: { soluciones_buscadas: [{ content: [''] }] } },
+  });
+  assert.deepStrictEqual(listaVacia.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
+
   let escritura;
+  const lecturas = [];
   const resultado = await hidratarPerfilPlatica({
     asistentePageId: contacto.id,
+    obtenerClienteFn: async (telefono) => {
+      lecturas.push(telefono);
+      return { customFields: { soluciones_buscadas: [{ content: ['Pagos'] }] } };
+    },
     actualizarClienteFn: async (payload) => {
       escritura = payload;
     },
   });
 
   assert.strictEqual(resultado.numeroCitasConfirmadas, 2);
+  assert.strictEqual(resultado.solucionesEscritas, false);
+  assert.deepStrictEqual(lecturas, [contacto.whatsapp]);
   assert.strictEqual(escritura.phone, contacto.whatsapp);
   assert.strictEqual(escritura.customFields.numero_de_citas_confirmadas, 2);
-  assert.deepStrictEqual(escritura.customFields.citas_confirmadas, [
-    'Sponsor A — 2026-10-07T10:30',
-    'Sponsor B — 2026-10-08T09:00',
-  ]);
-  assert.strictEqual(directo.customFields.role_puesto, 'Director De Tecnologia');
-  assert.strictEqual(directo.customFields.redes_sociales, '@adlercalvillo | empresaadler.mx');
+  assert.strictEqual(
+    escritura.customFields.citas_confirmadas_del_asistente,
+    '• Sponsor A — 2026-10-07T10:30\n• Sponsor B — 2026-10-08T09:00'
+  );
+  assert.strictEqual(escritura.customFields.citas_confirmadas, undefined);
+  assert.strictEqual(escritura.customFields.soluciones_buscadas, undefined);
   assert.strictEqual(escritura.customFields.bio_antecedentes, undefined);
 
+  // Si la lectura truena, se prefiere no escribir soluciones antes que apilar.
+  let escrituraSinLectura;
+  const sinLectura = await hidratarPerfilPlatica({
+    asistentePageId: contacto.id,
+    obtenerClienteFn: async () => {
+      throw new Error('Plática GET 500');
+    },
+    actualizarClienteFn: async (payload) => {
+      escrituraSinLectura = payload;
+    },
+  });
+  assert.strictEqual(sinLectura.actualizado, true);
+  assert.strictEqual(escrituraSinLectura.customFields.soluciones_buscadas, undefined);
+
+  // Perfil nuevo sin el campo: ahí sí se escribe, una sola vez.
+  let escrituraNueva;
+  const nuevo = await hidratarPerfilPlatica({
+    asistentePageId: contacto.id,
+    obtenerClienteFn: async () => null,
+    actualizarClienteFn: async (payload) => {
+      escrituraNueva = payload;
+    },
+  });
+  assert.strictEqual(nuevo.solucionesEscritas, true);
+  assert.deepStrictEqual(escrituraNueva.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
+
   console.log('✅ Nombre Ticketópolis se parte en Title Case, primer+segundo nombre y apellido.');
-  console.log('✅ Citas confirmadas se ordenan y se guardan como lista para viñetas.');
+  console.log('✅ Citas confirmadas van en un campo de texto que se reemplaza, con viñetas.');
+  console.log('✅ soluciones_buscadas solo se escribe si el perfil viene vacío.');
   console.log('✅ Quiere Citas 1a1 no viaja al perfil de Plática.');
 }
 

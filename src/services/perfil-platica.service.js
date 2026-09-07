@@ -5,6 +5,10 @@
 const contactosService = require('./contactos.service');
 const citasService = require('./citas.service');
 
+// Los campos `textList` de Plática no se pueden reemplazar: cada PATCH agrega
+// una entrada más y ni `null` ni `[]` los vacían (probado 7-sep). Las citas
+// viven en un campo de texto propio; `soluciones_buscadas` sigue siendo lista
+// de Marketing y solo se escribe cuando está vacía.
 const CAMPOS = {
   area: 'area',
   rolPuesto: 'role_puesto',
@@ -13,7 +17,7 @@ const CAMPOS = {
   tipoAsistencia: 'tipo_de_asistencia',
   giroIndustria: 'giro_industria',
   redesSociales: 'redes_sociales',
-  citasConfirmadas: 'citas_confirmadas',
+  citasConfirmadas: 'citas_confirmadas_del_asistente',
   numeroCitasConfirmadas: 'numero_de_citas_confirmadas',
 };
 
@@ -88,10 +92,33 @@ function lineaCita(cita) {
   return `${empresa} — ${horario}`;
 }
 
-function payloadPerfil(contacto, citasConfirmadas) {
-  const citasOrdenadas = [...(citasConfirmadas || [])].sort((a, b) =>
+function ordenarCitas(citasConfirmadas) {
+  return [...(citasConfirmadas || [])].sort((a, b) =>
     String(a.inicio || '').localeCompare(String(b.inicio || ''))
   );
+}
+
+function textoCitas(citasOrdenadas) {
+  return citasOrdenadas.map((cita) => `• ${lineaCita(cita)}`).join('\n');
+}
+
+// Para la respuesta HTTP: la lista legible de lo que quedó en el campo de texto.
+function citasOrdenadasParaRespuesta(citasConfirmadas) {
+  return ordenarCitas(citasConfirmadas).map(lineaCita);
+}
+
+// Un `textList` guarda entradas con forma { content: [...] }; toleramos también
+// arreglos planos y texto suelto por si Plática cambia la representación.
+function campoListaTieneValor(valor) {
+  if (!valor) return false;
+  if (typeof valor === 'string') return valor.trim() !== '';
+  if (Array.isArray(valor)) return valor.some((entrada) => campoListaTieneValor(entrada));
+  if (typeof valor === 'object') return campoListaTieneValor(valor.content);
+  return false;
+}
+
+function payloadPerfil(contacto, citasConfirmadas, { perfilActual } = {}) {
+  const citasOrdenadas = ordenarCitas(citasConfirmadas);
   const { name, firstname, lastname } = nombreParaPerfilPlatica(contacto.nombre);
   const payload = {
     name,
@@ -101,15 +128,21 @@ function payloadPerfil(contacto, citasConfirmadas) {
     customFields: {
       [CAMPOS.area]: contacto.area || '',
       [CAMPOS.rolPuesto]: textoEnTitulo(contacto.rolPuesto),
-      [CAMPOS.solucionesBuscadas]: contacto.solucionesBuscadas || [],
       [CAMPOS.tamanoNegocio]: contacto.tamanoNegocio || '',
       [CAMPOS.tipoAsistencia]: contacto.ticketTipo || '',
       [CAMPOS.giroIndustria]: contacto.giroIndustria || '',
       [CAMPOS.redesSociales]: redesEnMinusculas(contacto.linkedinInstagram, contacto.webRedes),
-      [CAMPOS.citasConfirmadas]: citasOrdenadas.map(lineaCita),
+      [CAMPOS.citasConfirmadas]: textoCitas(citasOrdenadas),
       [CAMPOS.numeroCitasConfirmadas]: citasOrdenadas.length,
     },
   };
+  const soluciones = contacto.solucionesBuscadas || [];
+  const yaTieneSoluciones = campoListaTieneValor(
+    perfilActual?.customFields?.[CAMPOS.solucionesBuscadas]
+  );
+  if (soluciones.length && !yaTieneSoluciones) {
+    payload.customFields[CAMPOS.solucionesBuscadas] = soluciones;
+  }
   if (contacto.email) payload.email = contacto.email;
   return payload;
 }
@@ -118,6 +151,7 @@ async function hidratarPerfilPlatica({
   whatsapp,
   asistentePageId,
   actualizarClienteFn,
+  obtenerClienteFn,
 } = {}) {
   const phone = String(whatsapp || '').trim();
   let contacto = null;
@@ -144,7 +178,22 @@ async function hidratarPerfilPlatica({
   const citasConfirmadas = await citasService.listarCitasRealesPorAsistente(contacto.id, {
     incluirCompletadas: true,
   });
-  const cambios = payloadPerfil(contacto, citasConfirmadas);
+
+  // Leer el perfil antes de escribir es lo único que evita apilar en
+  // `soluciones_buscadas`: si Plática ya tiene algo ahí, no se vuelve a mandar.
+  const obtener = obtenerClienteFn || require('./platica-client.service').obtenerCliente;
+  let perfilActual = null;
+  try {
+    perfilActual = await obtener(telefono);
+  } catch (error) {
+    console.warn(
+      `[PerfilPlatica] No se pudo leer el perfil de ${telefono}, se omiten soluciones:`,
+      error.message
+    );
+    perfilActual = { customFields: { [CAMPOS.solucionesBuscadas]: 'lectura-fallida' } };
+  }
+
+  const cambios = payloadPerfil(contacto, citasConfirmadas, { perfilActual });
   const actualizar =
     actualizarClienteFn || require('./platica-client.service').actualizarCliente;
   await actualizar({ phone: telefono, ...cambios });
@@ -154,7 +203,8 @@ async function hidratarPerfilPlatica({
     contactoId: contacto.id,
     whatsapp: telefono,
     numeroCitasConfirmadas: citasConfirmadas.length,
-    citasConfirmadas: cambios.customFields[CAMPOS.citasConfirmadas],
+    citasConfirmadas: citasOrdenadasParaRespuesta(citasConfirmadas),
+    solucionesEscritas: Boolean(cambios.customFields[CAMPOS.solucionesBuscadas]),
   };
 }
 

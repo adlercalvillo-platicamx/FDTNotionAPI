@@ -21,7 +21,9 @@ Plática, workspace Fashion Digital Talks (`yay7N6Iejg62P9h0nJaU`):
 
 - Nuevos campos manuales y sobrescribibles por sincronización:
   `giro_industria`, `redes_sociales`, `citas_confirmadas` (`textList`) y
-  `numero_de_citas_confirmadas` (`number`).
+  `numero_de_citas_confirmadas` (`number`). `citas_confirmadas` **se borró
+  el mismo día** y se reemplazó por `citas_confirmadas_del_asistente`
+  (`text`); ver la sección de `textList` más abajo.
   `bio_antecedentes` se creó y **se borró el mismo día**: `Bio` en Notion
   es la reseña de speaker, no un antecedente de asistente. Plática
   `delete_custom_field` → `clientsUpdated: 0`.
@@ -48,6 +50,46 @@ El one-shot usado fue
 `scripts/one-shots/citas-confirmadas-asistente-schema-07sep.js`. Ya fue
 ejecutado en producción; no volver a correr salvo auditoría idempotente.
 
+## El `textList` de Plática no se puede sincronizar
+
+Adler vio en su ficha tres tarjetas con la misma lista de citas y tres con
+las mismas soluciones: cada hidratación **agregaba** una entrada en vez de
+reemplazar. La API lo dice sin decirlo: «`customFields` se fusiona con lo
+existente». En un `textList` eso significa una entrada nueva por cada
+`PATCH /v1/clients`, con todo el arreglo enviado dentro de `content`.
+
+Probado sobre la ficha de Adler el 7-sep: `customFields.citas_confirmadas`
+con `null`, con `[]` y con `""` responden éxito y **no vacían la lista**. No
+hay forma de limpiar un `textList` desde la API. Conclusión operativa:
+**ningún campo que el backend sincronice puede ser `textList`**.
+`numero_de_citas_confirmadas` (`number`) sí reemplaza bien; quedó en 4, no
+en 12.
+
+`name` y `type` de un custom field son inmutables, así que cambiar el tipo
+obliga a borrar y recrear. **Borrar quema el `id` para siempre**: tras
+`delete_custom_field` de `citas_confirmadas` (`clientsUpdated: 2`), tres
+intentos de recrearlo con el mismo nombre devolvieron
+`409 — A custom field with id "citas_confirmadas" already exists`, aunque
+`list_custom_fields` ya no lo mostraba. Es borrado lógico y el
+identificador no se libera. No borrar un campo esperando recrearlo igual.
+
+Decisiones de Adler ante eso:
+
+- Las citas viven en **`Citas confirmadas del asistente`**
+  (`citas_confirmadas_del_asistente`, `text`), una cita por línea con
+  viñeta. El nombre distingue su rol de asistente del histórico de sponsor,
+  igual que en Notion.
+- `soluciones_buscadas` **no se borra**: es de Marketing y perdería su id.
+  Se queda `textList` y el backend lo escribe **una sola vez**, cuando el
+  perfil viene vacío. Para eso ahora se lee el cliente antes de escribir;
+  si la lectura falla, se omite el campo en vez de arriesgar otra entrada.
+- La empresa **ya se sincronizaba** en el campo por defecto `company`; no
+  aparece en el panel de campos personalizados porque no es uno. No se
+  duplica en un custom field.
+- El casing de la empresa se queda conservador: Title Case solo si
+  Ticketópolis la mandó toda en mayúsculas. Forzarlo siempre rompería
+  `eCommerce MX`, `H&M` o `PLATICA.mx`.
+
 ## Código
 
 - `perfil-platica.service.js` construye y escribe el perfil completo en
@@ -58,6 +100,8 @@ ejecutado en producción; no volver a correr salvo auditoría idempotente.
   No sincroniza `Bio` ni `Quiere Citas 1a1`. Puesto va en Title Case;
   redes en minúsculas; empresa solo se Title Case si Ticketópolis la
   mandó toda en mayúsculas.
+- `platica-client.service.js` expone `obtenerCliente` (`GET /v1/clients/{id}`)
+  para esa lectura previa; `platicaGet` ya devuelve `null` en 404.
 - `POST /contactos/hidratar-perfil-platica`, con `X-API-Key`, permite
   reintento por `whatsapp` o `asistente_notion_id`.
 - Toda plantilla enviada por `platica-client.service.js` intenta hidratar
@@ -83,15 +127,28 @@ ejecutado en producción; no volver a correr salvo auditoría idempotente.
   - `node --check` sobre los archivos modificados.
 
 No se mandó ninguna plantilla, WhatsApp ni correo real durante esta
-sesión. No se actualizaron perfiles individuales; los campos comenzarán
-a poblarse al desplegar y activar los disparadores.
+sesión.
+
+Rehidratación manual de Adler Calvillo (`+52 4492867741`) contra Coolify,
+7-sep ~18:33 UTC, tras el commit `204b593`. HTTP 200, 4 citas. En Plática
+quedó `Adler Calvillo`, puesto `Director De Tecnologia`, redes en
+minúsculas, empresa sin recasing (`Empresa Adler`). Esa misma corrida
+destapó el apilado: tres entradas idénticas en los dos `textList`.
 
 ## Operación y pendientes
 
 1. Desplegar el código en Coolify con las variables actuales de producción.
 2. Verificar con un número interno que una llamada manual a
-   `POST /contactos/hidratar-perfil-platica` muestra las citas como lista.
-3. No hace falta crear otro campo/fórmula de conteo.
-4. Si se desea poblar todos los perfiles históricos sin esperar mensajes,
+   `POST /contactos/hidratar-perfil-platica` deja **una** sola versión de
+   las citas y que hidratar dos veces no agrega tarjetas.
+3. `soluciones_buscadas` quedó con entradas apiladas en los perfiles que ya
+   se hidrataron (Adler entre ellos). No se pueden borrar por API; si
+   estorban, hay que limpiarlas desde la interfaz de Plática. El backend ya
+   no las vuelve a escribir cuando el campo trae algo.
+4. Ningún snapshot de `prompts-agentes-platica/` nombra `citas_confirmadas`,
+   así que el rename no pide editar prompts. Si algún agente empieza a
+   citar el campo, usar el id nuevo.
+5. No hace falta crear otro campo/fórmula de conteo.
+6. Si se desea poblar todos los perfiles históricos sin esperar mensajes,
    construir primero un backfill con dry-run nominal; no reutilizar el
    one-shot de schema para eso.

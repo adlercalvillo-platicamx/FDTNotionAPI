@@ -208,6 +208,13 @@ async function actualizarCliente({ phone, ...cambios }) {
   return platicaPatch(`/v1/clients/${encodeURIComponent(cliente)}`, cambios);
 }
 
+async function obtenerCliente(phone) {
+  const cliente = telefonoConversacion(phone);
+  if (!cliente) return null;
+  const respuesta = await platicaGet(`/v1/clients/${encodeURIComponent(cliente)}`);
+  return respuesta?.data || respuesta || null;
+}
+
 /**
  * Intenta mensaje de sesión; si la ventana de 24 h está cerrada, plantilla.
  */
@@ -248,4 +255,5 @@ module.exports = {
   conversacionesDeRespuesta,
   payloadCanalYAgente,
   actualizarCliente,
+  obtenerCliente,
 };
