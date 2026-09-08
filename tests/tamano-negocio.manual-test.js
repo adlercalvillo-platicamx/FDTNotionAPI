@@ -119,29 +119,32 @@ async function main() {
   assert.ok(!idsPequenas.includes('grande'));
   assert.ok(!idsPequenas.includes('mediana'));
 
-  // Pequeña y Micro entran si el sponsor las pidió, pero con menos puntos.
-  // Si hay tamaño declarado, no se acumula además el fallback Exa.
+  // Pequeña y Micro entran si el sponsor las pidió, con menos puntos.
+  // Exa Consolidado/PyME suma además del tamaño declarado.
   const scoresPequenas = Object.fromEntries(
     rPequenas.sugerencias.map((s) => [s.id, s.score])
   );
-  assert.strictEqual(scoresPequenas.pequena, PESOS.TAMANO_PEQUENA + extraSol);
+  assert.strictEqual(
+    scoresPequenas.pequena,
+    PESOS.TAMANO_PEQUENA + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO + extraSol
+  );
   assert.strictEqual(scoresPequenas.micro, PESOS.TAMANO_MICRO + extraSol);
   assert.ok(scoresPequenas.pequena > scoresPequenas.micro);
   const explicacionPequena = rPequenas.sugerencias.find((s) => s.id === 'pequena');
   assert.ok(explicacionPequena.explicacion.includes('uno de los tamaños que el sponsor pidió'));
-  assert.ok(!explicacionPequena.explicacion.includes('consolidado'));
-  assert.ok(!explicacionPequena.detalle.some((d) => d.includes('madurez_negocio')));
+  assert.ok(explicacionPequena.explicacion.includes('consolidado'));
+  assert.ok(explicacionPequena.detalle.some((d) => d.includes('madurez_negocio')));
 
-  // Mock A: Pequeña pedida + Exa Consolidado → gana tamaño declarado, sin sumar Exa.
+  // Mock A: Pequeña pedida + Exa Consolidado → suma ambos.
   const mockA = calcularScore(
     { etapaClienteBuscada: ['Pequeña'] },
     { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
     0
   );
-  assert.strictEqual(mockA.score, PESOS.TAMANO_PEQUENA);
-  assert.strictEqual(mockA.senales.madurezNegocio, null);
+  assert.strictEqual(mockA.score, PESOS.TAMANO_PEQUENA + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.strictEqual(mockA.senales.madurezNegocio, 'Consolidado');
   assert.strictEqual(mockA.senales.tamanoNegocio, 'Pequeña');
-  assert.ok(!mockA.detalle.some((d) => d.includes('madurez_negocio')));
+  assert.ok(mockA.detalle.some((d) => d.includes('madurez_negocio')));
 
   // Mock B: Micro pedido sin Exa → entra, pero con el peso más bajo.
   const mockB = calcularScore(

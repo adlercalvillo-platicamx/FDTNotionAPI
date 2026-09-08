@@ -187,7 +187,7 @@ async function main() {
     },
     0
   );
-  assert.strictEqual(pequenaMax.score, 58 + 40 + 80);
+  assert.strictEqual(pequenaMax.score, PESOS.TAMANO_PEQUENA + 40 + 80);
   assert.strictEqual(grandeFlojo.score, 100 + 40 + 20);
   assert.strictEqual(grandeDos.score, 100 + 40 + 40);
   assert.ok(pequenaMax.score > grandeFlojo.score);

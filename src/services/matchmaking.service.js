@@ -91,10 +91,11 @@ const PESOS = {
   // un Grande flojo (área + 1 solución).
   TAMANO_GRANDE: 100,
   TAMANO_MEDIANA: 70,
-  TAMANO_PEQUENA: 58,
+  TAMANO_PEQUENA: 50,
   TAMANO_MICRO: 30, // propuesta Claude 8-sep; Adler no lo confirmó aparte
-  // Legacy sin Tamaño declarado: Exa sigue siendo el fallback, con menor
-  // confianza que una respuesta directa de Ticketópolis.
+  // Madurez Exa suma siempre que esté Consolidado/PyME (Adler 7-sep):
+  // en Capa 1 sigue siendo el filtro de quien no trajo tamaño declarado;
+  // en ranking se acumula encima del tamaño declarado.
   MADUREZ_NEGOCIO_CONSOLIDADO: 80,
   MADUREZ_NEGOCIO_PYME: 40,
   // 27-ago — Exa adicional, independiente del fallback de madurez.
@@ -384,16 +385,20 @@ function calcularScore(sponsor, candidato) {
         `tamano_filtro: coincide con un tamaño solicitado por el sponsor (+${puntosTamano} ${categoriaTamano})`
       );
     }
-  } else if (candidato.madurezNegocioExa === 'Consolidado') {
+  }
+
+  // Madurez Exa: filtro de Capa 1 solo si no hay tamaño declarado.
+  // En ranking suma siempre (Adler 7-sep), encima del tamaño si lo hay.
+  if (candidato.madurezNegocioExa === 'Consolidado') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
     detalle.push('madurez_negocio: empresa consolidada (Exa)');
     senales.madurezNegocio = 'Consolidado';
-    senales.entradaPorTamano = 'exa';
+    if (!senales.entradaPorTamano) senales.entradaPorTamano = 'exa';
   } else if (candidato.madurezNegocioExa === 'PyME') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_PYME;
     detalle.push('madurez_negocio: PyME (Exa)');
     senales.madurezNegocio = 'PyME';
-    senales.entradaPorTamano = 'exa';
+    if (!senales.entradaPorTamano) senales.entradaPorTamano = 'exa';
   } else if (candidato.madurezNegocioExa === 'Temprano') {
     senales.madurezNegocio = 'Temprano'; // no suma, pero se registra
   }
@@ -524,6 +529,17 @@ function generarExplicacionNatural(candidato, senales) {
   } else if (senales.entradaPorTamano === 'bypass_speaker') {
     frases.push(
       'entró al pool por ser Speaker aunque no declaró o no coincidió con un tamaño solicitado'
+    );
+  }
+  if (
+    senales.madurezNegocio &&
+    senales.entradaPorTamano !== 'exa' &&
+    (senales.madurezNegocio === 'Consolidado' || senales.madurezNegocio === 'PyME')
+  ) {
+    frases.push(
+      `el enriquecimiento automático lo clasificó como ${
+        senales.madurezNegocio === 'PyME' ? 'una PyME establecida' : 'un negocio consolidado'
+      }`
     );
   }
 

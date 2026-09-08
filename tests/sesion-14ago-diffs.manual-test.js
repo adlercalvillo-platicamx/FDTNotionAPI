@@ -332,7 +332,7 @@ ok('Vacío + vacío (ambos null) excluido', () => {
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: null, madurezNegocioExa: null }), false);
   assert.strictEqual(esCandidatoPorTamanoNegocio({}), false);
 });
-ok('Ambos poblados: gana Tamaño solicitado, no se acumula Exa', () => {
+ok('Ambos poblados: tamaño declarado y Exa se acumulan', () => {
   const c = candidatoBase({
     ticketTipo: 'Virtual',
     tamanoNegocio: TAMANO_GRANDE,
@@ -340,10 +340,10 @@ ok('Ambos poblados: gana Tamaño solicitado, no se acumula Exa', () => {
   });
   assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
   const r = calcularScore(sponsorBase, c, 0);
-  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
+  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
   assert.strictEqual(r.senales.tamanoNegocio, 'Grande');
-  assert.strictEqual(r.senales.madurezNegocio, null);
-  assert.ok(!r.detalle.some((d) => d.startsWith('madurez_negocio:')));
+  assert.strictEqual(r.senales.madurezNegocio, 'Consolidado');
+  assert.ok(r.detalle.some((d) => d.startsWith('madurez_negocio:')));
 });
 
 console.log('\n=== DIFF-13 booking — duración + bloques de env (igual que /disponibilidad) ===');
