@@ -81,30 +81,25 @@ const MULTIPLICADOR_CANAL = {
 
 const PESOS = {
   ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor; NO se multiplica
-  AREA: 60, // match directo de área/puesto
-  SOLUCION: 60, // match directo por cada solución coincidente
+  AREA: 40, // match directo de área/puesto; desempata contra Área vacía/Otro
+  SOLUCION_PRIMERA: 30,
+  SOLUCION_ADICIONAL: 10,
+  SOLUCION_MAXIMO: 50,
   // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
-  // empresa 100% es un criterio... es lo más importante". Desde 26-ago el
-  // filtro duro vive en esCandidatoPorTamanoNegocio (Tamaño de Negocio del
-  // registro; si vacío, Madurez Negocio Exa). Estos pesos de madurez solo
-  // aplican al fallback de asistentes viejos sin el select nuevo.
-  MADUREZ_NEGOCIO_CONSOLIDADO: 40,
-  MADUREZ_NEGOCIO_PYME: 15,
-  // 26-ago: filtro duro de tamaño (Laura 25-ago). Estos pesos SOLO aplican
-  // si Tamaño de Negocio es Grande o Mediana. Pequeña/Micro no tienen bono
-  // propio: caen al fallback MADUREZ_NEGOCIO_* si Exa está poblado. No se
-  // suman Grande/Mediana con madurez — si ambos existen, gana el tamaño.
-  TAMANO_GRANDE: 40,
-  TAMANO_MEDIANA: 15,
-  // 27-ago — Exa adicional, independiente de MADUREZ_NEGOCIO_* (40/15).
+  // empresa 100% es un criterio... es lo más importante". Si el sponsor
+  // pidió el tamaño declarado, todos los tamaños aceptados valen igual:
+  // el multi-select expresa aceptación, no un orden Grande > Micro.
+  TAMANO_SOLICITADO: 100,
+  // Legacy sin Tamaño declarado: Exa sigue siendo el fallback, con menor
+  // confianza que una respuesta directa de Ticketópolis.
+  MADUREZ_NEGOCIO_CONSOLIDADO: 80,
+  MADUREZ_NEGOCIO_PYME: 40,
+  // 27-ago — Exa adicional, independiente del fallback de madurez.
   // ICP Sí/No son dato real; vacío (nunca enriquecido) y Ambiguo no mueven.
   ICP_MODA_ECOMMERCE_SI: 30,
   ICP_MODA_ECOMMERCE_NO: -30,
   ESTADO_WEB_CON_WEB: 10, // Sin web / vacío: 0, no penaliza
   OTRA_SOLUCION_TEXTO: 25, // señal débil de texto libre ↔ texto libre
-  // Conservado como referencia histórica (23-ago-2026), pero ya no se suma
-  // al score: la cuota cambia con el tiempo y no mide la calidad del par.
-  CUOTA_PENDIENTE_POR_CITA: 15,
   DATO_DECLARADO: 10,
   DATO_INFERIDO: 3,
 };
@@ -147,6 +142,26 @@ function tamanosBuscadosNormalizados(valores) {
       .map(normalizarCategoriaTamanoBuscado)
       .filter(Boolean)
   );
+}
+
+function areasBuscadasReales(valores) {
+  return (Array.isArray(valores) ? valores : []).filter(
+    (area) => area && area !== VALOR_COMODIN
+  );
+}
+
+/**
+ * Filtro duro de Área, acordado por Adler el 7-sep.
+ * Si el sponsor no especificó puestos (o solo puso "Otro"), no filtra.
+ * Un Área vacía/"Otro" es desconocida, no una respuesta negativa: entra
+ * sin los puntos de coincidencia. Un Área conocida distinta queda fuera,
+ * también para VIP y Speaker.
+ */
+function esCandidatoPorArea(candidato, puestosBuscadosSponsor) {
+  const areasBuscadas = areasBuscadasReales(puestosBuscadosSponsor);
+  if (areasBuscadas.length === 0) return true;
+  if (!candidato?.area || candidato.area === VALOR_COMODIN) return true;
+  return areasBuscadas.includes(candidato.area);
 }
 
 /**
@@ -273,10 +288,13 @@ function coincidenciaTextoLibre(textoAsistente, textoSponsor) {
 // ─────────────────────────────────────────────────────────────
 // Capa 2 — scoring con match directo
 // ─────────────────────────────────────────────────────────────
-function calcularScore(sponsor, candidato, cuotaPendiente) {
+function calcularScore(sponsor, candidato) {
   let scoreBase = 0; // afinidad: se multiplica por canal si es > 0
   let scoreFijo = 0; // oro molido, fuera del multiplicador
   const detalle = [];
+  const tamanosAceptados = Array.isArray(sponsor.etapaClienteBuscada)
+    ? tamanosBuscadosNormalizados(sponsor.etapaClienteBuscada)
+    : new Set(['Grande', 'Mediana']);
   const senales = {
     oroMolido: false,
     esVip: false,
@@ -291,7 +309,8 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     tamanoAceptadoPorSponsor: false,
     icpModaEcommerce: null, // "Sí" | "No" | "Ambiguo" | null
     estadoWebExa: null, // "Con web" | "Sin web" | null
-    cuotaPendiente,
+    tamanosBuscadosSponsor: [...tamanosAceptados],
+    entradaPorTamano: null, // "declarado" | "exa" | "bypass_vip" | "bypass_speaker"
     // Distinguir "inferido" de "sin dato" importa: el reporte que lee Laura
     // afirma cosas sobre el candidato, y decir "esta info fue inferida" cuando
     // en realidad el campo está vacío es afirmarle algo falso. Solo se marca
@@ -319,48 +338,39 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     senales.esPresencial = true;
   }
 
-  // Madurez Negocio (Exa) — solo si NO hay bono de Grande/Mediana.
-  // Pequeña/Micro no bloquean este fallback: Capa 1 ya decidió si entran.
-  const tamanoConBono =
-    candidato.tamanoNegocio === TAMANO_GRANDE || candidato.tamanoNegocio === TAMANO_MEDIANA;
-  if (tamanoConBono) {
-    if (candidato.tamanoNegocio === TAMANO_GRANDE) {
-      scoreBase += PESOS.TAMANO_GRANDE;
-      detalle.push('tamano_negocio: empresa grande');
-      senales.tamanoNegocio = 'Grande';
-    } else {
-      scoreBase += PESOS.TAMANO_MEDIANA;
-      detalle.push('tamano_negocio: empresa mediana');
-      senales.tamanoNegocio = 'Mediana';
+  // Tamaño declarado: cada categoría que el sponsor pidió suma igual.
+  // VIP/Speaker pueden saltar el filtro de tamaño, pero no reciben estos
+  // puntos si su tamaño declarado no está en la selección del sponsor.
+  const categoriaTamano = categoriaTamanoNegocio(candidato.tamanoNegocio);
+  if (categoriaTamano) {
+    senales.tamanoNegocio = categoriaTamano;
+    senales.tamanoAceptadoPorSponsor = tamanosAceptados.has(categoriaTamano);
+    detalle.push(`tamano_negocio: empresa ${categoriaTamano.toLowerCase()}`);
+    if (senales.tamanoAceptadoPorSponsor) {
+      scoreBase += PESOS.TAMANO_SOLICITADO;
+      senales.entradaPorTamano = 'declarado';
+      detalle.push('tamano_filtro: coincide con un tamaño solicitado por el sponsor');
     }
-    senales.tamanoAceptadoPorSponsor = tamanosBuscadosNormalizados(
-      sponsor.etapaClienteBuscada
-    ).has(senales.tamanoNegocio);
   } else if (candidato.madurezNegocioExa === 'Consolidado') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
     detalle.push('madurez_negocio: empresa consolidada (Exa)');
     senales.madurezNegocio = 'Consolidado';
+    senales.entradaPorTamano = 'exa';
   } else if (candidato.madurezNegocioExa === 'PyME') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_PYME;
     detalle.push('madurez_negocio: PyME (Exa)');
     senales.madurezNegocio = 'PyME';
+    senales.entradaPorTamano = 'exa';
   } else if (candidato.madurezNegocioExa === 'Temprano') {
     senales.madurezNegocio = 'Temprano'; // no suma, pero se registra
   }
 
-  if (!tamanoConBono) {
-    const categoria = categoriaTamanoNegocio(candidato.tamanoNegocio);
-    if (categoria === 'Pequeña' || categoria === 'Micro') {
-      senales.tamanoNegocio = categoria;
-      senales.tamanoAceptadoPorSponsor = tamanosBuscadosNormalizados(
-        sponsor.etapaClienteBuscada
-      ).has(categoria);
-      detalle.push(
-        categoria === 'Pequeña'
-          ? 'tamano_negocio: empresa pequeña (sin bono de tamaño)'
-          : 'tamano_negocio: microempresa (sin bono de tamaño)'
-      );
-    }
+  if (!senales.entradaPorTamano && candidato.ticketTipo === 'Presencial VIP') {
+    senales.entradaPorTamano = 'bypass_vip';
+    detalle.push('tamano_filtro: bypass por boleto Presencial VIP');
+  } else if (!senales.entradaPorTamano && candidato.ticketTipo === 'Speaker') {
+    senales.entradaPorTamano = 'bypass_speaker';
+    detalle.push('tamano_filtro: bypass por boleto Speaker');
   }
 
   // ICP Moda/Ecommerce (Exa) — Capa 2, no filtro duro. Vacío ≠ No.
@@ -399,15 +409,29 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
   }
 
   // MATCH DIRECTO de soluciones — intersección de dos multi-select con las
-  // mismas opciones. Cada coincidencia suma por separado (un sponsor puede
-  // ofrecer hasta 3 soluciones y el asistente puede buscar varias).
+  // mismas opciones. Conservamos todas para explicar, pero el score tiene
+  // rendimiento decreciente y tope para que no domine al tamaño.
   const solucionesSponsor = sponsor.solucion || [];
-  for (const solucion of candidato.solucionesBuscadas || []) {
-    if (solucion !== VALOR_COMODIN && solucionesSponsor.includes(solucion)) {
-      scoreBase += PESOS.SOLUCION;
-      detalle.push(`solucion: coincide con "${solucion}"`);
-      senales.solucionesCoincidentes.push(solucion);
-    }
+  senales.solucionesCoincidentes = [
+    ...new Set(
+      (candidato.solucionesBuscadas || []).filter(
+        (solucion) => solucion !== VALOR_COMODIN && solucionesSponsor.includes(solucion)
+      )
+    ),
+  ];
+  for (const solucion of senales.solucionesCoincidentes) {
+    detalle.push(`solucion: coincide con "${solucion}"`);
+  }
+  if (senales.solucionesCoincidentes.length > 0) {
+    const puntosSoluciones = Math.min(
+      PESOS.SOLUCION_MAXIMO,
+      PESOS.SOLUCION_PRIMERA +
+        Math.max(0, senales.solucionesCoincidentes.length - 1) * PESOS.SOLUCION_ADICIONAL
+    );
+    scoreBase += puntosSoluciones;
+    detalle.push(
+      `soluciones_score: ${puntosSoluciones} puntos por ${senales.solucionesCoincidentes.length} coincidencia(s), tope ${PESOS.SOLUCION_MAXIMO}`
+    );
   }
 
   // Señal débil de texto libre ↔ texto libre.
@@ -415,10 +439,6 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
     scoreBase += PESOS.OTRA_SOLUCION_TEXTO;
     detalle.push('texto_libre: lo que el asistente escribió se parece a lo que describió el sponsor');
     senales.coincidenciaTextoLibre = true;
-  }
-
-  if (cuotaPendiente > 0) {
-    detalle.push(`cuota_pendiente: ${cuotaPendiente} citas por cubrir`);
   }
 
   if (candidato.fuenteDato === 'Declarado') scoreBase += PESOS.DATO_DECLARADO;
@@ -448,6 +468,31 @@ function calcularScore(sponsor, candidato, cuotaPendiente) {
 function generarExplicacionNatural(candidato, senales) {
   const frases = [];
   const empresaCandidato = candidato.empresa || candidato.nombre || 'la empresa candidata';
+
+  if (senales.entradaPorTamano === 'declarado') {
+    const pedidos = senales.tamanosBuscadosSponsor.join(', ');
+    const tamanoNatural =
+      { Grande: 'grande', Mediana: 'mediano', Pequeña: 'pequeño', Micro: 'micro' }[
+        senales.tamanoNegocio
+      ] || String(senales.tamanoNegocio || '').toLowerCase();
+    frases.push(
+      `declaró un negocio de tamaño ${tamanoNatural}, uno de los tamaños que el sponsor pidió${pedidos ? ` (${pedidos})` : ''}`
+    );
+  } else if (senales.entradaPorTamano === 'exa') {
+    frases.push(
+      `no tenía un tamaño de negocio declarado y el enriquecimiento automático lo clasificó como ${
+        senales.madurezNegocio === 'PyME' ? 'una PyME establecida' : 'un negocio consolidado'
+      }, por lo que entró al pool por ese fallback`
+    );
+  } else if (senales.entradaPorTamano === 'bypass_vip') {
+    frases.push(
+      'entró al pool por su boleto Presencial VIP aunque no declaró o no coincidió con un tamaño solicitado'
+    );
+  } else if (senales.entradaPorTamano === 'bypass_speaker') {
+    frases.push(
+      'entró al pool por ser Speaker aunque no declaró o no coincidió con un tamaño solicitado'
+    );
+  }
 
   if (senales.oroMolido) {
     frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
@@ -483,24 +528,6 @@ function generarExplicacionNatural(candidato, senales) {
   if (senales.esPresencial && !senales.esVip) {
     texto += ` Asistirá de forma presencial, lo cual se prioriza sobre los asistentes virtuales.`;
   }
-  if (senales.tamanoNegocio === 'Grande') {
-    texto += ` Declaró un negocio de tamaño grande.`;
-  } else if (senales.tamanoNegocio === 'Mediana') {
-    texto += ` Declaró un negocio de tamaño mediano.`;
-  } else if (senales.tamanoNegocio === 'Pequeña') {
-    texto += senales.tamanoAceptadoPorSponsor
-      ? ` Declaró un negocio de tamaño pequeño, dentro de los tamaños que este sponsor indicó buscar.`
-      : ` Declaró un negocio de tamaño pequeño.`;
-  } else if (senales.tamanoNegocio === 'Micro') {
-    texto += senales.tamanoAceptadoPorSponsor
-      ? ` Declaró una microempresa, dentro de los tamaños que este sponsor indicó buscar.`
-      : ` Declaró una microempresa.`;
-  }
-  if (senales.madurezNegocio === 'Consolidado') {
-    texto += ` El enriquecimiento automático identificó su negocio como consolidado.`;
-  } else if (senales.madurezNegocio === 'PyME') {
-    texto += ` El enriquecimiento automático identificó su negocio como una PyME establecida.`;
-  }
   if (senales.icpModaEcommerce === 'Sí') {
     texto += ` Exa confirmó que el negocio encaja con el perfil de moda/ecommerce del evento.`;
   } else if (senales.icpModaEcommerce === 'No') {
@@ -508,9 +535,6 @@ function generarExplicacionNatural(candidato, senales) {
   }
   if (senales.estadoWebExa === 'Con web') {
     texto += ` El negocio cuenta con presencia web activa.`;
-  }
-  if (senales.cuotaPendiente > 0) {
-    texto += ` El sponsor todavía tiene ${senales.cuotaPendiente} cita${senales.cuotaPendiente === 1 ? '' : 's'} por cubrir de su cuota.`;
   }
   if (senales.fuenteInferida) {
     texto += ` (Nota: parte de la información de este candidato fue inferida automáticamente, no declarada directamente por la persona.)`;
@@ -568,7 +592,8 @@ async function sugerirMatchesParaSponsor(
   const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ incluirVirtual })).filter(
     (c) =>
       esCandidatoAsistenteReal(c) &&
-      esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada)
+      esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada) &&
+      esCandidatoPorArea(c, sponsor.puestosBuscados)
   );
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
@@ -597,7 +622,7 @@ async function sugerirMatchesParaSponsor(
   // Capa 2 — ranking
   const rankeados = candidatosValidos
     .map((candidato) => {
-      const { score, detalle, senales } = calcularScore(sponsor, candidato, cuotaPendiente);
+      const { score, detalle, senales } = calcularScore(sponsor, candidato);
       return { candidato, score, detalle, senales };
     })
     .sort((a, b) => b.score - a.score);
@@ -918,6 +943,7 @@ module.exports = {
   // exportados para pruebas / depuración:
   calcularScore,
   esCandidatoPorTamanoNegocio,
+  esCandidatoPorArea,
   esCandidatoAsistenteReal,
   generarExplicacionNatural,
   empresaMencionadaEn,

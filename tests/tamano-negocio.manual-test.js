@@ -99,11 +99,11 @@ async function main() {
   assert.ok(!ids.includes('exa-temp'));
   assert.ok(!ids.includes('vacio'));
   const scores = Object.fromEntries(r.sugerencias.map((s) => [s.id, s.score]));
-  assert.strictEqual(scores.grande, 40);
-  assert.strictEqual(scores['sin-etapa'], 40);
-  assert.strictEqual(scores.mediana, 15);
-  assert.strictEqual(scores['exa-cons'], 40);
-  assert.strictEqual(scores['exa-pyme'], 15);
+  assert.strictEqual(scores.grande, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(scores['sin-etapa'], PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(scores.mediana, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(scores['exa-cons'], PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
+  assert.strictEqual(scores['exa-pyme'], PESOS.MADUREZ_NEGOCIO_PYME);
 
   // El mismo pool para un sponsor que declaró Pequeña/Micro.
   sponsor.etapaClienteBuscada = ['Pequeña', 'Micro'];
@@ -117,36 +117,36 @@ async function main() {
   assert.ok(!idsPequenas.includes('grande'));
   assert.ok(!idsPequenas.includes('mediana'));
 
-  // Pequeña/Micro no tienen bono de tamaño; si Exa está poblado, sí caen
-  // al fallback de madurez (Capa 2 independiente de Capa 1).
+  // Todo tamaño que el sponsor pidió recibe el mismo peso. Si hay tamaño
+  // declarado, no se acumula además el fallback Exa.
   const scoresPequenas = Object.fromEntries(
     rPequenas.sugerencias.map((s) => [s.id, s.score])
   );
-  assert.strictEqual(scoresPequenas.pequena, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
-  assert.strictEqual(scoresPequenas.micro, 0);
+  assert.strictEqual(scoresPequenas.pequena, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(scoresPequenas.micro, PESOS.TAMANO_SOLICITADO);
   const explicacionPequena = rPequenas.sugerencias.find((s) => s.id === 'pequena');
-  assert.ok(explicacionPequena.explicacion.includes('dentro de los tamaños que este sponsor indicó buscar'));
-  assert.ok(explicacionPequena.explicacion.includes('consolidado'));
-  assert.ok(explicacionPequena.detalle.some((d) => d.includes('madurez_negocio')));
+  assert.ok(explicacionPequena.explicacion.includes('uno de los tamaños que el sponsor pidió'));
+  assert.ok(!explicacionPequena.explicacion.includes('consolidado'));
+  assert.ok(!explicacionPequena.detalle.some((d) => d.includes('madurez_negocio')));
 
-  // Mock A: Pequeña + Exa Consolidado → entra y suma 40 de madurez.
+  // Mock A: Pequeña pedida + Exa Consolidado → gana tamaño declarado, sin sumar Exa.
   const mockA = calcularScore(
     { etapaClienteBuscada: ['Pequeña'] },
     { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
     0
   );
-  assert.strictEqual(mockA.score, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
-  assert.strictEqual(mockA.senales.madurezNegocio, 'Consolidado');
+  assert.strictEqual(mockA.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(mockA.senales.madurezNegocio, null);
   assert.strictEqual(mockA.senales.tamanoNegocio, 'Pequeña');
-  assert.ok(mockA.detalle.some((d) => d.includes('madurez_negocio')));
+  assert.ok(!mockA.detalle.some((d) => d.includes('madurez_negocio')));
 
-  // Mock B: Micro sin Exa → 0 de tamaño/madurez, sin error.
+  // Mock B: Micro pedido sin Exa → mismo peso que Grande/Mediana/Pequeña.
   const mockB = calcularScore(
     { etapaClienteBuscada: ['Micro'] },
     { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO },
     0
   );
-  assert.strictEqual(mockB.score, 0);
+  assert.strictEqual(mockB.score, PESOS.TAMANO_SOLICITADO);
   assert.strictEqual(mockB.senales.madurezNegocio, null);
   assert.strictEqual(mockB.senales.tamanoNegocio, 'Micro');
 

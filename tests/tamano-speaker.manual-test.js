@@ -64,6 +64,7 @@ const {
 } = require('../src/services/matchmaking.service');
 
 const sponsor = {
+  etapaClienteBuscada: ['Grande'],
   puestosBuscados: [],
   solucion: [],
   clientesPotencialesDeseados: '',
@@ -190,12 +191,27 @@ async function main() {
     const { senales } = calcularScore(sponsor, c, 0);
     const texto = generarExplicacionNatural(c, senales);
     assert.ok(texto.includes('Es ponente del evento'));
+    assert.ok(texto.includes('entró al pool por ser Speaker'));
     assert.ok(!texto.includes('Es asistente VIP'));
     assert.ok(!texto.includes('Asistirá de forma presencial'));
   });
+  caso('VIP con tamaño no solicitado entra por bypass pero no recibe +100', () => {
+    const c = candidato('Presencial VIP', { tamanoNegocio: TAMANO_PEQUENA });
+    const { score, senales } = calcularScore(sponsor, c, 0);
+    const texto = generarExplicacionNatural(c, senales);
+    assert.strictEqual(score, 0);
+    assert.ok(texto.includes('entró al pool por su boleto Presencial VIP'));
+    assert.ok(texto.includes('no coincidió con un tamaño solicitado'));
+  });
+  caso('Speaker sin tamaño no inventa una coincidencia declarada', () => {
+    const c = candidato('Speaker');
+    const { senales } = calcularScore(sponsor, c, 0);
+    const texto = generarExplicacionNatural(c, senales);
+    assert.ok(!texto.includes('uno de los tamaños que el sponsor pidió'));
+  });
 
-  assert.strictEqual(ok, 16);
-  console.log('\n✅ tamaño-speaker 16/16');
+  assert.strictEqual(ok, 18);
+  console.log('\n✅ tamaño-speaker 18/18');
 }
 
 main().catch((err) => {

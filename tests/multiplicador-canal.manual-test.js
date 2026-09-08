@@ -74,24 +74,24 @@ check('VIP vacío queda en ~14 (10 × 1.4), no en 510', vipA.score === 14);
 
 console.log('\n=== B — Mismo match, VIP vs Presencial ===');
 const sponsorB = sponsorCon(3);
-const baseB = PESOS.AREA + 3 * PESOS.SOLUCION + PESOS.DATO_DECLARADO; // 250
+const baseB = PESOS.AREA + PESOS.SOLUCION_MAXIMO + PESOS.DATO_DECLARADO; // 100
 const vipB = calcularScore(sponsorB, candidato({ ticketTipo: 'Presencial VIP', nSoluciones: 3 }), 0);
 const presB = calcularScore(sponsorB, candidato({ ticketTipo: 'Presencial', nSoluciones: 3 }), 0);
-check('VIP 250 × 1.4 = 350', vipB.score === 350);
-check('Presencial 250 × 1.15 redondea a 288', presB.score === 288);
+check('VIP 100 × 1.4 = 140', vipB.score === 140);
+check('Presencial 100 × 1.15 = 115', presB.score === 115);
 check('Con el mismo match, el VIP sigue ganando', vipB.score > presB.score);
 check(
   'Ventaja ~22%, no el ~80% del bono +500',
   (vipB.score - presB.score) / presB.score < 0.25 && (vipB.score - presB.score) / presB.score > 0.18
 );
 
-console.log('\n=== C — Calibración ×1.4: Presencial 5 soluciones vs VIP 4 ===');
+console.log('\n=== C — Tope de soluciones + multiplicador ×1.4 ===');
 const sponsorC = sponsorCon(5);
 const presC = calcularScore(sponsorC, candidato({ ticketTipo: 'Presencial', nSoluciones: 5 }), 0);
 const vipC = calcularScore(sponsorC, candidato({ ticketTipo: 'Presencial VIP', nSoluciones: 4 }), 0);
-check('Presencial 5 sol = 426', presC.score === 426);
-check('VIP 4 sol = 434', vipC.score === 434);
-check('Con ×1.4 el VIP gana por una sola solución de diferencia', vipC.score > presC.score);
+check('Presencial 5 sol topa afinidad en 100 → 115', presC.score === 115);
+check('VIP 4 sol topa afinidad en 100 → 140', vipC.score === 140);
+check('Después del tope, el mismo match deja que el canal desempate', vipC.score > presC.score);
 
 console.log('\n=== D — Oro molido fijo; el canal no lo amplifica ===');
 const sponsorD = {
@@ -106,7 +106,7 @@ const comunD = {
   tamanoNegocio: null,
   madurezNegocioExa: null,
 };
-const baseAfinidadD = PESOS.AREA + PESOS.SOLUCION + PESOS.DATO_DECLARADO; // 130
+const baseAfinidadD = PESOS.AREA + PESOS.SOLUCION_PRIMERA + PESOS.DATO_DECLARADO; // 80
 const oroVip = calcularScore(sponsorD, { nombre: 'VIP', empresa: 'Boutique Marea', ticketTipo: 'Presencial VIP', ...comunD }, 0);
 const oroVirtual = calcularScore(sponsorD, { nombre: 'Virtual', empresa: 'Boutique Marea', ticketTipo: 'Virtual', ...comunD }, 0);
 const sinOro = calcularScore(sponsorD, { nombre: 'Otro', empresa: 'Otra SA', ticketTipo: 'Presencial VIP', ...comunD }, 0);

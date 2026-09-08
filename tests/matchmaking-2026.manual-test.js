@@ -89,6 +89,11 @@ const rMulti = calcularScore(sponsorMulti, candidatoMulti, 1);
 check('Las 3 soluciones coincidentes se cuentan por separado',
   rMulti.senales.solucionesCoincidentes.length === 3,
   JSON.stringify(rMulti.senales.solucionesCoincidentes));
+check(
+  'Las soluciones topan en 50 puntos aunque se conserven todas para explicar',
+  rMulti.detalle.includes('soluciones_score: 50 puntos por 3 coincidencia(s), tope 50'),
+  `score=${rMulti.score}`
+);
 console.log('   Explicación generada:');
 console.log('   ' + generarExplicacionNatural(candidatoMulti, rMulti.senales));
 
@@ -185,7 +190,7 @@ const rNoMasConsolidado = calcularScore(sponsorExa, {
   icpModaEcommerce: 'No',
   madurezNegocioExa: 'Consolidado',
 }, 0);
-check('ICP No y Madurez Consolidado son independientes (−30 + 40 = +10)',
+check('ICP No y Madurez Consolidado son independientes (−30 + 80 = +50)',
   rNoMasConsolidado.score === PESOS.ICP_MODA_ECOMMERCE_NO + PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
 
 console.log(`\n=== RESULTADO: ${fallos === 0 ? 'todas las verificaciones pasaron' : fallos + ' FALLARON'} ===\n`);

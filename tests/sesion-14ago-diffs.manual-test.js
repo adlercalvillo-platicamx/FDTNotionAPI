@@ -152,7 +152,7 @@ ok('Presencial vs Virtual mismas señales → Presencial gana por ×1.15, no +15
   };
   const p = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Presencial', ...comun }), 0);
   const v = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Virtual', ...comun }), 0);
-  const base = PESOS.AREA + PESOS.SOLUCION + PESOS.DATO_DECLARADO;
+  const base = PESOS.AREA + PESOS.SOLUCION_PRIMERA + PESOS.DATO_DECLARADO;
   assert.strictEqual(v.score, base);
   assert.strictEqual(p.score, Math.round((base * 115) / 100));
   assert.ok(p.score > v.score);
@@ -179,7 +179,7 @@ ok('Virtual match perfecto (oro+área+solución) vs Presencial sin señales → 
   );
   const presencial = calcularScore(sponsor, candidatoBase({ ticketTipo: 'Presencial' }), 0);
   assert.ok(virtual.score > presencial.score, `virtual=${virtual.score} presencial=${presencial.score}`);
-  assert.strictEqual(virtual.score, PESOS.ORO_MOLIDO + PESOS.AREA + PESOS.SOLUCION);
+  assert.strictEqual(virtual.score, PESOS.ORO_MOLIDO + PESOS.AREA + PESOS.SOLUCION_PRIMERA);
   assert.strictEqual(presencial.score, 0);
 });
 ok('Explicación VIP no menciona prioridad dos veces', () => {
@@ -195,13 +195,13 @@ ok('Explicación VIP no menciona prioridad dos veces', () => {
 });
 
 console.log('\n=== DIFF-2 matchmaking — Madurez Negocio ===');
-ok('Consolidado → +40 y línea detalle', () => {
+ok('Consolidado → +80 y línea detalle', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ madurezNegocioExa: 'Consolidado', ticketTipo: 'Virtual' }), 0);
   assert.ok(r.detalle.some((d) => d.includes('madurez_negocio: empresa consolidada')));
   assert.strictEqual(r.senales.madurezNegocio, 'Consolidado');
   assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
 });
-ok('PyME → +15', () => {
+ok('PyME → +40', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ madurezNegocioExa: 'PyME', ticketTipo: 'Virtual' }), 0);
   assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_PYME);
 });
@@ -223,7 +223,7 @@ ok('Nancy/ZAGIS patrón: Consolidado no bypassa Capa 1 (score es Capa 2; elegibi
 });
 
 console.log('\n=== DIFF-2 interacción Virtual + Madurez ===');
-ok('Virtual + Consolidado: +40 madurez, 0 presencial', () => {
+ok('Virtual + Consolidado: +80 madurez, 0 presencial', () => {
   const r = calcularScore(
     sponsorBase,
     candidatoBase({ ticketTipo: 'Virtual', madurezNegocioExa: 'Consolidado' }),
@@ -233,7 +233,7 @@ ok('Virtual + Consolidado: +40 madurez, 0 presencial', () => {
   assert.strictEqual(r.senales.esPresencial, false);
   assert.strictEqual(r.senales.madurezNegocio, 'Consolidado');
 });
-ok('Presencial + Consolidado sin otras señales = 40 × 1.15 → 46', () => {
+ok('Presencial + Consolidado sin otras señales = 80 × 1.15 → 92', () => {
   const r = calcularScore(
     sponsorBase,
     candidatoBase({ ticketTipo: 'Presencial', madurezNegocioExa: 'Consolidado' }),
@@ -249,13 +249,13 @@ ok('Explicación Presencial (no VIP) + Consolidado: ambas frases, orden correcto
   );
   const texto = generarExplicacionNatural(candidatoBase({ nombre: 'Ana', empresa: 'X' }), senales);
   const iPres = texto.indexOf('Asistirá de forma presencial');
-  const iMad = texto.indexOf('negocio como consolidado');
-  const iCuota = texto.indexOf('todavía tiene 2 citas');
-  assert.ok(iPres >= 0 && iMad >= 0 && iCuota >= 0, texto);
-  assert.ok(iPres < iMad && iMad < iCuota, `orden mal: ${texto}`);
+  const iMad = texto.indexOf('clasificó como un negocio consolidado');
+  assert.ok(iPres >= 0 && iMad >= 0, texto);
+  assert.ok(iMad < iPres, `orden mal: ${texto}`);
+  assert.ok(!texto.includes('citas por cubrir'), texto);
 });
 
-console.log('\n=== Matchmaking — cuota pendiente informativa, no comparable ===');
+console.log('\n=== Matchmaking — cuota pendiente fuera de score, detalle y explicación ===');
 ok('Cuotas pendientes distintas producen exactamente el mismo score', () => {
   const candidato = candidatoBase({
     ticketTipo: 'Virtual',
@@ -265,14 +265,14 @@ ok('Cuotas pendientes distintas producen exactamente el mismo score', () => {
   const conUnaPendiente = calcularScore(sponsorBase, candidato, 1);
   const conCuatroPendientes = calcularScore(sponsorBase, candidato, 4);
   assert.strictEqual(conUnaPendiente.score, conCuatroPendientes.score);
-  assert.ok(conUnaPendiente.detalle.includes('cuota_pendiente: 1 citas por cubrir'));
-  assert.ok(conCuatroPendientes.detalle.includes('cuota_pendiente: 4 citas por cubrir'));
+  assert.ok(!conUnaPendiente.detalle.some((d) => d.includes('cuota_pendiente')));
+  assert.ok(!conCuatroPendientes.detalle.some((d) => d.includes('cuota_pendiente')));
 });
-ok('Cuota pendiente positiva permanece en la explicación', () => {
+ok('Cuota pendiente positiva no aparece en la explicación', () => {
   const candidato = candidatoBase({ ticketTipo: 'Virtual' });
   const { senales } = calcularScore(sponsorBase, candidato, 3);
   const texto = generarExplicacionNatural(candidato, senales);
-  assert.ok(texto.includes('sponsor todavía tiene 3 citas por cubrir'), texto);
+  assert.ok(!texto.includes('citas por cubrir'), texto);
 });
 ok('Cuota pendiente cero no aparece en la explicación', () => {
   const candidato = candidatoBase({ ticketTipo: 'Virtual' });
@@ -286,16 +286,16 @@ ok('parsearContacto lee Tamaño de Negocio', () => {
   const c = parsearContacto(paginaNotion({ tamanoNegocio: TAMANO_GRANDE }));
   assert.strictEqual(c.tamanoNegocio, TAMANO_GRANDE);
 });
-ok('Grande entra y suma 40 (Virtual, sin otras señales)', () => {
+ok('Grande pedido entra y suma 100 (Virtual, sin otras señales)', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE }), 0);
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_GRANDE }), true);
-  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
+  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
   assert.ok(r.detalle.includes('tamano_negocio: empresa grande'));
 });
-ok('Mediana entra y suma 15', () => {
+ok('Mediana pedida suma los mismos 100', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA }), 0);
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_MEDIANA }), true);
-  assert.strictEqual(r.score, PESOS.TAMANO_MEDIANA);
+  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
 });
 ok('Micro excluido del pool (allowlist, no !== Micro)', () => {
   assert.strictEqual(
@@ -309,14 +309,14 @@ ok('Pequeña excluida del pool', () => {
     false
   );
 });
-ok('Vacío + Consolidado entra; peso de Madurez 40, no TAMANO', () => {
+ok('Vacío + Consolidado entra; peso de Madurez 80, no TAMANO', () => {
   const c = candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Consolidado' });
   assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
   const r = calcularScore(sponsorBase, c, 0);
   assert.strictEqual(r.score, PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
   assert.ok(!r.detalle.some((d) => d.startsWith('tamano_negocio:')));
 });
-ok('Vacío + PyME entra; peso Madurez 15', () => {
+ok('Vacío + PyME entra; peso Madurez 40', () => {
   const c = candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'PyME' });
   assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
   const r = calcularScore(sponsorBase, c, 0);
@@ -332,7 +332,7 @@ ok('Vacío + vacío (ambos null) excluido', () => {
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: null, madurezNegocioExa: null }), false);
   assert.strictEqual(esCandidatoPorTamanoNegocio({}), false);
 });
-ok('Ambos poblados: gana Tamaño, no se suman 40+40', () => {
+ok('Ambos poblados: gana Tamaño solicitado, no se acumula Exa', () => {
   const c = candidatoBase({
     ticketTipo: 'Virtual',
     tamanoNegocio: TAMANO_GRANDE,
@@ -340,7 +340,7 @@ ok('Ambos poblados: gana Tamaño, no se suman 40+40', () => {
   });
   assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
   const r = calcularScore(sponsorBase, c, 0);
-  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
+  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
   assert.strictEqual(r.senales.tamanoNegocio, 'Grande');
   assert.strictEqual(r.senales.madurezNegocio, null);
   assert.ok(!r.detalle.some((d) => d.startsWith('madurez_negocio:')));

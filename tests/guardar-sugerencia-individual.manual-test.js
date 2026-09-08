@@ -103,6 +103,13 @@ const { guardarSugerenciaIndividual } = require(matchmakingPath);
   assert.strictEqual(resultado.sugerencia.id, 'asistente-2');
   assert.ok(resultado.sugerencia.explicacion, 'debe devolver explicación');
   assert.strictEqual(creadas[0].explicacion, resultado.sugerencia.explicacion);
+  assert.ok(
+    creadas[0].explicacion.includes(
+      'declaró un negocio de tamaño grande, uno de los tamaños que el sponsor pidió'
+    ),
+    creadas[0].explicacion
+  );
+  assert.ok(!creadas[0].explicacion.includes('citas por cubrir'), creadas[0].explicacion);
 
   await assert.rejects(
     () => guardarSugerenciaIndividual(sponsor.id, 'no-elegible'),
