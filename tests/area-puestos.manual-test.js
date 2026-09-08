@@ -21,7 +21,7 @@ const sponsor = {
   citasMinimasPrometidas: 10,
   etapaClienteBuscada: ['Grande'],
   puestosBuscados: [AREA_CEO],
-  solucion: [],
+  solucion: ['Pagos'],
   clientesActuales: '',
   clientesPotencialesDeseados: '',
 };
@@ -36,7 +36,7 @@ function candidato(id, area, ticketTipo = 'Virtual') {
     tamanoNegocio: TAMANO_GRANDE,
     madurezNegocioExa: null,
     area,
-    solucionesBuscadas: [],
+    solucionesBuscadas: ['Pagos'],
     otraSolucionBuscada: '',
     fuenteDato: null,
   };

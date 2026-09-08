@@ -28,7 +28,7 @@ const sponsor = {
   clientesActuales: '',
   clientesPotencialesDeseados: '',
   puestosBuscados: [],
-  solucion: [],
+  solucion: ['Pagos'],
 };
 
 const GIROS_ELEGIBLES_MATCHMAKING = [
@@ -48,6 +48,7 @@ const poolBruto = [
     tamanoNegocio: null,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
+    solucionesBuscadas: ['Pagos'],
   },
   {
     id: 'vip-micro',
@@ -59,6 +60,7 @@ const poolBruto = [
     tamanoNegocio: TAMANO_MICRO,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
+    solucionesBuscadas: ['Pagos'],
   },
   {
     id: 'novip-vacio',
@@ -70,6 +72,7 @@ const poolBruto = [
     tamanoNegocio: null,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
+    solucionesBuscadas: ['Pagos'],
   },
   {
     id: 'novip-grande',
@@ -81,6 +84,7 @@ const poolBruto = [
     tamanoNegocio: TAMANO_GRANDE,
     madurezNegocioExa: null,
     giroIndustria: GIRO_MODA,
+    solucionesBuscadas: ['Pagos'],
   },
   {
     id: 'vip-fintech',
@@ -92,6 +96,7 @@ const poolBruto = [
     tamanoNegocio: null,
     madurezNegocioExa: null,
     giroIndustria: GIRO_FINTECH,
+    solucionesBuscadas: ['Pagos'],
   },
 ];
 

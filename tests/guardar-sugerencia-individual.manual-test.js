@@ -44,7 +44,7 @@ const candidatos = [
     ticketTipo: 'Presencial',
     etapaDeNegocio: 'Vendo principalmente por redes sociales',
     area: 'Direccion General / Founder / CEO',
-    solucionesBuscadas: [],
+    solucionesBuscadas: ['Logistica / fulfillment'],
     otraSolucionBuscada: '',
     fuenteDato: 'Declarado',
     tamanoNegocio: 'Grande - más de 250 empleados',

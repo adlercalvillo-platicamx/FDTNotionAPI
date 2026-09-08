@@ -82,14 +82,17 @@ const MULTIPLICADOR_CANAL = {
 const PESOS = {
   ORO_MOLIDO: 1000, // empresa nombrada explícitamente por el sponsor; NO se multiplica
   AREA: 40, // match directo de área/puesto; desempata contra Área vacía/Otro
-  SOLUCION_PRIMERA: 30,
-  SOLUCION_ADICIONAL: 10,
-  SOLUCION_MAXIMO: 50,
-  // Agregado 14 de agosto — pedido por Laura en la Demo 2: "el tamaño de la
-  // empresa 100% es un criterio... es lo más importante". Si el sponsor
-  // pidió el tamaño declarado, todos los tamaños aceptados valen igual:
-  // el multi-select expresa aceptación, no un orden Grande > Micro.
-  TAMANO_SOLICITADO: 100,
+  SOLUCION_PRIMERA: 20,
+  SOLUCION_ADICIONAL: 20,
+  SOLUCION_MAXIMO: 80, // 1=20, 2=40, 3=60, 4+=80; sigue bajo Grande 100
+  // 7-sep — el multi-select del sponsor sigue siendo filtro de entrada, no
+  // un empate. En ranking, Grande siempre gana a Mediana. Pequeña/Micro
+  // subieron el 8-sep para que un match claramente superior pueda ganar a
+  // un Grande flojo (área + 1 solución).
+  TAMANO_GRANDE: 100,
+  TAMANO_MEDIANA: 70,
+  TAMANO_PEQUENA: 58,
+  TAMANO_MICRO: 30, // propuesta Claude 8-sep; Adler no lo confirmó aparte
   // Legacy sin Tamaño declarado: Exa sigue siendo el fallback, con menor
   // confianza que una respuesta directa de Ticketópolis.
   MADUREZ_NEGOCIO_CONSOLIDADO: 80,
@@ -144,6 +147,14 @@ function tamanosBuscadosNormalizados(valores) {
   );
 }
 
+function puntosPorTamanoDeclarado(categoria) {
+  if (categoria === 'Grande') return PESOS.TAMANO_GRANDE;
+  if (categoria === 'Mediana') return PESOS.TAMANO_MEDIANA;
+  if (categoria === 'Pequeña') return PESOS.TAMANO_PEQUENA;
+  if (categoria === 'Micro') return PESOS.TAMANO_MICRO;
+  return 0;
+}
+
 function areasBuscadasReales(valores) {
   return (Array.isArray(valores) ? valores : []).filter(
     (area) => area && area !== VALOR_COMODIN
@@ -162,6 +173,24 @@ function esCandidatoPorArea(candidato, puestosBuscadosSponsor) {
   if (areasBuscadas.length === 0) return true;
   if (!candidato?.area || candidato.area === VALOR_COMODIN) return true;
   return areasBuscadas.includes(candidato.area);
+}
+
+function solucionesReales(valores) {
+  return [...new Set((Array.isArray(valores) ? valores : []).filter((s) => s && s !== VALOR_COMODIN))];
+}
+
+/**
+ * Filtro duro de soluciones (Adler, 8-sep): el mensaje de campaña enseña
+ * las coincidencias; sin ninguna, no hay copy. Sin bypass VIP/Speaker.
+ * Sponsor vacío o solo "Otro" = nadie entra por este filtro (Tiendanube
+ * tiene que marcar soluciones reales; oro molido es el único bypass).
+ * Candidato sin soluciones reales también queda fuera.
+ */
+function esCandidatoPorSolucion(candidato, solucionesSponsor) {
+  const ofertas = solucionesReales(solucionesSponsor);
+  const buscadas = solucionesReales(candidato?.solucionesBuscadas);
+  if (ofertas.length === 0 || buscadas.length === 0) return false;
+  return buscadas.some((solucion) => ofertas.includes(solucion));
 }
 
 /**
@@ -338,18 +367,22 @@ function calcularScore(sponsor, candidato) {
     senales.esPresencial = true;
   }
 
-  // Tamaño declarado: cada categoría que el sponsor pidió suma igual.
-  // VIP/Speaker pueden saltar el filtro de tamaño, pero no reciben estos
-  // puntos si su tamaño declarado no está en la selección del sponsor.
+  // Tamaño declarado: el sponsor decide quién entra; el ranking premia
+  // Grande sobre Mediana, y deja Pequeña/Micro atrás. VIP/Speaker pueden
+  // saltar el filtro, pero no reciben estos puntos si su tamaño no está
+  // en la selección del sponsor.
   const categoriaTamano = categoriaTamanoNegocio(candidato.tamanoNegocio);
   if (categoriaTamano) {
     senales.tamanoNegocio = categoriaTamano;
     senales.tamanoAceptadoPorSponsor = tamanosAceptados.has(categoriaTamano);
     detalle.push(`tamano_negocio: empresa ${categoriaTamano.toLowerCase()}`);
     if (senales.tamanoAceptadoPorSponsor) {
-      scoreBase += PESOS.TAMANO_SOLICITADO;
+      const puntosTamano = puntosPorTamanoDeclarado(categoriaTamano);
+      scoreBase += puntosTamano;
       senales.entradaPorTamano = 'declarado';
-      detalle.push('tamano_filtro: coincide con un tamaño solicitado por el sponsor');
+      detalle.push(
+        `tamano_filtro: coincide con un tamaño solicitado por el sponsor (+${puntosTamano} ${categoriaTamano})`
+      );
     }
   } else if (candidato.madurezNegocioExa === 'Consolidado') {
     scoreBase += PESOS.MADUREZ_NEGOCIO_CONSOLIDADO;
@@ -495,7 +528,23 @@ function generarExplicacionNatural(candidato, senales) {
   }
 
   if (senales.oroMolido) {
-    frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
+    const sinArea = !senales.areaCoincidente;
+    const sinSoluciones = senales.solucionesCoincidentes.length === 0;
+    if (sinArea && sinSoluciones) {
+      frases.push(
+        `el sponsor lo pidió por nombre y no coincide ni en área ni en ninguna solución buscada`
+      );
+    } else if (sinArea) {
+      frases.push(
+        `el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}, aunque no coincide en área`
+      );
+    } else if (sinSoluciones) {
+      frases.push(
+        `el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}, aunque no coincide en ninguna solución buscada`
+      );
+    } else {
+      frases.push(`el sponsor mencionó explícitamente que le gustaría reunirse con ${candidato.empresa}`);
+    }
   }
   if (senales.areaCoincidente) {
     frases.push(`trabaja en ${senales.areaCoincidente}, que es justo una de las áreas con las que el sponsor quiere reunirse`);
@@ -590,10 +639,16 @@ async function sugerirMatchesParaSponsor(
   // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
   // dado de baja). Etapa de negocio ya no se filtra (28-ago).
   const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ incluirVirtual })).filter(
-    (c) =>
-      esCandidatoAsistenteReal(c) &&
-      esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada) &&
-      esCandidatoPorArea(c, sponsor.puestosBuscados)
+    (c) => {
+      if (!esCandidatoAsistenteReal(c)) return false;
+      const esOroMolido = empresaMencionadaEn(c.empresa, sponsor.clientesPotencialesDeseados);
+      if (esOroMolido) return true;
+      return (
+        esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada) &&
+        esCandidatoPorArea(c, sponsor.puestosBuscados) &&
+        esCandidatoPorSolucion(c, sponsor.solucion)
+      );
+    }
   );
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
@@ -944,6 +999,7 @@ module.exports = {
   calcularScore,
   esCandidatoPorTamanoNegocio,
   esCandidatoPorArea,
+  esCandidatoPorSolucion,
   esCandidatoAsistenteReal,
   generarExplicacionNatural,
   empresaMencionadaEn,

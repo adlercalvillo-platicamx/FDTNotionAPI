@@ -25,19 +25,19 @@ const sponsor = {
   clientesActuales: '',
   clientesPotencialesDeseados: '',
   puestosBuscados: [],
-  solucion: [],
+  solucion: ['Pagos'],
 };
 
 const asistentes = [
-  { id: 'grande', nombre: 'Grande SA', empresa: 'Grande SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE },
-  { id: 'sin-etapa', nombre: 'Sin Etapa SA', empresa: 'Sin Etapa SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE, etapaDeNegocio: null },
-  { id: 'mediana', nombre: 'Mediana SA', empresa: 'Mediana SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA },
-  { id: 'micro', nombre: 'Micro SA', empresa: 'Micro SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO },
-  { id: 'pequena', nombre: 'Pequena SA', empresa: 'Pequena SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
-  { id: 'exa-cons', nombre: 'Viejo Consolidado', empresa: 'Viejo C', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Consolidado' },
-  { id: 'exa-pyme', nombre: 'Viejo PyME', empresa: 'Viejo P', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'PyME' },
-  { id: 'exa-temp', nombre: 'Viejo Temprano', empresa: 'Viejo T', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Temprano' },
-  { id: 'vacio', nombre: 'Sin dato', empresa: 'Vacio SA', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: null },
+  { id: 'grande', nombre: 'Grande SA', empresa: 'Grande SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE, solucionesBuscadas: ['Pagos'] },
+  { id: 'sin-etapa', nombre: 'Sin Etapa SA', empresa: 'Sin Etapa SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE, etapaDeNegocio: null, solucionesBuscadas: ['Pagos'] },
+  { id: 'mediana', nombre: 'Mediana SA', empresa: 'Mediana SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA, solucionesBuscadas: ['Pagos'] },
+  { id: 'micro', nombre: 'Micro SA', empresa: 'Micro SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO, solucionesBuscadas: ['Pagos'] },
+  { id: 'pequena', nombre: 'Pequena SA', empresa: 'Pequena SA', ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado', solucionesBuscadas: ['Pagos'] },
+  { id: 'exa-cons', nombre: 'Viejo Consolidado', empresa: 'Viejo C', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Consolidado', solucionesBuscadas: ['Pagos'] },
+  { id: 'exa-pyme', nombre: 'Viejo PyME', empresa: 'Viejo P', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'PyME', solucionesBuscadas: ['Pagos'] },
+  { id: 'exa-temp', nombre: 'Viejo Temprano', empresa: 'Viejo T', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: 'Temprano', solucionesBuscadas: ['Pagos'] },
+  { id: 'vacio', nombre: 'Sin dato', empresa: 'Vacio SA', ticketTipo: 'Virtual', tamanoNegocio: null, madurezNegocioExa: null, solucionesBuscadas: ['Pagos'] },
 ];
 
 require.cache[contactosPath] = {
@@ -99,11 +99,13 @@ async function main() {
   assert.ok(!ids.includes('exa-temp'));
   assert.ok(!ids.includes('vacio'));
   const scores = Object.fromEntries(r.sugerencias.map((s) => [s.id, s.score]));
-  assert.strictEqual(scores.grande, PESOS.TAMANO_SOLICITADO);
-  assert.strictEqual(scores['sin-etapa'], PESOS.TAMANO_SOLICITADO);
-  assert.strictEqual(scores.mediana, PESOS.TAMANO_SOLICITADO);
-  assert.strictEqual(scores['exa-cons'], PESOS.MADUREZ_NEGOCIO_CONSOLIDADO);
-  assert.strictEqual(scores['exa-pyme'], PESOS.MADUREZ_NEGOCIO_PYME);
+  const extraSol = PESOS.SOLUCION_PRIMERA;
+  assert.strictEqual(scores.grande, PESOS.TAMANO_GRANDE + extraSol);
+  assert.strictEqual(scores['sin-etapa'], PESOS.TAMANO_GRANDE + extraSol);
+  assert.strictEqual(scores.mediana, PESOS.TAMANO_MEDIANA + extraSol);
+  assert.ok(scores.grande > scores.mediana);
+  assert.strictEqual(scores['exa-cons'], PESOS.MADUREZ_NEGOCIO_CONSOLIDADO + extraSol);
+  assert.strictEqual(scores['exa-pyme'], PESOS.MADUREZ_NEGOCIO_PYME + extraSol);
 
   // El mismo pool para un sponsor que declaró Pequeña/Micro.
   sponsor.etapaClienteBuscada = ['Pequeña', 'Micro'];
@@ -117,13 +119,14 @@ async function main() {
   assert.ok(!idsPequenas.includes('grande'));
   assert.ok(!idsPequenas.includes('mediana'));
 
-  // Todo tamaño que el sponsor pidió recibe el mismo peso. Si hay tamaño
-  // declarado, no se acumula además el fallback Exa.
+  // Pequeña y Micro entran si el sponsor las pidió, pero con menos puntos.
+  // Si hay tamaño declarado, no se acumula además el fallback Exa.
   const scoresPequenas = Object.fromEntries(
     rPequenas.sugerencias.map((s) => [s.id, s.score])
   );
-  assert.strictEqual(scoresPequenas.pequena, PESOS.TAMANO_SOLICITADO);
-  assert.strictEqual(scoresPequenas.micro, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(scoresPequenas.pequena, PESOS.TAMANO_PEQUENA + extraSol);
+  assert.strictEqual(scoresPequenas.micro, PESOS.TAMANO_MICRO + extraSol);
+  assert.ok(scoresPequenas.pequena > scoresPequenas.micro);
   const explicacionPequena = rPequenas.sugerencias.find((s) => s.id === 'pequena');
   assert.ok(explicacionPequena.explicacion.includes('uno de los tamaños que el sponsor pidió'));
   assert.ok(!explicacionPequena.explicacion.includes('consolidado'));
@@ -135,18 +138,18 @@ async function main() {
     { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_PEQUENA, madurezNegocioExa: 'Consolidado' },
     0
   );
-  assert.strictEqual(mockA.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(mockA.score, PESOS.TAMANO_PEQUENA);
   assert.strictEqual(mockA.senales.madurezNegocio, null);
   assert.strictEqual(mockA.senales.tamanoNegocio, 'Pequeña');
   assert.ok(!mockA.detalle.some((d) => d.includes('madurez_negocio')));
 
-  // Mock B: Micro pedido sin Exa → mismo peso que Grande/Mediana/Pequeña.
+  // Mock B: Micro pedido sin Exa → entra, pero con el peso más bajo.
   const mockB = calcularScore(
     { etapaClienteBuscada: ['Micro'] },
     { ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MICRO },
     0
   );
-  assert.strictEqual(mockB.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(mockB.score, PESOS.TAMANO_MICRO);
   assert.strictEqual(mockB.senales.madurezNegocio, null);
   assert.strictEqual(mockB.senales.tamanoNegocio, 'Micro');
 

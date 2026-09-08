@@ -90,8 +90,8 @@ check('Las 3 soluciones coincidentes se cuentan por separado',
   rMulti.senales.solucionesCoincidentes.length === 3,
   JSON.stringify(rMulti.senales.solucionesCoincidentes));
 check(
-  'Las soluciones topan en 50 puntos aunque se conserven todas para explicar',
-  rMulti.detalle.includes('soluciones_score: 50 puntos por 3 coincidencia(s), tope 50'),
+  'Las soluciones topan en 80 puntos aunque se conserven todas para explicar',
+  rMulti.detalle.includes('soluciones_score: 60 puntos por 3 coincidencia(s), tope 80'),
   `score=${rMulti.score}`
 );
 console.log('   Explicación generada:');

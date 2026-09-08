@@ -56,7 +56,7 @@ const CONTACTOS = [
     quiereCitas1a1: 'Sí',
     etapaDeNegocio: 'Vendo principalmente por redes sociales',
     area: 'Direccion General / Founder / CEO',
-    solucionesBuscadas: ['Logistica / fulfillment'],
+    solucionesBuscadas: ['Logistica / fulfillment', 'Plataforma eCommerce'],
     otraSolucionBuscada: '',
     etapaClienteBuscada: [],
     solucion: [],

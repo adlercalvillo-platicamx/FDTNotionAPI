@@ -74,11 +74,11 @@ check('VIP vacío queda en ~14 (10 × 1.4), no en 510', vipA.score === 14);
 
 console.log('\n=== B — Mismo match, VIP vs Presencial ===');
 const sponsorB = sponsorCon(3);
-const baseB = PESOS.AREA + PESOS.SOLUCION_MAXIMO + PESOS.DATO_DECLARADO; // 100
+const baseB = PESOS.AREA + 60 + PESOS.DATO_DECLARADO;
 const vipB = calcularScore(sponsorB, candidato({ ticketTipo: 'Presencial VIP', nSoluciones: 3 }), 0);
 const presB = calcularScore(sponsorB, candidato({ ticketTipo: 'Presencial', nSoluciones: 3 }), 0);
-check('VIP 100 × 1.4 = 140', vipB.score === 140);
-check('Presencial 100 × 1.15 = 115', presB.score === 115);
+check('VIP 110 × 1.4', vipB.score === Math.round((baseB * 140) / 100));
+check('Presencial 110 × 1.15', presB.score === Math.round((baseB * 115) / 100));
 check('Con el mismo match, el VIP sigue ganando', vipB.score > presB.score);
 check(
   'Ventaja ~22%, no el ~80% del bono +500',
@@ -89,8 +89,8 @@ console.log('\n=== C — Tope de soluciones + multiplicador ×1.4 ===');
 const sponsorC = sponsorCon(5);
 const presC = calcularScore(sponsorC, candidato({ ticketTipo: 'Presencial', nSoluciones: 5 }), 0);
 const vipC = calcularScore(sponsorC, candidato({ ticketTipo: 'Presencial VIP', nSoluciones: 4 }), 0);
-check('Presencial 5 sol topa afinidad en 100 → 115', presC.score === 115);
-check('VIP 4 sol topa afinidad en 100 → 140', vipC.score === 140);
+check('Presencial 5 sol topa afinidad en 130 → 150', presC.score === Math.round((130 * 115) / 100));
+check('VIP 4 sol topa afinidad en 130 → 182', vipC.score === Math.round((130 * 140) / 100));
 check('Después del tope, el mismo match deja que el canal desempate', vipC.score > presC.score);
 
 console.log('\n=== D — Oro molido fijo; el canal no lo amplifica ===');
@@ -106,7 +106,7 @@ const comunD = {
   tamanoNegocio: null,
   madurezNegocioExa: null,
 };
-const baseAfinidadD = PESOS.AREA + PESOS.SOLUCION_PRIMERA + PESOS.DATO_DECLARADO; // 80
+const baseAfinidadD = PESOS.AREA + PESOS.SOLUCION_PRIMERA + PESOS.DATO_DECLARADO;
 const oroVip = calcularScore(sponsorD, { nombre: 'VIP', empresa: 'Boutique Marea', ticketTipo: 'Presencial VIP', ...comunD }, 0);
 const oroVirtual = calcularScore(sponsorD, { nombre: 'Virtual', empresa: 'Boutique Marea', ticketTipo: 'Virtual', ...comunD }, 0);
 const sinOro = calcularScore(sponsorD, { nombre: 'Otro', empresa: 'Otra SA', ticketTipo: 'Presencial VIP', ...comunD }, 0);

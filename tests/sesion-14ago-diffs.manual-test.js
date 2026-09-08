@@ -289,13 +289,13 @@ ok('parsearContacto lee Tamaño de Negocio', () => {
 ok('Grande pedido entra y suma 100 (Virtual, sin otras señales)', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_GRANDE }), 0);
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_GRANDE }), true);
-  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
   assert.ok(r.detalle.includes('tamano_negocio: empresa grande'));
 });
-ok('Mediana pedida suma los mismos 100', () => {
+ok('Mediana pedida suma 70, menos que Grande', () => {
   const r = calcularScore(sponsorBase, candidatoBase({ ticketTipo: 'Virtual', tamanoNegocio: TAMANO_MEDIANA }), 0);
   assert.strictEqual(esCandidatoPorTamanoNegocio({ tamanoNegocio: TAMANO_MEDIANA }), true);
-  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(r.score, PESOS.TAMANO_MEDIANA);
 });
 ok('Micro excluido del pool (allowlist, no !== Micro)', () => {
   assert.strictEqual(
@@ -340,7 +340,7 @@ ok('Ambos poblados: gana Tamaño solicitado, no se acumula Exa', () => {
   });
   assert.strictEqual(esCandidatoPorTamanoNegocio(c), true);
   const r = calcularScore(sponsorBase, c, 0);
-  assert.strictEqual(r.score, PESOS.TAMANO_SOLICITADO);
+  assert.strictEqual(r.score, PESOS.TAMANO_GRANDE);
   assert.strictEqual(r.senales.tamanoNegocio, 'Grande');
   assert.strictEqual(r.senales.madurezNegocio, null);
   assert.ok(!r.detalle.some((d) => d.startsWith('madurez_negocio:')));

@@ -98,7 +98,7 @@ async function casoMatchmakingExcluyeComite() {
     clientesActuales: '',
     clientesPotencialesDeseados: '',
     puestosBuscados: [],
-    solucion: [],
+    solucion: ['Pagos'],
   };
 
   const asistenteReal = {
@@ -108,6 +108,7 @@ async function casoMatchmakingExcluyeComite() {
     categoria: 'Asistente',
     ticketTipo: 'Virtual',
     tamanoNegocio: 'Grande - más de 250 empleados',
+    solucionesBuscadas: ['Pagos'],
   };
   const bloqueoAgenda = {
     id: BLOQUEO,
