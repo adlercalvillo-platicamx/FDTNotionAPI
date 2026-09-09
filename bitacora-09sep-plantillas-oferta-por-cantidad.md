@@ -21,8 +21,10 @@ sponsor). El tope de 2 no era de Meta por variable.
 - Los saltos de línea viven en el cuerpo fijo aprobado. Cada parámetro se sanea para no mandar
   saltos ni tabs. Aunque el ejemplo guardado en Meta muestra tab después del número, el backend
   manda un espacio normal para evitar el error `#100`.
-- El resguardo de 1024 prueba primero todas las coincidencias, luego 2, 1, solo nombres y,
-  como último recurso, quita el sponsor de menor score y cambia a la plantilla correspondiente.
+- El resguardo de 1024 prueba primero todas las coincidencias y luego baja el tope por sponsor
+  **de una en una** hasta dejar solo nombres; como último recurso quita al sponsor de menor
+  score y cambia a la plantilla correspondiente. Bajar directo de "todas" a 2 desperdiciaba
+  espacio: con Liz y 4 sponsors, 2 soluciones daban 885 y 3–4 caben en 987.
 - El reporte `sugerenciasInformadas` une con saltos las variables realmente enviadas; esos
   saltos son solo para el reporte, no viajan dentro de un parámetro.
 - El preview de Liz se actualizó al contrato de variables separadas; sigue siendo solo lectura
@@ -50,8 +52,18 @@ limpieza sin revisar su historial y la cola.
 - Las cuatro plantillas: categoría `MARKETING`, idioma `es`, origen Meta, estado `APPROVED`.
 - `node tests/campanas-matchmaking.manual-test.js`: pasa selección 1–4, formato, saneamiento,
   todas las coincidencias cuando caben, recorte por 1024 y estados idempotentes.
+- `GET /health` 200 tras el redeploy (9-sep 21:35 UTC).
+- Simulación real del webhook contra Coolify: `contactosProcesados: 1`, `sinEnviar: 1`,
+  motivo `CAMPANA_PREVIA` (Liz ya trae `Última Campaña Enviada`). **No** alcanzó a armar
+  payload, así que ese disparo no verifica el formato nuevo en vivo.
+- `preview-oferta-liz-08sep.js` (solo lectura, Notion de Laura): 4 sponsors →
+  `agendar_cita_inicial_aprobado_4`, cuerpo 987/1024; 3 sponsors →
+  `agendar_cita_inicial_aprobado_3`, 923/1024.
 
 ## Pendientes
 
-- Cargar las cuatro variables en Coolify, redeployar y revisar el payload de una simulación.
+- Redeploy con el commit del recorte gradual (el deploy de las 21:35 UTC no lo trae).
+- Verificar el formato en vivo exige una cola con payload: hoy la única fila `Aprobado` es de
+  Liz y sale por `CAMPANA_PREVIA`. Limpiar su `Última Campaña Enviada` es escritura en el
+  Notion de Laura; no se hizo.
 - Antes de envío real, nombrar y revisar todos los destinatarios de la cola.

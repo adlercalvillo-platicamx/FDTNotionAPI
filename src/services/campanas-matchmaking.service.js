@@ -89,8 +89,6 @@ function plantillaPara(cantidadSponsors, modoSimulacion) {
 // Cada sponsor ocupa una variable distinta. Los saltos están en el cuerpo fijo:
 // Meta rechaza saltos, tabs y más de 4 espacios seguidos dentro de un parámetro.
 // No hay tope de Meta por variable: el recorte es solo para el cuerpo de 1024.
-// Primero se mandan todas las coincidencias; si no caben, 2 → 1 → nombres.
-const RECORTE_SOLUCIONES_SI_NO_CABE = [2, 1, 0];
 const TOPE_CUERPO_META = 1024;
 const CUERPO_BASE_OFERTA = [
   '¡Hola, {{1}}! Qué gusto saludarte 😊',
@@ -205,11 +203,22 @@ function parametrosSugerencias(sugerencias, solucionesBuscadas, maxSoluciones) {
   });
 }
 
+function maxCoincidenciasMostrables(sugerencias, solucionesBuscadas) {
+  return (sugerencias || []).reduce(
+    (mayor, sponsor) =>
+      Math.max(mayor, solucionesRelevantes(sponsor, solucionesBuscadas, Infinity).length),
+    0
+  );
+}
+
+// Máxima información que quepa: se baja de una solución a la vez antes de
+// soltar al sponsor de menor score (la lista ya viene ordenada).
 function prepararOferta({ contacto, sugerencias, modoSimulacion }) {
   const param1 = primerNombreParaSaludo(contacto.nombre) || 'Asistente';
   let lista = [...(sugerencias || [])];
   while (lista.length > 0) {
-    for (const maxSol of [Infinity, ...RECORTE_SOLUCIONES_SI_NO_CABE]) {
+    const desde = maxCoincidenciasMostrables(lista, contacto.solucionesBuscadas);
+    for (let maxSol = desde; maxSol >= 0; maxSol -= 1) {
       const params = [
         param1,
         ...parametrosSugerencias(lista, contacto.solucionesBuscadas, maxSol),
