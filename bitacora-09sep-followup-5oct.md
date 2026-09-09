@@ -45,3 +45,4 @@ después de la ventana no consulta Notion, omisiones y estados iguales.
 - Simulación nominal cerca del 5-oct (o con `ahora` solo en tests locales; el HTTP no
   acepta override).
 - Envío real sigue con las dos banderas en default seguro.
+- Last call (6-oct, cron propio): ver [bitacora-09sep-lastcall.md](bitacora-09sep-lastcall.md).

@@ -130,6 +130,8 @@ function parsearContacto(pagina) {
     fechaRespuestaOfertaInicial: fecha(p['Fecha Respuesta Oferta Inicial']),
     estadoFollowup72h: select(p['Estado Follow-up 72h']),
     fechaFollowup72h: fecha(p['Fecha Follow-up 72h']),
+    estadoLastcall: select(p['Estado Lastcall']),
+    fechaLastcall: fecha(p['Fecha Lastcall']),
     recordatorioEventoEnviado: checkbox(p['Recordatorio Evento Enviado']),
     bio: texto(p['Bio']),
     fotoSpeaker: url(p['Foto Speaker']),
@@ -580,6 +582,26 @@ async function actualizarEstadoFollowup72h({
   });
 }
 
+async function actualizarEstadoLastcall({
+  contactoId,
+  estado,
+  fecha,
+  reactivacionesEnviadas,
+}) {
+  requireDataSourceId();
+  const properties = {
+    'Estado Lastcall': { select: estado ? { name: estado } : null },
+    'Fecha Lastcall': { date: fecha ? { start: fecha } : null },
+  };
+  if (typeof reactivacionesEnviadas === 'number') {
+    properties['Reactivaciones Enviadas'] = { number: reactivacionesEnviadas };
+  }
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
 async function listarContactosConOfertaInicialVencida(fechaLimite) {
   requireDataSourceId();
   const resultados = [];
@@ -757,6 +779,7 @@ module.exports = {
   actualizarEstadoCampana,
   marcarRespuestaOfertaInicial,
   actualizarEstadoFollowup72h,
+  actualizarEstadoLastcall,
   listarContactosConOfertaInicialVencida,
   marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,

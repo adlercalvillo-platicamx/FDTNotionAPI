@@ -33,6 +33,13 @@ const TEMPLATE_SIMULACION_FOLLOWUP_72H = 'followup_72hrs';
 // Pedido Adler 9-sep: ya no son 72 h naturales, es un disparo el 5-oct 09:30 CDMX.
 const FOLLOWUP_DESDE_ENV = 'FOLLOWUP_72H_DESDE';
 const FOLLOWUP_DESDE_DEFAULT = '2026-10-05T09:30';
+const TEMPLATE_ENV_LASTCALL = 'PLATICA_TEMPLATE_LASTCALL';
+const TEMPLATE_SIMULACION_LASTCALL = 'lastcall_cita1a1';
+const LASTCALL_DESDE_ENV = 'LASTCALL_DESDE';
+const LASTCALL_DESDE_DEFAULT = '2026-10-06T09:30';
+const ESTADO_LASTCALL_EN_CURSO = 'En curso';
+const ESTADO_LASTCALL_ENVIADO = 'Enviado';
+const ESTADO_LASTCALL_FALLO = 'Falló';
 const HORA_LABORAL_INICIO = 9;
 const HORA_LABORAL_FIN = 18;
 const ESTADO_FOLLOWUP_EN_CURSO = 'En curso';
@@ -321,15 +328,19 @@ function esHorarioLaboralFollowup(fecha) {
   return diaLaboral && hora >= HORA_LABORAL_INICIO && hora < HORA_LABORAL_FIN;
 }
 
-function instanteFollowupDesde() {
-  const raw = String(process.env[FOLLOWUP_DESDE_ENV] || FOLLOWUP_DESDE_DEFAULT).trim();
+function instanteDesdeEnv(nombreEnv, valorDefault) {
+  const raw = String(process.env[nombreEnv] || valorDefault).trim();
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return new Date(`${raw}:00-06:00`);
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(raw)) return new Date(`${raw}-06:00`);
   const fecha = new Date(raw);
   if (Number.isNaN(fecha.getTime())) {
-    throw new Error(`${FOLLOWUP_DESDE_ENV} inválido: ${raw}`);
+    throw new Error(`${nombreEnv} inválido: ${raw}`);
   }
   return fecha;
+}
+
+function instanteFollowupDesde() {
+  return instanteDesdeEnv(FOLLOWUP_DESDE_ENV, FOLLOWUP_DESDE_DEFAULT);
 }
 
 function evaluarVentanaFollowup(ahora = new Date()) {
@@ -394,6 +405,72 @@ function payloadFollowup72h(contacto, modoSimulacion) {
   return {
     phone: contacto.whatsapp,
     templateName: plantillaFollowup72h(modoSimulacion),
+    params: [primerNombreParaSaludo(contacto.nombre) || 'Asistente'],
+  };
+}
+
+function modoSimulacionLastcall(modoSimulacion) {
+  return modoSimulacion !== undefined
+    ? Boolean(modoSimulacion)
+    : process.env.LASTCALL_MODO_SIMULACION !== 'false';
+}
+
+function exigirEnvioRealLastcallHabilitado(simulando) {
+  if (!simulando && process.env.LASTCALL_ENVIO_REAL_HABILITADO !== 'true') {
+    throw new Error(
+      'Envío real de last call deshabilitado. Define LASTCALL_ENVIO_REAL_HABILITADO=true solo después de revisar la simulación.'
+    );
+  }
+}
+
+function plantillaLastcall(modoSimulacion) {
+  const configurada = process.env[TEMPLATE_ENV_LASTCALL];
+  if (configurada) return configurada;
+  if (modoSimulacion) return TEMPLATE_SIMULACION_LASTCALL;
+  throw new Error(`Falta ${TEMPLATE_ENV_LASTCALL}; no se puede enviar last call`);
+}
+
+function instanteLastcallDesde() {
+  return instanteDesdeEnv(LASTCALL_DESDE_ENV, LASTCALL_DESDE_DEFAULT);
+}
+
+function evaluarVentanaLastcall(ahora = new Date()) {
+  const abreEl = instanteLastcallDesde();
+  return {
+    cumplida: ahora.getTime() >= abreEl.getTime(),
+    abreEl: abreEl.toISOString(),
+  };
+}
+
+function estadoLastcallProcesable(contacto, ahora) {
+  if (contacto.estadoLastcall === ESTADO_LASTCALL_ENVIADO) return false;
+  if (contacto.estadoLastcall !== ESTADO_LASTCALL_EN_CURSO) return true;
+  const inicio = new Date(contacto.fechaLastcall);
+  if (Number.isNaN(inicio.getTime())) return true;
+  return ahora.getTime() - inicio.getTime() >= MINUTOS_TIMEOUT_ENVIO_EN_CURSO * 60 * 1000;
+}
+
+function lastcallSalientePosterior(messages, desde) {
+  const limite = new Date(desde);
+  if (Number.isNaN(limite.getTime())) return null;
+  const frase = 'hoy cerramos la agenda preliminar de las citas de negocio';
+  return (
+    messages.find((message) => {
+      const fecha = fechaMensaje(message);
+      return (
+        message?.direction === 'outgoing' &&
+        fecha &&
+        fecha.getTime() >= limite.getTime() &&
+        normalizarContenidoMensaje(message.content).includes(frase)
+      );
+    }) || null
+  );
+}
+
+function payloadLastcall(contacto, modoSimulacion) {
+  return {
+    phone: contacto.whatsapp,
+    templateName: plantillaLastcall(modoSimulacion),
     params: [primerNombreParaSaludo(contacto.nombre) || 'Asistente'],
   };
 }
@@ -743,6 +820,149 @@ function enviarFollowups72h(opciones) {
   return ejecucion;
 }
 
+async function ejecutarLastcall({ modoSimulacion, ahora = new Date() } = {}) {
+  const simulando = modoSimulacionLastcall(modoSimulacion);
+  exigirEnvioRealLastcallHabilitado(simulando);
+
+  const ventana = evaluarVentanaLastcall(ahora);
+  const resumen = {
+    modoSimulacion: simulando,
+    horarioLaboral: esHorarioLaboralFollowup(ahora),
+    ventanaCumplida: ventana.cumplida,
+    abreEl: ventana.abreEl,
+    candidatos: 0,
+    simulados: 0,
+    enviados: 0,
+    omitidosConCita: 0,
+    omitidosEstado: 0,
+    reconciliados: 0,
+    errores: [],
+    detalle: [],
+  };
+
+  if (!ventana.cumplida) {
+    return { ...resumen, motivo: 'VENTANA_NO_CUMPLIDA' };
+  }
+  if (!resumen.horarioLaboral) {
+    return { ...resumen, motivo: 'FUERA_DE_HORARIO_LABORAL' };
+  }
+
+  const [contactos, citasPorAsistente] = await Promise.all([
+    contactosService.listarContactosConOfertaInicialVencida(ahora.toISOString()),
+    citasService.cargarCitasPorAsistenteParaRecordatorio(),
+  ]);
+  resumen.candidatos = contactos.length;
+
+  for (const contacto of contactos) {
+    try {
+      if (contactoYaInteractuo(citasPorAsistente.get(contacto.id) || [])) {
+        resumen.omitidosConCita += 1;
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'YA_TIENE_CITA' });
+        continue;
+      }
+      if (!estadoLastcallProcesable(contacto, ahora)) {
+        resumen.omitidosEstado += 1;
+        resumen.detalle.push({
+          contactoId: contacto.id,
+          motivo: contacto.estadoLastcall === ESTADO_LASTCALL_ENVIADO ? 'YA_ENVIADO' : 'EN_CURSO_RECIENTE',
+        });
+        continue;
+      }
+      if (!contacto.whatsapp || !contacto.fechaUltimaCampana) {
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'DATOS_INCOMPLETOS' });
+        continue;
+      }
+
+      const messages = await platicaClient.cargarMensajesCliente(contacto.whatsapp);
+      if (
+        contacto.estadoLastcall === ESTADO_LASTCALL_EN_CURSO &&
+        lastcallSalientePosterior(messages, contacto.fechaLastcall)
+      ) {
+        if (!simulando) {
+          await contactosService.actualizarEstadoLastcall({
+            contactoId: contacto.id,
+            estado: ESTADO_LASTCALL_ENVIADO,
+            fecha: contacto.fechaLastcall || ahora.toISOString(),
+            reactivacionesEnviadas: (contacto.reactivacionesEnviadas || 0) + 1,
+          });
+        }
+        resumen.reconciliados += 1;
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'ENVIO_RECONCILIADO_EN_PLATICA' });
+        continue;
+      }
+
+      const payload = payloadLastcall(contacto, simulando);
+      if (simulando) {
+        resumen.simulados += 1;
+        resumen.detalle.push({
+          contactoId: contacto.id,
+          nombre: contacto.nombre,
+          whatsapp: contacto.whatsapp,
+          fechaOfertaInicial: contacto.fechaUltimaCampana,
+          payload,
+          simulado: true,
+        });
+        continue;
+      }
+
+      const inicioEnvio = ahora.toISOString();
+      await contactosService.actualizarEstadoLastcall({
+        contactoId: contacto.id,
+        estado: ESTADO_LASTCALL_EN_CURSO,
+        fecha: inicioEnvio,
+      });
+
+      try {
+        await platicaClient.enviarPlantilla(payload);
+      } catch (errorEnvio) {
+        try {
+          await contactosService.actualizarEstadoLastcall({
+            contactoId: contacto.id,
+            estado: ESTADO_LASTCALL_FALLO,
+            fecha: ahora.toISOString(),
+          });
+        } catch (_) {
+          /* En curso vence en 10 min */
+        }
+        throw errorEnvio;
+      }
+
+      await reintentarConBackoff(async () => {
+        await contactosService.actualizarEstadoLastcall({
+          contactoId: contacto.id,
+          estado: ESTADO_LASTCALL_ENVIADO,
+          fecha: ahora.toISOString(),
+          reactivacionesEnviadas: (contacto.reactivacionesEnviadas || 0) + 1,
+        });
+      });
+      resumen.enviados += 1;
+      resumen.detalle.push({
+        contactoId: contacto.id,
+        nombre: contacto.nombre,
+        whatsapp: contacto.whatsapp,
+        fechaOfertaInicial: contacto.fechaUltimaCampana,
+        fechaLastcall: ahora.toISOString(),
+        simulado: false,
+      });
+    } catch (error) {
+      resumen.errores.push({
+        contactoId: contacto.id,
+        nombre: contacto.nombre,
+        mensaje: error.message || String(error),
+      });
+    }
+  }
+
+  return resumen;
+}
+
+let colaLastcall = Promise.resolve();
+function enviarLastcall(opciones) {
+  const ejecucion = colaLastcall.then(() => ejecutarLastcall(opciones));
+  colaLastcall = ejecucion.catch(() => {});
+  return ejecucion;
+}
+
 function plantillaRecordatorio(modoSimulacion) {
   const configurada = process.env[TEMPLATE_ENV_RECORDATORIO];
   if (configurada) return configurada;
@@ -944,11 +1164,16 @@ module.exports = {
   payloadPara,
   payloadFollowup72h,
   enviarFollowups72h,
+  payloadLastcall,
+  enviarLastcall,
   esHorarioLaboralFollowup,
   evaluarVentanaFollowup,
+  evaluarVentanaLastcall,
   estadoFollowupProcesable,
+  estadoLastcallProcesable,
   mensajeEntrantePosterior,
   followupSalientePosterior,
+  lastcallSalientePosterior,
   largoCuerpoOferta,
   TOPE_CUERPO_META,
   contactoYaInteractuo,

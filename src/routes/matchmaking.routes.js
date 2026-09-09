@@ -7,6 +7,7 @@ router.post('/sponsors/:sponsorId/sugerir-matches', matchmakingController.sugeri
 router.post('/sugerir-todos', matchmakingController.sugerirMatchesTodos);
 router.post('/enviar-recordatorio-evento', matchmakingController.enviarRecordatorioEventoHttp);
 router.post('/enviar-followups-72h', matchmakingController.enviarFollowups72hHttp);
+router.post('/enviar-lastcall', matchmakingController.enviarLastcallHttp);
 router.get('/sugerencias-asistente', matchmakingController.sugerenciasAsistente);
 
 module.exports = router;
