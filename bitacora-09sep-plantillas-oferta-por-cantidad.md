@@ -52,18 +52,30 @@ limpieza sin revisar su historial y la cola.
 - Las cuatro plantillas: categoría `MARKETING`, idioma `es`, origen Meta, estado `APPROVED`.
 - `node tests/campanas-matchmaking.manual-test.js`: pasa selección 1–4, formato, saneamiento,
   todas las coincidencias cuando caben, recorte por 1024 y estados idempotentes.
-- `GET /health` 200 tras el redeploy (9-sep 21:35 UTC).
-- Simulación real del webhook contra Coolify: `contactosProcesados: 1`, `sinEnviar: 1`,
-  motivo `CAMPANA_PREVIA` (Liz ya trae `Última Campaña Enviada`). **No** alcanzó a armar
-  payload, así que ese disparo no verifica el formato nuevo en vivo.
+- `GET /health` 200 tras cada redeploy (9-sep 21:35 y 21:47 UTC).
 - `preview-oferta-liz-08sep.js` (solo lectura, Notion de Laura): 4 sponsors →
   `agendar_cita_inicial_aprobado_4`, cuerpo 987/1024; 3 sponsors →
   `agendar_cita_inicial_aprobado_3`, 923/1024.
+- Simulación contra Coolify **con el build final** (autorizada por Adler): se limpió
+  `Última Campaña Enviada` de Liz, se disparó el webhook y se restauró el valor
+  (`Oferta inicial`, `2026-09-04T18:54Z`) en el mismo turno. Resultado
+  `modoSimulacion: true`, `simulados: 1`, `enviados: 0`, sin errores. Plantilla elegida
+  `agendar_cita_inicial_aprobado_4` y cuatro variables, una por sponsor:
+
+  ```
+  {{1}} Liz
+  {{2}} 1. Alexandro Huerta de la empresa Reevolution, expertos en Analitica / data · CRM / automatizacion · Customer experience · Estrategia de marketing digital
+  {{3}} 2. Magali Parra de la empresa CaaS, expertos en Customer experience · Estrategia de marketing digital · Plataforma eCommerce
+  {{4}} 3. Renata Raya de la empresa Revie, expertos en CRM / automatizacion · Customer experience · Plataforma eCommerce
+  {{5}} 4. Mauricio Ledezma de la empresa Leadin, expertos en Customer experience · Estrategia de marketing digital
+  ```
+
+  La simulación no escribe Notion ni llama a Plática: ninguna fila de Liz cambió de estado.
 
 ## Pendientes
 
-- Redeploy con el commit del recorte gradual (el deploy de las 21:35 UTC no lo trae).
-- Verificar el formato en vivo exige una cola con payload: hoy la única fila `Aprobado` es de
-  Liz y sale por `CAMPANA_PREVIA`. Limpiar su `Última Campaña Enviada` es escritura en el
-  Notion de Laura; no se hizo.
+- Liz volvió a quedar con `Última Campaña Enviada = Oferta inicial`: si se quiere que reciba
+  la oferta nueva, hay que limpiar ese select a propósito.
 - Antes de envío real, nombrar y revisar todos los destinatarios de la cola.
+- El `.env` local todavía tiene la variable vieja `PLATICA_TEMPLATE_OFERTA_INICIAL`, que ya
+  nadie lee. En simulación no estorba porque el service cae al nombre por default.
