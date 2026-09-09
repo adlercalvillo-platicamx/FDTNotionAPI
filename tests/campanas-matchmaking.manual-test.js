@@ -5,7 +5,9 @@
 const assert = require('assert');
 
 process.env.CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO = 'true';
-process.env.PLATICA_TEMPLATE_OFERTA_INICIAL = 'oferta-inicial-test';
+for (const cantidad of [1, 2, 3, 4]) {
+  process.env[`PLATICA_TEMPLATE_OFERTA_INICIAL_${cantidad}`] = `oferta-inicial-test-${cantidad}`;
+}
 
 const citasPath = require.resolve('../src/services/citas.service');
 const contactosPath = require.resolve('../src/services/contactos.service');
@@ -125,7 +127,6 @@ const {
   primerNombreParaSaludo,
   nombreRepresentanteParaOferta,
   largoCuerpoOferta,
-  maxLargoSugerencias,
   TOPE_CUERPO_META,
   dispararCampanasAprobadas,
   esCandidataEnvioCampana,
@@ -597,21 +598,26 @@ async function casoTopCuatroYParamsEstables() {
   });
   assert.strictEqual(
     resultado.detalle[0].sugerenciasInformadas,
-    payload.params[1],
-    'el reporte nominal debe mostrar exactamente el texto enviado en {{2}}'
+    payload.params.slice(1).join('\n'),
+    'el reporte nominal debe mostrar exactamente las variables de sponsors'
   );
-  assert.strictEqual(payload.params.length, 2, 'la plantilla lleva solo nombre y sugerencias');
+  assert.strictEqual(payload.templateName, 'oferta-inicial-test-4');
+  assert.strictEqual(payload.params.length, 5, 'la plantilla lleva nombre y cuatro sponsors');
   assert.strictEqual(payload.params[0], 'Ana');
-  assert.ok(payload.params[1].includes('1) *Persona 1* de *Empresa 1* (Solución 1)'));
-  assert.ok(payload.params[1].includes('4) *Persona 4* de *Empresa 4* (Solución 4)'));
-  assert.ok(!payload.params[1].includes('Empresa 5'));
-  assert.ok(payload.params[1].startsWith('1) '), 'los sponsors van numerados');
-  assert.strictEqual((payload.params[1].match(/ \| /g) || []).length, 3, 'tres barras entre cuatro sponsors');
-  assert.ok(
-    !/[\r\n\t]/.test(payload.params[1]),
-    'WhatsApp rechaza saltos de línea dentro de una variable'
+  assert.strictEqual(
+    payload.params[1],
+    '1. Persona 1 de la empresa Empresa 1, expertos en Solución 1'
   );
-  assert.ok(largoCuerpoOferta(payload.params[0], payload.params[1]) <= TOPE_CUERPO_META);
+  assert.strictEqual(
+    payload.params[4],
+    '4. Persona 4 de la empresa Empresa 4, expertos en Solución 4'
+  );
+  assert.ok(!payload.params.join(' ').includes('Empresa 5'));
+  assert.ok(
+    payload.params.every((param) => !/[\r\n\t]/.test(param)),
+    'WhatsApp rechaza saltos de línea o tabs dentro de una variable'
+  );
+  assert.ok(largoCuerpoOferta(payload.params) <= TOPE_CUERPO_META);
   assert.deepStrictEqual(sponsorsConsultados, [], 'la oferta ya no consulta disponibilidad');
   assert.ok(!JSON.stringify(resultado).match(/C1|C2|Reactivaci[oó]n/));
   assert.strictEqual(envios.length, 0);
@@ -626,7 +632,20 @@ async function casoParametroSaneadoParaWhatsApp() {
     modoSimulacion: true,
   });
   assert.strictEqual(payload.params[0], 'Ana');
-  assert.strictEqual(payload.params[1], '1) *Revie* (Reseñas de clientes, Marketing por WhatsApp)');
+  assert.strictEqual(
+    payload.params[1],
+    '1. la empresa Revie, expertos en Reseñas de clientes · Marketing por WhatsApp'
+  );
+}
+
+async function casoSeleccionaPlantillaPorCantidad() {
+  for (const cantidad of [1, 2, 3, 4]) {
+    configurarOferta({ cantidad });
+    const resultado = await dispararCampanasAprobadas({ modoSimulacion: true });
+    const payload = resultado.detalle[0].payload;
+    assert.strictEqual(payload.templateName, `oferta-inicial-test-${cantidad}`);
+    assert.strictEqual(payload.params.length, cantidad + 1);
+  }
 }
 
 // Ticketópolis manda "NOMBRE APELLIDO" en mayúsculas al actualizar Notion.
@@ -659,10 +678,11 @@ async function casoSolucionesCruzadasConLoQueBusca() {
     ],
     modoSimulacion: true,
   });
-  assert.strictEqual(
-    payload.params[1],
-    '1) *Blip* (Omnichannel, Pagos) | 2) *Envia.com*'
-  );
+  assert.strictEqual(payload.templateName, 'oferta-inicial-test-2');
+  assert.deepStrictEqual(payload.params.slice(1), [
+    '1. la empresa Blip, expertos en Omnichannel · Pagos · Analitica / data',
+    '2. la empresa Envia.com',
+  ]);
 }
 
 async function casoSugerenciasNoPasanElMargen() {
@@ -677,15 +697,13 @@ async function casoSugerenciasNoPasanElMargen() {
     sugerencias: [largo(1), largo(2), largo(3), largo(4)],
     modoSimulacion: true,
   });
-  const tope = maxLargoSugerencias(payload.params[0]);
-  assert.ok(payload.params[1].length <= tope, `{{2}} midió ${payload.params[1].length} (tope ${tope})`);
   assert.ok(
-    largoCuerpoOferta(payload.params[0], payload.params[1]) <= TOPE_CUERPO_META,
+    largoCuerpoOferta(payload.params) <= TOPE_CUERPO_META,
     'el cuerpo armado no puede pasar de 1024'
   );
-  assert.ok(payload.params[1].includes('Empresa con nombre larguísimo número 4'));
+  assert.ok(payload.params.some((param) => param.includes('Empresa con nombre larguísimo número 4')));
   assert.ok(
-    !payload.params[1].includes('Inteligencia artificial'),
+    !payload.params.join(' ').includes('Inteligencia artificial'),
     'al no caber las dos soluciones, se recorta a una por sponsor antes de soltar gente'
   );
 }
@@ -713,10 +731,10 @@ async function casoNombreRepresentanteDosTokens() {
     ],
     modoSimulacion: true,
   });
-  assert.strictEqual(
-    payload.params[1],
-    '1) *Zuleyma Chávez* de *Blip* (Omnichannel) | 2) *Marco Trujillo* de *Platica.mx* (Omnichannel)'
-  );
+  assert.deepStrictEqual(payload.params.slice(1), [
+    '1. Zuleyma Chávez de la empresa Blip, expertos en Omnichannel',
+    '2. Marco Trujillo de la empresa Platica.mx, expertos en Omnichannel',
+  ]);
 }
 
 async function casoCampanaPreviaBloqueaReenvio() {
@@ -745,9 +763,12 @@ async function casoEnvioRealMarcaTodoElGrupo() {
   const resultado = await dispararCampanasAprobadas({ modoSimulacion: false });
   assert.strictEqual(resultado.enviadosOfertaInicial, 1);
   assert.strictEqual(envios.length, 1);
-  assert.strictEqual(envios[0].templateName, 'oferta-inicial-test');
+  assert.strictEqual(envios[0].templateName, 'oferta-inicial-test-4');
   assert.deepStrictEqual(resultado.detalle[0].destinatario, { nombre: 'Ana', empresa: null });
-  assert.strictEqual(resultado.detalle[0].sugerenciasInformadas, envios[0].params[1]);
+  assert.strictEqual(
+    resultado.detalle[0].sugerenciasInformadas,
+    envios[0].params.slice(1).join('\n')
+  );
   assert.deepStrictEqual(filasMarcadas[0], candidatas.map((f) => f.id));
   assert.strictEqual(actualizacionesContacto[0].campana, OFERTA_INICIAL);
   assert.strictEqual(incrementosReactivaciones.length, 0);
@@ -776,17 +797,19 @@ async function casoSoloMarcarTodaLaCola() {
 
 async function main() {
   await casoTopCuatroYParamsEstables();
-  console.log('✅ Oferta única usa top 4 y 2 params: nombre y sponsors en una línea.');
+  console.log('✅ Oferta única usa top 4 y una variable separada por sponsor.');
   await casoParametroSaneadoParaWhatsApp();
   console.log('✅ Los params se sanean: sin saltos de línea ni espacios dobles.');
+  await casoSeleccionaPlantillaPorCantidad();
+  console.log('✅ Se elige la plantilla correspondiente para 1, 2, 3 o 4 sponsors.');
   await casoSaludoSoloPrimerNombre();
   console.log('✅ El saludo usa solo el primer nombre, capitalizado.');
   await casoSolucionesCruzadasConLoQueBusca();
-  console.log('✅ {{2}} solo lleva las soluciones que el asistente buscaba, sin "Otro".');
+  console.log('✅ Cada sponsor lleva todas las soluciones en común, sin "Otro".');
   await casoNombreRepresentanteDosTokens();
-  console.log('✅ El representante sale como nombre + apellido paterno, en negrita.');
+  console.log('✅ El representante sale como nombre + apellido paterno.');
   await casoSugerenciasNoPasanElMargen();
-  console.log('✅ {{2}} se recorta para no pasar el tope de 1024 del cuerpo.');
+  console.log('✅ Si todas las coincidencias no caben, se recorta para no pasar 1024.');
   await casoCampanaPreviaBloqueaReenvio();
   console.log('✅ Una campaña previa bloquea cualquier segundo envío automático.');
   await casoSinBloquesLibresIgualEnvia();

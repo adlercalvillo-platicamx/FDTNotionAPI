@@ -17,8 +17,17 @@ const {
 const { reintentarConBackoff, INTENTOS_MAXIMOS } = require('../utils/reintentar-con-backoff');
 
 const OFERTA_INICIAL = 'Oferta inicial';
-const TEMPLATE_ENV_OFERTA = 'PLATICA_TEMPLATE_OFERTA_INICIAL';
-const TEMPLATE_SIMULACION = 'agendar_cita_inicial';
+const PLANTILLAS_OFERTA = Object.freeze(
+  Object.fromEntries(
+    [1, 2, 3, 4].map((cantidad) => [
+      cantidad,
+      {
+        env: `PLATICA_TEMPLATE_OFERTA_INICIAL_${cantidad}`,
+        nombre: `agendar_cita_inicial_aprobado_${cantidad}`,
+      },
+    ])
+  )
+);
 const TEMPLATE_ENV_FOLLOWUP_72H = 'PLATICA_TEMPLATE_FOLLOWUP_72H';
 const TEMPLATE_SIMULACION_FOLLOWUP_72H = 'followup_72hrs';
 const HORAS_FOLLOWUP = 72;
@@ -66,40 +75,34 @@ async function persistirEnvioCampana({ contactoId, fechaEnvio }) {
   await contactosService.actualizarEstadoCampana({ contactoId, campana, fechaEnvio });
 }
 
-function plantillaPara(modoSimulacion) {
-  const configurada = process.env[TEMPLATE_ENV_OFERTA];
+function plantillaPara(cantidadSponsors, modoSimulacion) {
+  const contrato = PLANTILLAS_OFERTA[cantidadSponsors];
+  if (!contrato) {
+    throw new Error(`No existe plantilla de oferta inicial para ${cantidadSponsors} sponsors`);
+  }
+  const configurada = process.env[contrato.env];
   if (configurada) return configurada;
-  if (modoSimulacion) return TEMPLATE_SIMULACION;
-  throw new Error(`Falta ${TEMPLATE_ENV_OFERTA}; no se puede enviar ${OFERTA_INICIAL}`);
+  if (modoSimulacion) return contrato.nombre;
+  throw new Error(`Falta ${contrato.env}; no se puede enviar ${OFERTA_INICIAL}`);
 }
 
-// WhatsApp rechaza el envío si el valor de una variable trae saltos de línea,
-// tabs o más de 4 espacios seguidos, así que la lista de sponsors va en un solo
-// renglón. Los asteriscos sí se renderizan como negritas. El '\r' pasa el
-// filtro de Meta pero es retorno de carro, no salto: probado el 2-sep y se
-// comió los sponsors 2 a 4. No usarlo.
-const SEPARADOR_SUGERENCIAS = ' | ';
-// Se muestran las soluciones que el asistente pidió y el sponsor ofrece, no el
-// catálogo completo del sponsor: con 4 sponsors de 5 soluciones cada uno el
-// cuerpo llegaba a 1035 caracteres y Meta lo rechazaba (tope 1024).
-const MAX_SOLUCIONES_POR_SPONSOR = 2;
+// Cada sponsor ocupa una variable distinta. Los saltos están en el cuerpo fijo:
+// Meta rechaza saltos, tabs y más de 4 espacios seguidos dentro de un parámetro.
+// No hay tope de Meta por variable: el recorte es solo para el cuerpo de 1024.
+// Primero se mandan todas las coincidencias; si no caben, 2 → 1 → nombres.
+const RECORTE_SOLUCIONES_SI_NO_CABE = [2, 1, 0];
 const TOPE_CUERPO_META = 1024;
-// El cuerpo aprobado de agendar_cita_inicial (28-ago). Sirve para calcular
-// cuánto queda para {{2}} en cada envío: 1024 − fijo − {{1}} − colchón.
-const PLANTILLA_CUERPO_OFERTA_INICIAL = [
-  'Hola {{1}}, te escribimos del equipo de Fashion Digital Talks, el congreso internacional de eCommerce, negocios y moda en el que ya estás registrado.',
+const CUERPO_BASE_OFERTA = [
+  '¡Hola, {{1}}! Qué gusto saludarte 😊',
   '',
-  'Tu registro incluye citas de negocios 1 a 1: reuniones privadas de 30 minutos, dentro del evento y sin costo extra, con expertos de empresas que ya resuelven los retos que tienes en tu operación de acuerdo a las soluciones que buscas. Tú eliges con quién y a qué hora.',
+  'Te escribo de parte del equipo de Fashion Digital Talks 2026.',
   '',
-  '👉 Según el perfil que registraste, esto es lo que encontramos para ti:',
-  '{{2}}',
+  '¡Estamos a tan solo unos días del evento! Y tu acceso incluye reuniones privadas de 20 minutos con expertos, pensadas para ayudarte a resolver retos actuales de tu empresa y conectar con soluciones relevantes para ti.',
   '',
-  'Responde este mensaje y aquí mismo te ayudamos a apartar día y hora.',
-].join('\n');
-const LARGO_CUERPO_FIJO_OFERTA = PLANTILLA_CUERPO_OFERTA_INICIAL.replace('{{1}}', '').replace(
-  '{{2}}',
-  ''
-).length;
+  'Te comparto algunas opciones que encontramos de acuerdo a tu perfil:',
+];
+const CIERRE_CUERPO_OFERTA =
+  '¿Te gustaría reunirte con alguno de ellos? O ¿deseas que te ayudemos a buscar otras opciones?';
 // Emoji y diferencias de conteo de Meta. Mejor un cuerpo un poco más corto
 // que un rechazo (#100) en silencio.
 const COLCHON_CONTEO_META = 24;
@@ -149,15 +152,24 @@ function nombreRepresentanteParaOferta(nombreCompleto) {
   return `${tokens[0]} ${tokens[tokens.length - 2]}`;
 }
 
-function maxLargoSugerencias(param1) {
-  return Math.max(
-    0,
-    TOPE_CUERPO_META - LARGO_CUERPO_FIJO_OFERTA - String(param1 || '').length - COLCHON_CONTEO_META
-  );
+function cuerpoPlantillaOferta(cantidadSponsors) {
+  const variables = Array.from({ length: cantidadSponsors }, (_, indice) => `{{${indice + 2}}}`);
+  return [
+    ...CUERPO_BASE_OFERTA,
+    '',
+    ...variables.flatMap((variable) => [variable, '']),
+    CIERRE_CUERPO_OFERTA,
+  ].join('\n');
 }
 
-function largoCuerpoOferta(param1, param2) {
-  return LARGO_CUERPO_FIJO_OFERTA + String(param1 || '').length + String(param2 || '').length;
+function largoCuerpoOferta(params) {
+  const valores = Array.isArray(params) ? params : [...arguments];
+  const cantidadSponsors = Math.max(1, valores.length - 1);
+  let cuerpo = cuerpoPlantillaOferta(cantidadSponsors);
+  valores.forEach((valor, indice) => {
+    cuerpo = cuerpo.replace(`{{${indice + 1}}}`, String(valor || ''));
+  });
+  return cuerpo.length;
 }
 
 function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
@@ -168,64 +180,73 @@ function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
   const coincidentes = ofrece.filter((solucion) => busca.has(solucion));
   // Registro legacy sin 'Soluciones Buscadas': no hay intersección posible, así
   // que se muestra lo que el sponsor ofrece en vez de dejar el nombre solo.
-  return (coincidentes.length ? coincidentes : ofrece).slice(0, maxSoluciones);
+  const lista = coincidentes.length ? coincidentes : ofrece;
+  if (!Number.isFinite(maxSoluciones)) return lista;
+  return lista.slice(0, maxSoluciones);
 }
 
-function textoSugerencias(sugerencias, solucionesBuscadas, maxLargo) {
-  const tope = Number.isFinite(maxLargo) ? maxLargo : maxLargoSugerencias('Asistente');
+function parametrosSugerencias(sugerencias, solucionesBuscadas, maxSoluciones) {
+  return (sugerencias || []).map((sponsor, indice) => {
+    const empresa = limpiarParametroPlantilla(sponsor.empresa);
+    const persona = nombreRepresentanteParaOferta(sponsor.nombre);
+    const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
+    let quien;
+    if (persona && empresa && persona.localeCompare(empresa, 'es', { sensitivity: 'accent' }) !== 0) {
+      quien = `${persona} de la empresa ${empresa}`;
+    } else if (empresa) {
+      quien = `la empresa ${empresa}`;
+    } else if (persona) {
+      quien = persona;
+    } else {
+      quien = 'Sponsor';
+    }
+    const experiencia = soluciones.length ? `, expertos en ${soluciones.join(' · ')}` : '';
+    return limpiarParametroPlantilla(`${indice + 1}. ${quien}${experiencia}`);
+  });
+}
 
-  const armar = (lista, maxSoluciones) => {
-    const partes = (lista || []).map((sponsor, indice) => {
-      const empresa = limpiarParametroPlantilla(sponsor.empresa);
-      const persona = nombreRepresentanteParaOferta(sponsor.nombre);
-      const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
-      let quien;
-      if (persona && empresa && persona.localeCompare(empresa, 'es', { sensitivity: 'accent' }) !== 0) {
-        quien = `*${persona}* de *${empresa}*`;
-      } else if (empresa) {
-        quien = `*${empresa}*`;
-      } else if (persona) {
-        quien = `*${persona}*`;
-      } else {
-        quien = '*Sponsor*';
-      }
-      const nucleo = soluciones.length ? `${quien} (${soluciones.join(', ')})` : quien;
-      return `${indice + 1}) ${nucleo}`;
-    });
-    return partes.join(SEPARADOR_SUGERENCIAS);
-  };
-
-  // Máxima información que quepa: 2 soluciones → 1 → solo nombres → soltar
-  // el último sponsor (el de menor score; ya vienen ordenados).
+function prepararOferta({ contacto, sugerencias, modoSimulacion }) {
+  const param1 = primerNombreParaSaludo(contacto.nombre) || 'Asistente';
   let lista = [...(sugerencias || [])];
   while (lista.length > 0) {
-    for (const maxSol of [MAX_SOLUCIONES_POR_SPONSOR, 1, 0]) {
-      const texto = armar(lista, maxSol);
-      if (texto.length <= tope) return texto;
+    for (const maxSol of [Infinity, ...RECORTE_SOLUCIONES_SI_NO_CABE]) {
+      const params = [
+        param1,
+        ...parametrosSugerencias(lista, contacto.solucionesBuscadas, maxSol),
+      ];
+      if (largoCuerpoOferta(params) + COLCHON_CONTEO_META <= TOPE_CUERPO_META) {
+        return {
+          payload: {
+            phone: contacto.whatsapp,
+            templateName: plantillaPara(lista.length, modoSimulacion),
+            params,
+          },
+          cantidadSponsors: lista.length,
+        };
+      }
     }
     lista = lista.slice(0, -1);
   }
-  return '';
+  throw new Error('No hay sponsors que quepan en la plantilla de oferta inicial');
 }
 
-// La plantilla lleva 2 variables: {{1}} nombre, {{2}} representante de empresa
-// con la solución que el asistente buscaba y ese sponsor ofrece.
+// Salida legible para reportes auxiliares. Cada renglón representa una variable
+// distinta; estos saltos no se mandan dentro de ningún parámetro de WhatsApp.
+function textoSugerencias(sugerencias, solucionesBuscadas, maxSoluciones = Infinity) {
+  return parametrosSugerencias(sugerencias, solucionesBuscadas, maxSoluciones).join('\n');
+}
+
+// {{1}} es el primer nombre y {{2}}..{{5}} son sponsors individuales.
+// Se elige la plantilla de 1, 2, 3 o 4 según la cantidad real.
 // Ya no manda horarios: los ofrece el agente en la conversación con
 // consultar_disponibilidad_cita, que revalida contra Notion en ese momento.
 function payloadPara({ contacto, sugerencias, modoSimulacion }) {
-  const param1 = primerNombreParaSaludo(contacto.nombre) || 'Asistente';
-  return {
-    phone: contacto.whatsapp,
-    templateName: plantillaPara(modoSimulacion),
-    params: [param1, textoSugerencias(sugerencias, contacto.solucionesBuscadas, maxLargoSugerencias(param1))],
-  };
+  return prepararOferta({ contacto, sugerencias, modoSimulacion }).payload;
 }
 
 /**
- * Reporte legible para Laura/Liz. `sugerenciasInformadas` es exactamente
- * {{2}} de la plantilla, ya con los recortes necesarios para el límite de
- * Meta; no se reconstruye desde las filas porque eso podría reportar un
- * sponsor que finalmente quedó fuera del texto por longitud.
+ * Reporte legible para Laura/Liz. Cada renglón corresponde exactamente a una
+ * variable de sponsor enviada en la plantilla seleccionada.
  */
 function detalleNominalOferta(contacto, payload) {
   return {
@@ -233,7 +254,7 @@ function detalleNominalOferta(contacto, payload) {
       nombre: contacto.nombre || null,
       empresa: contacto.empresa || null,
     },
-    sugerenciasInformadas: payload?.params?.[1] || '',
+    sugerenciasInformadas: (payload?.params || []).slice(1).join('\n'),
   };
 }
 
@@ -425,22 +446,23 @@ async function dispararCampanasAprobadas({
         sugerencias.push(await contactosService.obtenerContacto(fila.sponsorPageId));
       }
       const idsOfrecidas = filasOfrecidas.map((fila) => fila.id);
-      const idsOmitidas = filas
-        .filter((fila) => !idsOfrecidas.includes(fila.id))
-        .map((fila) => fila.id);
-
       // La oferta ya no lleva horarios, así que tener sponsors sugeridos basta
       // para enviarla. Antes se saltaba a quien no tuviera un bloque libre en
       // ese instante (SIN_HORARIOS_SUGERIDOS) y esa gente nunca recibía nada.
-      const payload = payloadPara({ contacto, sugerencias, modoSimulacion: simulando });
+      const oferta = prepararOferta({ contacto, sugerencias, modoSimulacion: simulando });
+      const payload = oferta.payload;
+      const idsRealmenteOfrecidas = idsOfrecidas.slice(0, oferta.cantidadSponsors);
+      const idsRealmenteOmitidas = filas
+        .filter((fila) => !idsRealmenteOfrecidas.includes(fila.id))
+        .map((fila) => fila.id);
       const detalleNominal = detalleNominalOferta(contacto, payload);
       if (simulando) {
         resumen.simuladosOfertaInicial += 1;
         resumen.detalle.push({
           asistentePageId,
           filas: filas.map((f) => f.id),
-          ofrecidas: idsOfrecidas,
-          omitidas: idsOmitidas,
+          ofrecidas: idsRealmenteOfrecidas,
+          omitidas: idsRealmenteOmitidas,
           campana: OFERTA_INICIAL,
           payload,
           simulado: true,
@@ -488,8 +510,8 @@ async function dispararCampanasAprobadas({
       resumen.detalle.push({
         asistentePageId,
         filas: ids,
-        ofrecidas: idsOfrecidas,
-        omitidas: idsOmitidas,
+        ofrecidas: idsRealmenteOfrecidas,
+        omitidas: idsRealmenteOmitidas,
         campana: OFERTA_INICIAL,
         simulado: false,
         ...detalleNominal,
@@ -881,7 +903,9 @@ module.exports = {
   agruparPorAsistente,
   primerNombreParaSaludo,
   nombreRepresentanteParaOferta,
+  parametrosSugerencias,
   textoSugerencias,
+  prepararOferta,
   payloadPara,
   payloadFollowup72h,
   enviarFollowups72h,
@@ -890,7 +914,6 @@ module.exports = {
   mensajeEntrantePosterior,
   followupSalientePosterior,
   HORAS_FOLLOWUP,
-  maxLargoSugerencias,
   largoCuerpoOferta,
   TOPE_CUERPO_META,
   contactoYaInteractuo,
