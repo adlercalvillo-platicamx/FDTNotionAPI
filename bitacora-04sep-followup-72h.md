@@ -75,14 +75,15 @@ Al 4-sep Plática reporta **cero webhooks** en Fashion Digital Talks. Hay dos ca
 - `node scripts/one-shots/followup-72h-schema-laura-04sep.js --confirmar` — cuatro campos creados; Raw Contactos con 85 columnas visibles.
 - Plantilla consultada en Plática: `followup_72hrs`, workspace `yay7N6Iejg62P9h0nJaU`, `APPROVED`, categoría `MARKETING`, idioma `es`, un parámetro.
 
-No se envió ningún WhatsApp, no se configuró webhook vivo, no se creó cron y no se modificó Coolify.
+Adler (4-sep ~02:15 CDMX): cron Coolify cada 15 min y webhook Plática creados por él. `GET /health` Production 200 (`2026-09-04T08:16:26.434Z`). MCP `list_webhooks` del workspace FDT seguía vacío en esa misma hora — si el alta fue en la UI, conviene abrir el webhook y confirmar que quedó **Activo** y guardado; si no aparece, no está entregando.
 
 ## Pendientes operativos
 
 - [x] Schema Contactos Laura + columnas en Raw.
-- [ ] Deploy con secrets/variables, incluyendo `PLATICA_RESPONDER_AGENT_ID=c1IYnFsr0Jzfqq4NeLAs`.
-- [ ] Tras deploy: crear webhook `message.created` filtrado al canal `wb-1167456423128610`.
+- [x] Deploy: `/health` 200. Vars de follow-up las cargó Adler (simulación ON).
+- [x] Cron `enviar-followups-72h` cada 15 min — Adler. Verificar logs de la primera corrida (`modoSimulacion: true`).
+- [ ] Webhook `message.created`: Adler lo armó en UI; MCP aún no lo lista. Confirmar Activo.
 - [ ] Simulación nominal y aprobación de destinatarios.
 - [ ] En vivo: comprobar hops de proxy de Coolify vs `trust proxy: 1`.
 - [ ] Adler + Sam: ¿`followup_72hrs` MARKETING cumple políticas de Meta para recontacto a 72h? Bloqueante del envío real.
-- [ ] Habilitar envío real y crear cron cada 15 minutos.
+- [ ] Habilitar envío real (`FOLLOWUP_72H_MODO_SIMULACION=false` y `FOLLOWUP_72H_ENVIO_REAL_HABILITADO=true`). El cron ya existe; no crear otro.

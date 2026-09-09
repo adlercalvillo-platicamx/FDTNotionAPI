@@ -30,7 +30,9 @@ const PLANTILLAS_OFERTA = Object.freeze(
 );
 const TEMPLATE_ENV_FOLLOWUP_72H = 'PLATICA_TEMPLATE_FOLLOWUP_72H';
 const TEMPLATE_SIMULACION_FOLLOWUP_72H = 'followup_72hrs';
-const HORAS_FOLLOWUP = 72;
+// Pedido Adler 9-sep: ya no son 72 h naturales, es un disparo el 5-oct 09:30 CDMX.
+const FOLLOWUP_DESDE_ENV = 'FOLLOWUP_72H_DESDE';
+const FOLLOWUP_DESDE_DEFAULT = '2026-10-05T09:30';
 const HORA_LABORAL_INICIO = 9;
 const HORA_LABORAL_FIN = 18;
 const ESTADO_FOLLOWUP_EN_CURSO = 'En curso';
@@ -319,6 +321,25 @@ function esHorarioLaboralFollowup(fecha) {
   return diaLaboral && hora >= HORA_LABORAL_INICIO && hora < HORA_LABORAL_FIN;
 }
 
+function instanteFollowupDesde() {
+  const raw = String(process.env[FOLLOWUP_DESDE_ENV] || FOLLOWUP_DESDE_DEFAULT).trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return new Date(`${raw}:00-06:00`);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(raw)) return new Date(`${raw}-06:00`);
+  const fecha = new Date(raw);
+  if (Number.isNaN(fecha.getTime())) {
+    throw new Error(`${FOLLOWUP_DESDE_ENV} inválido: ${raw}`);
+  }
+  return fecha;
+}
+
+function evaluarVentanaFollowup(ahora = new Date()) {
+  const abreEl = instanteFollowupDesde();
+  return {
+    cumplida: ahora.getTime() >= abreEl.getTime(),
+    abreEl: abreEl.toISOString(),
+  };
+}
+
 function estadoFollowupProcesable(contacto, ahora) {
   if (contacto.estadoFollowup72h === ESTADO_FOLLOWUP_ENVIADO) return false;
   if (contacto.estadoFollowup72h !== ESTADO_FOLLOWUP_EN_CURSO) return true;
@@ -537,9 +558,12 @@ async function ejecutarFollowups72h({ modoSimulacion, ahora = new Date() } = {})
   const simulando = modoSimulacionFollowup(modoSimulacion);
   exigirEnvioRealFollowupHabilitado(simulando);
 
+  const ventana = evaluarVentanaFollowup(ahora);
   const resumen = {
     modoSimulacion: simulando,
     horarioLaboral: esHorarioLaboralFollowup(ahora),
+    ventanaCumplida: ventana.cumplida,
+    abreEl: ventana.abreEl,
     candidatos: 0,
     simulados: 0,
     enviados: 0,
@@ -551,13 +575,15 @@ async function ejecutarFollowups72h({ modoSimulacion, ahora = new Date() } = {})
     detalle: [],
   };
 
+  if (!ventana.cumplida) {
+    return { ...resumen, motivo: 'VENTANA_NO_CUMPLIDA' };
+  }
   if (!resumen.horarioLaboral) {
     return { ...resumen, motivo: 'FUERA_DE_HORARIO_LABORAL' };
   }
 
-  const fechaLimite = new Date(ahora.getTime() - HORAS_FOLLOWUP * 60 * 60 * 1000);
   const [contactos, citasPorAsistente] = await Promise.all([
-    contactosService.listarContactosConOfertaInicialVencida(fechaLimite.toISOString()),
+    contactosService.listarContactosConOfertaInicialVencida(ahora.toISOString()),
     citasService.cargarCitasPorAsistenteParaRecordatorio(),
   ]);
   resumen.candidatos = contactos.length;
@@ -919,10 +945,10 @@ module.exports = {
   payloadFollowup72h,
   enviarFollowups72h,
   esHorarioLaboralFollowup,
+  evaluarVentanaFollowup,
   estadoFollowupProcesable,
   mensajeEntrantePosterior,
   followupSalientePosterior,
-  HORAS_FOLLOWUP,
   largoCuerpoOferta,
   TOPE_CUERPO_META,
   contactoYaInteractuo,

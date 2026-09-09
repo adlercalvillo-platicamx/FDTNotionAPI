@@ -5,6 +5,7 @@ const assert = require('assert');
 
 process.env.FOLLOWUP_72H_ENVIO_REAL_HABILITADO = 'true';
 process.env.PLATICA_TEMPLATE_FOLLOWUP_72H = 'followup_72hrs';
+process.env.FOLLOWUP_72H_DESDE = '2026-10-05T09:30';
 
 const contactosPath = require.resolve('../src/services/contactos.service');
 const citasPath = require.resolve('../src/services/citas.service');
@@ -103,6 +104,7 @@ delete require.cache[servicePath];
 const {
   enviarFollowups72h,
   esHorarioLaboralFollowup,
+  evaluarVentanaFollowup,
   estadoFollowupProcesable,
   mensajeEntrantePosterior,
   followupSalientePosterior,
@@ -119,33 +121,36 @@ function reset(lista = [contactoBase()]) {
   envios.length = 0;
 }
 
-const LUNES_10 = new Date('2026-09-07T16:00:00.000Z');
+const LUNES_10 = new Date('2026-10-05T16:00:00.000Z');
+const ANTES_DE_LA_VENTANA = new Date('2026-10-05T15:29:00.000Z');
+const AL_ABRIR_VENTANA = new Date('2026-10-05T15:30:00.000Z');
 
 async function main() {
   assert.strictEqual(esHorarioLaboralFollowup(LUNES_10), true);
-  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-09-07T14:59:00.000Z')), false);
-  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-09-08T00:00:00.000Z')), false);
-  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-09-07T00:00:00.000Z')), false);
-  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-09-06T16:00:00.000Z')), false);
+  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-10-05T14:59:00.000Z')), false);
+  assert.strictEqual(esHorarioLaboralFollowup(new Date('2026-10-03T16:00:00.000Z')), false);
+  assert.strictEqual(evaluarVentanaFollowup(ANTES_DE_LA_VENTANA).cumplida, false);
+  assert.strictEqual(evaluarVentanaFollowup(AL_ABRIR_VENTANA).cumplida, true);
 
   reset();
   let resultado = await enviarFollowups72h({
     modoSimulacion: true,
-    ahora: new Date('2026-09-06T16:00:00.000Z'),
+    ahora: ANTES_DE_LA_VENTANA,
   });
-  assert.strictEqual(resultado.motivo, 'FUERA_DE_HORARIO_LABORAL');
+  assert.strictEqual(resultado.motivo, 'VENTANA_NO_CUMPLIDA');
   assert.strictEqual(consultasContactos, 0);
 
   reset();
   resultado = await enviarFollowups72h({
     modoSimulacion: true,
-    ahora: new Date('2026-09-07T15:59:00.000Z'),
+    ahora: new Date('2026-10-06T14:00:00.000Z'),
   });
-  assert.strictEqual(resultado.candidatos, 0, '71:59 todavía no vence');
+  assert.strictEqual(resultado.motivo, 'FUERA_DE_HORARIO_LABORAL');
+  assert.strictEqual(consultasContactos, 0);
 
   reset();
-  resultado = await enviarFollowups72h({ modoSimulacion: true, ahora: LUNES_10 });
-  assert.strictEqual(resultado.simulados, 1, '72:00 sí vence');
+  resultado = await enviarFollowups72h({ modoSimulacion: true, ahora: AL_ABRIR_VENTANA });
+  assert.strictEqual(resultado.simulados, 1, 'el 5-oct a las 09:30 CDMX ya manda');
   assert.strictEqual(resultado.detalle[0].payload.params[0], 'Ana');
   assert.strictEqual(envios.length, 0);
   assert.strictEqual(actualizaciones.length, 0, 'simulación no escribe Notion');
@@ -190,13 +195,13 @@ async function main() {
   reset([
     contactoBase({
       estadoFollowup72h: 'En curso',
-      fechaFollowup72h: '2026-09-07T15:40:00.000Z',
+      fechaFollowup72h: '2026-10-05T15:40:00.000Z',
     }),
   ]);
   mensajesPorTelefono['+52 449 000 0000'] = [
     {
       direction: 'outgoing',
-      creationDate: '2026-09-07T15:41:00.000Z',
+      creationDate: '2026-10-05T15:41:00.000Z',
       content:
         'Hola Ana, quiero darle seguimiento personalmente a tus citas 1 a 1, te puedo ayudar.',
     },
@@ -209,7 +214,7 @@ async function main() {
   reset([
     contactoBase({
       estadoFollowup72h: 'En curso',
-      fechaFollowup72h: '2026-09-07T15:55:00.000Z',
+      fechaFollowup72h: '2026-10-05T15:55:00.000Z',
     }),
   ]);
   assert.strictEqual(estadoFollowupProcesable(contactos[0], LUNES_10), false);
@@ -234,15 +239,15 @@ async function main() {
       [
         {
           direction: 'outgoing',
-          creationDate: '2026-09-07T16:00:00.000Z',
+          creationDate: '2026-10-05T16:00:00.000Z',
           content: 'Quiero darle seguimiento personalmente a tus citas 1 a 1',
         },
       ],
-      '2026-09-07T15:00:00.000Z'
+      '2026-10-05T15:00:00.000Z'
     )
   );
 
-  console.log('✅ 72 horas y ventana laboral CDMX se respetan.');
+  console.log('✅ La ventana del 5-oct 09:30 CDMX y el horario laboral se respetan.');
   console.log('✅ Respuesta por webhook/polling y cita confirmada omiten el envío.');
   console.log('✅ Simulación, primer nombre y estados En curso/Enviado/Falló funcionan.');
   console.log('✅ Un En curso vencido se reconcilia sin duplicar WhatsApp.');
