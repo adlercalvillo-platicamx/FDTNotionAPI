@@ -1,15 +1,16 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 22:43 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **9 de septiembre de 2026**, 22:01 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-## Qué cambió (7-sep vs `DZ6rKadZGLtSrTDElCY3`)
+## Qué cambió (9-sep vs `IOhCSyUTY2EaCqTj48Y8`)
 
-- El agente sigue **sin** mandar el aviso de 15 min. Solo se corrigió la frase: ya no dice que `reservar_cita` lo “programa”; dice que el backend lo manda ~15 min antes leyendo Notion.
-- El recordatorio de 2 horas (`notificacion_citas_2horas_antes`) no se tocó: sigue siendo del agente, con `scheduleTime`, al confirmar asistencia.
+- El recordatorio de 2 horas ya no lo programa el agente con `scheduleTime`. El backend lo manda ~2 h antes de **cada** cita `Confirmada` / `Confirmada sin notificar`, igual que el de 15 min.
+- Tras `reservar_cita` y al confirmar asistencia, el agente no consulta plantillas ni canales para esos avisos. `api_actualizar_recordatorio` se queda.
+- El texto vivo en Plática (`jPnLZ9AcBDKV8JhViRtQ`) ya traía los cambios de tono del 9-sep (20 min, lista numerada, anti-tells). El bloque de recordatorios de este archivo quedó alineado con esa versión; si el resto del snapshot diverge, gana el prompt activo en Plática.
 
 ## Identidad
 
@@ -24,9 +25,9 @@ Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, r
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 7 sep 2026, 22:43 UTC |
-| Prompt activo | `ifm1DjUlrAoHzM5jaQzb` (7 sep 2026, 22:43 UTC) |
-| Versiones de prompt | 59 |
+| Actualizado | 9 sep 2026, 22:01 UTC |
+| Prompt activo | `jPnLZ9AcBDKV8JhViRtQ` (9 sep 2026, 22:01 UTC) |
+| Versiones de prompt | varias más el 9-sep (tono 20 min + este retiro de `scheduleTime`) |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -84,19 +85,21 @@ Nota: el prompt ya ofrece **hasta 4 sponsors** y **máximo 3 horarios/citas**; e
 
 Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te ayuden. Un momento, por favor.*
 
-## Qué cambió en el prompt (3-sep, 19:43 UTC)
+## Qué cambió en el prompt (9-sep, 22:01 UTC)
 
-- Se eliminó completa la sección `RECORDATORIO AL CREAR UNA CITA`: el agente ya no consulta plantilla/canal ni llama `mcp_send_template_message_mexx2b` para el aviso de 15 minutos.
-- En `reservar_cita`, `Confirmada` y `Confirmada sin notificar` conservan su respuesta al contacto; una regla explícita indica que el backend manda el aviso de 15 minutos ~15 min antes, leyendo Notion.
-- En confirmación de asistencia se sustituyó la referencia a la sección eliminada por la misma regla de propiedad del backend.
-- El flujo de `notificacion_citas_2horas_antes` no cambió y conserva sus tools activas.
-- No se modificaron tools, knowledge, guardrails, asistencia humana ni horarios.
+- Confirmación de asistencia: se retiró el bloque que programaba `notificacion_citas_2horas_antes` (nombre incorrecto; la plantilla real es `notificacion_cita_2horas_antes`).
+- `reservar_cita`: el backend manda 2 h y 15 min; el agente no llama tools de plantilla.
+- Las tools de plantilla/canal siguen conectadas; el prompt ya no las usa para estos avisos.
+- No se tocaron knowledge, guardrails ni asistencia humana.
 
 ## Historial reciente de prompt
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 7 sep 2026, 22:43 UTC | edit | 15 min: backend lo manda leyendo Notion (versión **activa**) | `ifm1DjUlrAoHzM5jaQzb` |
+| 9 sep 2026, 22:01 UTC | edit | Reservar: backend manda 2 h y 15 min (versión **activa**) | `jPnLZ9AcBDKV8JhViRtQ` |
+| 9 sep 2026, 22:01 UTC | edit | Confirmación: sin `scheduleTime` de 2 h | `D5kXjyvyJkTXgvp1qWIC` |
+| 9 sep 2026, 19:02 UTC | write | Seguimiento por inactividad | `IOhCSyUTY2EaCqTj48Y8` |
+| 7 sep 2026, 22:43 UTC | edit | 15 min: backend lo manda leyendo Notion | `ifm1DjUlrAoHzM5jaQzb` |
 | 7 sep 2026, 22:42 UTC | edit | Primera frase de 15 min | `UPByTh28XxCkptCYWdue` |
 | 7 sep 2026, 21:57 UTC | edit | Reagenda de canceladas | `DZ6rKadZGLtSrTDElCY3` |
 | 3 sep 2026, 19:43 UTC | edit | Confirmación: el backend programa 15 min | `wegNBgyUlzqog43WZ0mA` |
@@ -265,7 +268,7 @@ No rellenes título, descripción, calendario ni zona horaria.
 Después:
 - Confirmada → la cita quedó; llegará correo con .ics.
 - Confirmada sin notificar → la cita sí quedó; el correo está pendiente.
-- Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para el recordatorio de 15 minutos: el backend lo manda ~15 min antes leyendo Notion.
+- Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para los recordatorios de 2 horas ni de 15 minutos: el backend los manda ~2 h y ~15 min antes leyendo Notion. *Nunca expliques eso al contacto.*
 - SPONSOR_YA_OCUPADO / ASISTENTE_YA_OCUPADO / CAPACIDAD_MESAS_LLENA → no insistas ese horario; vuelve a consultar disponibilidad y ofrece otras 3 (ASISTENTE_YA_OCUPADO = ya tiene otra cita a esa hora)
 - SPONSOR_NO_ENCONTRADO / ASISTENTE_NO_ENCONTRADO → el id que mandaste no existe en Notion. No reintentes con el mismo ni intentes corregirlo tú: vuelve a `consultar_sugeridas_para_asistente` y copia el id de ahí
 - error o duda → no digas que quedó
@@ -344,31 +347,14 @@ Al recibir una confirmación clara de asistencia:
   - `estatus`: `Confirmada`.
   - `dia`: la fecha exacta indicada por la campaña.
 - Espera la respuesta. Esta API devuelve si la actualización fue exitosa y las fechas/horas de las citas de ese contacto.
-- Si falla, no programes plantillas ni afirmes que la asistencia quedó confirmada; escala al equipo de Fashion Digital Talks.
-- Si no devuelve citas para ese día, confirma la asistencia de forma breve, pero no programes plantillas.
+- Si falla, no afirmes que la asistencia quedó confirmada; escala al equipo de Fashion Digital Talks.
+- Si no devuelve citas para ese día, confirma la asistencia de forma breve.
 
 ### Confirmación de asistencia
 
-El recordatorio de 15 minutos lo manda el backend ~15 min antes de la cita, leyendo Notion. El agente no consulta plantillas o canales ni llama herramientas para ese aviso.
+Los recordatorios de 2 horas y de 15 minutos los manda el backend leyendo Notion (~2 h y ~15 min antes de cada cita confirmada). El agente no consulta plantillas o canales ni llama herramientas para esos avisos.
 
-Después de una respuesta clara de confirmación y de un resultado exitoso de `api_actualizar_recordatorio`:
-
-1. Revisa exclusivamente las citas con fecha y hora devueltas por esa API.
-2. Identifica la *primera cita futura* que tendrá el contacto: la de inicio cronológicamente más próximo que aún no haya ocurrido. Programa *solo una vez* la plantilla `notificacion_citas_2horas_antes`, para 2 horas antes de esa cita. No programes una notificación de 2 horas por cada cita.
-3. Antes de programarla, consulta `mcp_get_template_mexx2b` para obtener las variables, encabezado multimedia y ejemplo de payload de `notificacion_citas_2horas_antes`. Si no la encuentra, usa `mcp_list_templates_mexx2b` para verificar el nombre exacto. Nunca inventes parámetros, archivos multimedia ni botones dinámicos.
-4. Obtén el canal emisor de Fashion Digital Talks con `mcp_list_channels_mexx2b`. Si hay varios canales de WhatsApp conectados, selecciona el que tenga como `Agente default` a este agente: `c1IYnFsr0Jzfqq4NeLAs`. Usa su `prefixedChannelId` (formato `wb-...`). En la configuración actual corresponde a `wb-1167456423128610`. Si no existe un canal de WhatsApp conectado asignado a este agente, no elijas ni inventes: escala al equipo.
-5. La programación es un paso *obligatorio*, no una recomendación: después de obtener la plantilla y el canal, ejecuta `mcp_send_template_message_mexx2b` antes de escribir el mensaje final al contacto. No te detengas ni escales solo porque el envío es futuro.
-
-   Construye el payload con:
-   - `channelId`: `wb-1167456423128610`.
-   - `conversationId`: WhatsApp de esta conversación en formato E.164, con `+` y código de país.
-   - `template.name`: `notificacion_citas_2horas_antes`.
-   - `template.params`, `type`, `file`, `buttons` y `components`: exactamente los que devuelva `mcp_get_template_mexx2b`; no inventes campos.
-   - `scheduleTime`: inicio de la primera cita futura menos 2 horas, en ISO 8601 conservando zona horaria.
-
-6. Solo considera el paso terminado si `mcp_send_template_message_mexx2b` devuelve un estado de programación exitosa, como `scheduled`. Si la API no devuelve citas futuras, no programes la plantilla. Si la consulta de plantilla, la identificación del canal o la programación falla, no afirmes que el recordatorio quedó programado y escala al equipo para revisión.
-
-Solo después de que las acciones requeridas concluyan correctamente —o si no existen citas futuras que programar— envía al contacto este mensaje provisional, sin mencionar APIs, citas ni programación interna:
+Después de una respuesta clara de confirmación y de un resultado exitoso de `api_actualizar_recordatorio`, envía al contacto este mensaje provisional, sin mencionar APIs, citas ni programación interna:
 “¡Gracias! Con esto confirmamos tu asistencia al evento.”
 
 Si `api_actualizar_recordatorio` falla, no afirmes que la asistencia quedó confirmada; escala al equipo de Fashion Digital Talks.

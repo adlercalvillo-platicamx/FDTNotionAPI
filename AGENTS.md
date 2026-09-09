@@ -46,6 +46,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Aprobar par sugerido | (vía service; tool MCP) | `aprobar_match` — exige fila `Sugerido` existente; nunca crea cita |
 | Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
 | Recordatorio WhatsApp 15 min | **POST `/citas/enviar-recordatorios-15min`** (`X-API-Key`; cron cada 5 min los días del evento). Lee Notion, no depende de lo que pasó al reservar. `POST /citas/programar-recordatorio-15min` quedó en **410**. | — |
+| Recordatorio WhatsApp 2 h | **POST `/citas/enviar-recordatorios-2h`** (`X-API-Key`; cron cada 5 min los días del evento). Cada cita real en las próximas 2 h; plantilla `notificacion_cita_2horas_antes`. | — |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
 | Sugeridas del asistente | GET `/citas/sugeridas?whatsapp=` (sin cliente HTTP activo; Sugerido+Aprobado). | `consultar_sugeridas_para_asistente` (`whatsapp`; `sugeridas` = solo `Aprobado`; + `citasConfirmadas` + `citasCanceladas`; topes 4/3/3) |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
@@ -126,6 +127,22 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
   corrida devuelve `{ omitido: true, motivo: 'SIN_PLANTILLA' }` sin tocar Notion.
 - Filas de bloqueo de conferencia quedan fuera. `reservar`, `modificar` y
   `cancelar` no tocan recordatorios: el estado real lo pone Notion.
+
+## Recordatorio 2 h (9-sep, cron)
+
+- Misma razón que el de 15 min: el Agente 2 lo programaba con `scheduleTime` al
+  confirmar asistencia y Plática no deja retirar ese mensaje.
+- Cron cada 5 min a `POST /citas/enviar-recordatorios-2h`. Avisa **cada** cita
+  `Confirmada` / `Confirmada sin notificar` que empiece en las próximas 2 h,
+  no solo la primera del día. Con cadencia de 5 min sale entre 120 y ~115 min
+  antes.
+- Plantilla `PLATICA_TEMPLATE_CITA_2H=notificacion_cita_2horas_antes`:
+  `{{1}}` primer nombre, `{{2}}` hora (`3:00 pm`), `{{3}}` encargado y empresa
+  (`Marco Trujillo, de Plática.mx`). El representante usa nombre + apellido
+  paterno, igual que la oferta inicial.
+- Estado propio en Citas: `Estado Recordatorio 2h` / `Fecha` / `Notas`. No
+  comparte reclamo con el de 15 min: una cita puede recibir los dos avisos.
+- Sin la env, `{ omitido: true, motivo: 'SIN_PLANTILLA' }` y no toca Notion.
 
 ## Matchmaking
 
