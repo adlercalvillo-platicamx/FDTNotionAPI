@@ -168,7 +168,7 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Virtual es elegible por default (13-ago). `incluirVirtual` está **deprecado** (no-op, no usarlo en código nuevo).
 - **Etapa de Negocio no filtra** (28-ago, Adler). `etapasValidas` en `buscarAsistentesCandidatos` sigue no-op. Desde 2-sep, `Etapa Cliente Buscada` conserva el nombre técnico pero para sponsors significa **tamaño de empresa buscado** (`Grande`, `Mediana`, `Pequeña`, `Micro`) y desde 4-sep sí filtra candidatos que tienen `Tamaño de Negocio` nuevo; no volver a interpretarlo como madurez digital.
 - Notion: **máximo 2 niveles** de anidamiento en filtros. Condiciones extra → post-filtro en JS (como `Quiere Citas 1a1`).
-- Global: cargar pares con cita activa **una vez** (paginado) y consultar en memoria. No llamar Notion por candidato (timeout histórico ~130–150 HTTP).
+- Global: cargar pares con cita activa **una vez** (paginado) y consultar en memoria. No llamar Notion por candidato (timeout histórico ~130–150 HTTP). El pool de asistentes también se pagina (`has_more`) y se carga **una vez** por corrida global; el camino de un solo sponsor usa la misma caché de pares. `notionFetch` reintenta HTTP 429.
 
 ## Notion y env
 

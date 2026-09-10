@@ -629,16 +629,22 @@ function generarExplicacionNatural(candidato, senales) {
  *   buscarAsistentesCandidatos) — este parámetro ya no tiene ningún efecto,
  *   se conserva solo por compatibilidad con llamadas existentes (tools MCP,
  *   endpoint REST) que todavía lo pasan explícito.
- * @param {Set<string>} [opciones._paresConCitaActivaCache] - USO INTERNO
- *   SOLAMENTE, llamado por sugerirMatchesGlobal para evitar el timeout (ver
- *   fix del 10 de agosto). Si se provee, se usa en vez de consultar Notion
- *   por cada candidato. NO documentar como parámetro público de la tool MCP
- *   ni del endpoint REST — es un detalle de implementación, no una opción
- *   que el agente o un cliente externo deba conocer o pasar.
+ * @param {Set<string>} [opciones._paresConCitaActivaCache] - USO INTERNO.
+ *   Si falta, esta función carga `obtenerParesConCitaActiva` una vez y
+ *   consulta en memoria (10-sep: el camino individual ya no hace HTTP por
+ *   candidato). El global pasa el Set para no repetir esa carga.
+ * @param {object[]} [opciones._candidatosPoolCache] - USO INTERNO. Pool ya
+ *   paginado de `buscarAsistentesCandidatos`. El global lo carga una vez.
  */
 async function sugerirMatchesParaSponsor(
   sponsorPageId,
-  { topN, escribirEnNotion = false, incluirVirtual = false, _paresConCitaActivaCache = null } = {}
+  {
+    topN,
+    escribirEnNotion = false,
+    incluirVirtual = false,
+    _paresConCitaActivaCache = null,
+    _candidatosPoolCache = null,
+  } = {}
 ) {
   const sponsor = await notionContactos.obtenerContacto(sponsorPageId);
   if (sponsor.categoria !== 'Sponsor') {
@@ -653,36 +659,33 @@ async function sugerirMatchesParaSponsor(
   const topNEfectivo = typeof topN === 'number' ? topN : (sponsor.citasMinimasPrometidas || 0) + MARGEN_CANDIDATOS;
 
   // Capa 1a — filtros que resuelve Notion (categoría, elegibilidad de boleto,
-  // dado de baja). Etapa de negocio ya no se filtra (28-ago).
-  const candidatosBrutos = (await notionContactos.buscarAsistentesCandidatos({ incluirVirtual })).filter(
-    (c) => {
-      if (!esCandidatoAsistenteReal(c)) return false;
-      const esOroMolido = empresaMencionadaEn(c.empresa, sponsor.clientesPotencialesDeseados);
-      if (esOroMolido) return true;
-      return (
-        esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada) &&
-        esCandidatoPorArea(c, sponsor.puestosBuscados) &&
-        esCandidatoPorSolucion(c, sponsor.solucion)
-      );
-    }
-  );
+  // dado de baja). Etapa de negocio ya no se filtra (28-ago). El pool ya
+  // viene paginado; si el caller no lo pasó, se carga aquí una vez.
+  const pool = Array.isArray(_candidatosPoolCache)
+    ? _candidatosPoolCache
+    : await notionContactos.buscarAsistentesCandidatos({ incluirVirtual });
+  const candidatosBrutos = pool.filter((c) => {
+    if (!esCandidatoAsistenteReal(c)) return false;
+    const esOroMolido = empresaMencionadaEn(c.empresa, sponsor.clientesPotencialesDeseados);
+    if (esOroMolido) return true;
+    return (
+      esCandidatoPorTamanoNegocio(c, sponsor.etapaClienteBuscada) &&
+      esCandidatoPorArea(c, sponsor.puestosBuscados) &&
+      esCandidatoPorSolucion(c, sponsor.solucion)
+    );
+  });
+
+  const paresConCitaActiva =
+    _paresConCitaActivaCache || (await notionCitas.obtenerParesConCitaActiva());
 
   // Capa 1b — filtros que necesitan texto libre o cruzar con la tabla Citas.
   const candidatosValidos = [];
   for (const candidato of candidatosBrutos) {
     if (empresaMencionadaEn(candidato.empresa, sponsor.clientesActuales)) continue; // ya es su cliente
-
-    // Con caché (sugerirMatchesGlobal): lookup O(1) en memoria.
-    // Sin caché (camino individual): una llamada HTTP a Notion por candidato.
-    const yaTieneCita = _paresConCitaActivaCache
-      ? notionCitas.existeCitaActivaEntreEnCache(_paresConCitaActivaCache, {
-          sponsorPageId,
-          asistentePageId: candidato.id,
-        })
-      : await notionCitas.existeCitaActivaEntre({
-          sponsorPageId,
-          asistentePageId: candidato.id,
-        });
+    const yaTieneCita = notionCitas.existeCitaActivaEntreEnCache(paresConCitaActiva, {
+      sponsorPageId,
+      asistentePageId: candidato.id,
+    });
     if (yaTieneCita) continue;
     candidatosValidos.push(candidato);
   }
@@ -822,19 +825,12 @@ function compararPrioridadSponsor(nivelA, nivelB) {
  * FIX DEL 10 DE AGOSTO — timeout por volumen de llamadas a Notion.
  * Diagnóstico: con 8 sponsors reales, el patrón anterior (una llamada HTTP
  * a existeCitaActivaEntre por cada candidato evaluado, dentro del loop de
- * cada sponsor) generaba ~130-150 llamadas secuenciales en una sola
- * invocación — muy por encima de cualquier timeout razonable de un tool
- * call MCP. Fix: se trae UNA sola vez (con paginación real) la lista
- * completa de pares con cita activa, ANTES del loop de sponsors, y se pasa
- * como caché interna a cada llamada de sugerirMatchesParaSponsor. Esto
- * baja el número de llamadas HTTP de ~130-150 a un puñado (1-2 para la
- * caché + 1 por sponsor para buscarAsistentesCandidatos + 1 por sponsor
- * para contarCitasConfirmadasPorSponsor — ninguna de estas dos últimas se
- * tocó, siguen igual que antes).
+ * cada sponsor) generaba ~130-150 llamadas secuenciales. Fix: Set de pares
+ * activos cargado una vez (paginado) y lookup en memoria.
  *
- * sugerirMatchesParaSponsor() individual (fuera de este loop) NO cambia su
- * comportamiento — sigue consultando Notion por candidato, porque para un
- * solo sponsor el volumen nunca fue el problema.
+ * 10-sep: el pool de asistentes también se pagina y se carga UNA vez aquí
+ * (antes cada sponsor repetía `buscarAsistentesCandidatos`, que además
+ * cortaba en 100). El camino individual usa la misma caché de pares.
  *
  * @param {object} [opciones]
  * @param {number} [opciones.topN]
@@ -856,8 +852,8 @@ function compararPrioridadSponsor(nivelA, nivelB) {
 async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVirtual = false } = {}) {
   const sponsors = await notionContactos.listarSponsorsActivos();
 
-  // Cargar la caché UNA sola vez ANTES del loop — fix del timeout (10 ago).
   const paresConCitaActivaCache = await notionCitas.obtenerParesConCitaActiva();
+  const candidatosPoolCache = await notionContactos.buscarAsistentesCandidatos({ incluirVirtual });
 
   const resultadosPorSponsor = [];
   const omitidos = [];
@@ -869,6 +865,7 @@ async function sugerirMatchesGlobal({ topN, escribirEnNotion = false, incluirVir
         escribirEnNotion,
         incluirVirtual,
         _paresConCitaActivaCache: paresConCitaActivaCache,
+        _candidatosPoolCache: candidatosPoolCache,
       });
       resultadosPorSponsor.push({ sponsor, resultado });
     } catch (err) {
