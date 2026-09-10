@@ -52,6 +52,10 @@ require.cache[citasPath] = {
   loaded: true,
   exports: {
     async existeCitaActivaEntre() { return false; },
+    async obtenerParesConCitaActiva() { return new Set(); },
+    existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePageId }) {
+      return paresActivos.has(`${sponsorPageId}|${asistentePageId}`);
+    },
     async contarCitasConfirmadasPorSponsor() { return 0; },
   },
 };

@@ -15,6 +15,39 @@ function requireDataSourceId() {
   if (!CONTACTOS_DATA_SOURCE_ID) throw new Error('Falta NOTION_CONTACTOS_DATA_SOURCE_ID en variables de entorno');
 }
 
+const MAX_PAGINAS_CONTACTOS = 50;
+
+/**
+ * Query paginado a Contactos. Notion corta en 100 filas; sin esto el
+ * matchmaking solo veía la primera página (10-sep: pool de Laura 55,
+ * pero ya hay 103 asistentes activos — el tope pega al cruzar 100
+ * elegibles por giro/boleto).
+ */
+async function queryContactosPaginado(filter, pageSize = 100) {
+  requireDataSourceId();
+  const resultados = [];
+  let cursor;
+  let paginas = 0;
+  do {
+    const body = { filter, page_size: pageSize };
+    if (cursor) body.start_cursor = cursor;
+    const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    resultados.push(...(data.results || []));
+    cursor = data.has_more ? data.next_cursor : null;
+    paginas += 1;
+    if (paginas >= MAX_PAGINAS_CONTACTOS) {
+      throw new Error(
+        `queryContactosPaginado: límite de ${MAX_PAGINAS_CONTACTOS} páginas sin terminar. ` +
+          'No debería ocurrir con el volumen de FDT; si llega aquí, revisar el filtro o Notion.'
+      );
+    }
+  } while (cursor);
+  return resultados;
+}
+
 // Helpers de parseo — la API de Notion regresa cada propiedad envuelta en su
 // tipo (rich_text[0].plain_text, select.name, multi_select[].name, etc.).
 // Estos helpers lo aplanan a un objeto simple para trabajar cómodo.
@@ -284,10 +317,7 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
     { or: GIROS_ELEGIBLES_MATCHMAKING.map((giro) => ({ property: 'Giro / Industria', select: { equals: giro } })) },
   ];
 
-  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
-    method: 'POST',
-    body: JSON.stringify({ filter: { and: condiciones }, page_size: 100 }),
-  });
+  const filas = await queryContactosPaginado({ and: condiciones });
 
   // Post-filtrado en JS: "Presencial" y "Virtual" son elegibles salvo que
   // hayan marcado EXPLÍCITAMENTE 'No' a "Quiere Citas 1a1".
@@ -310,7 +340,7 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // el formulario de Virtual ya tiene la misma pregunta de opt-in que
   // Presencial (antes solo Presencial la tenía). Presencial VIP y Speaker
   // siguen siempre elegibles (las citas vienen incluidas en el boleto).
-  const candidatos = data.results.map(parsearContacto).filter((c) => {
+  const candidatos = filas.map(parsearContacto).filter((c) => {
     if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Virtual') {
       return c.quiereCitas1a1 !== 'No';
     }
@@ -636,20 +666,13 @@ async function listarContactosConOfertaInicialVencida(fechaLimite) {
  * para que quede registrado en "omitidos" en vez de desaparecer en silencio.
  */
 async function listarSponsorsActivos() {
-  requireDataSourceId();
-  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
-    method: 'POST',
-    body: JSON.stringify({
-      filter: {
-        and: [
-          { property: 'Categoria', select: { equals: 'Sponsor' } },
-          { property: 'Dado de Baja', checkbox: { equals: false } },
-        ],
-      },
-      page_size: 100,
-    }),
+  const filas = await queryContactosPaginado({
+    and: [
+      { property: 'Categoria', select: { equals: 'Sponsor' } },
+      { property: 'Dado de Baja', checkbox: { equals: false } },
+    ],
   });
-  return data.results.map(parsearContacto);
+  return filas.map(parsearContacto);
 }
 
 function digitosTelefono(raw) {

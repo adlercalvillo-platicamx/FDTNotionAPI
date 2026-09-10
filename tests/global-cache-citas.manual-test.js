@@ -13,11 +13,19 @@ const path = require('path');
 const contactosRealPath = require.resolve('../src/services/contactos.service');
 const citasRealPath = require.resolve('../src/services/citas.service');
 
+const contactosMock = require(path.resolve(__dirname, 'mocks/contactos.service.js'));
+let llamadasPool = 0;
 require.cache[contactosRealPath] = {
   id: contactosRealPath,
   filename: contactosRealPath,
   loaded: true,
-  exports: require(path.resolve(__dirname, 'mocks/contactos.service.js')),
+  exports: {
+    ...contactosMock,
+    async buscarAsistentesCandidatos(args) {
+      llamadasPool += 1;
+      return contactosMock.buscarAsistentesCandidatos(args);
+    },
+  },
 };
 
 // ── Caso 1: paginación real — 2 páginas de resultados ──
@@ -67,6 +75,7 @@ const { sugerirMatchesGlobal } = require('../src/services/matchmaking.service');
 async function testCasoFelizYNumeroDeLlamadas() {
   console.log('\n=== Caso feliz: la caché se carga UNA sola vez, no una vez por sponsor ===');
   llamadasAQuery = 0;
+  llamadasPool = 0;
   await sugerirMatchesGlobal({ escribirEnNotion: false });
 
   if (llamadasAQuery !== 1) {
@@ -74,7 +83,11 @@ async function testCasoFelizYNumeroDeLlamadas() {
     console.error('   Si se llama más de una vez, el fix no está evitando el problema de volumen.');
     process.exit(1);
   }
-  console.log('✅ obtenerParesConCitaActiva se llamó exactamente 1 vez para todos los sponsors — el fix reduce el volumen como se esperaba.');
+  if (llamadasPool !== 1) {
+    console.error(`❌ FALLO: buscarAsistentesCandidatos se llamó ${llamadasPool} veces, se esperaba exactamente 1.`);
+    process.exit(1);
+  }
+  console.log('✅ obtenerParesConCitaActiva y buscarAsistentesCandidatos se llamaron 1 vez para todos los sponsors.');
 }
 
 async function testExisteCitaActivaEntreNuncaSeLlama() {
