@@ -25,7 +25,10 @@ const fetches = [];
 /** Filas de Citas del mock, como las devolvería buscarCitasParaRecordatorio15min. */
 let filas = [];
 const marcas = [];
+const meets = [];
 let fallaAlMarcar = null;
+let fallaMeet = null;
+let meetSinUrl = false;
 
 require.cache[contactosPath] = {
   id: contactosPath,
@@ -81,6 +84,17 @@ require.cache[citasPath] = {
       }
       return {};
     },
+    async persistirMeetVirtual({ notionPageId, eventId, meetUrl, intentos, notas }) {
+      meets.push({ notionPageId, eventId, meetUrl, intentos, notas });
+      const fila = filas.find((f) => f.id === notionPageId);
+      if (fila) {
+        if (eventId !== undefined) fila.googleMeetEventId = eventId;
+        if (meetUrl !== undefined) fila.googleMeetUrl = meetUrl;
+        if (intentos !== undefined) fila.intentosGoogleMeet = intentos;
+        if (notas !== undefined) fila.notasGoogleMeet = notas;
+      }
+      return {};
+    },
   },
 };
 
@@ -88,11 +102,18 @@ function limpiar() {
   Object.keys(contactos).forEach((k) => delete contactos[k]);
   fetches.length = 0;
   marcas.length = 0;
+  meets.length = 0;
   filas = [];
   fallaAlMarcar = null;
+  fallaMeet = null;
+  meetSinUrl = false;
   process.env.PLATICA_TEMPLATE_CITA_15MIN = 'notificacion_cita_15min_antes';
-  contactos['asistente-1'] = { nombre: 'JUAN PEREZ', whatsapp: '5215512345678' };
-  contactos['sponsor-1'] = { nombre: 'Pedro Sponsor', empresa: 'Infracommerce' };
+  process.env.PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL = 'recordatorio_15min_antes_virtual';
+  delete process.env.MEET_VIRTUAL_HABILITADO;
+  process.env.MEET_VIRTUAL_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/test/exec';
+  process.env.MEET_VIRTUAL_SECRET = 'secret-test';
+  contactos['asistente-1'] = { nombre: 'JUAN PEREZ', whatsapp: '5215512345678', email: 'juan@test.com' };
+  contactos['sponsor-1'] = { nombre: 'Pedro Sponsor', empresa: 'Infracommerce', email: 'pedro@sponsor.com' };
 }
 
 function fila(overrides = {}) {
@@ -100,10 +121,14 @@ function fila(overrides = {}) {
     id: 'cita-1',
     estatus: 'Confirmada',
     inicio: '2026-10-07T10:30:00-06:00',
+    fin: '2026-10-07T11:00:00-06:00',
     asistentePageId: 'asistente-1',
     sponsorPageId: 'sponsor-1',
     estadoRecordatorio15min: null,
     fechaRecordatorio15min: null,
+    googleMeetEventId: null,
+    googleMeetUrl: null,
+    intentosGoogleMeet: 0,
     ...overrides,
   };
 }
@@ -118,6 +143,24 @@ function fetchOk() {
   global.fetch = async (url, opts) => {
     const body = opts?.body ? JSON.parse(opts.body) : {};
     fetches.push({ url, body, headers: opts?.headers });
+    if (String(url).includes('script.google.com')) {
+      if (fallaMeet) {
+        return { ok: false, status: 500, async text() { return JSON.stringify({ ok: false, error: 'calendar boom' }); } };
+      }
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            ok: true,
+            eventId: '3d162dda199a812f9265ef6b3a1ee913',
+            meetUrl: meetSinUrl ? '' : 'https://meet.google.com/abc-defg-hij',
+            htmlLink: 'https://calendar.google.com/event',
+            existing: false,
+          });
+        },
+      };
+    }
     return {
       ok: true,
       status: 200,
@@ -356,10 +399,134 @@ const AHORA = '2026-10-07T10:15:00-06:00';
 
   await okAsync('{{2}} cae al nombre si el sponsor no tiene empresa', async () => {
     limpiar();
-    contactos['sponsor-1'] = { nombre: 'Pedro', empresa: '' };
+    contactos['sponsor-1'] = { nombre: 'Pedro', empresa: '', email: 'pedro@sponsor.com' };
     filas = [fila()];
     await enviarRecordatorios15minPendientes({ ahora: AHORA });
     assert.deepStrictEqual(fetches[0].body.template.params, ['Juan', 'Pedro']);
+  });
+
+  console.log('\n=== Meet virtual ===');
+  const CITA_V = '3d162dda-199a-812f-9265-ef6b3a1ee913';
+
+  await okAsync('flag apagado: Virtual usa la plantilla presencial y no llama Apps Script', async () => {
+    limpiar();
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    filas = [fila({ id: CITA_V })];
+    const r = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r.enviados, 1);
+    assert.strictEqual(fetches.length, 1);
+    assert.ok(String(fetches[0].url).endsWith('/v1/messages/template'));
+    assert.strictEqual(fetches[0].body.template.name, 'notificacion_cita_15min_antes');
+    assert.strictEqual(meets.length, 0);
+  });
+
+  await okAsync('Virtual + flag: Meet antes de WhatsApp, ambos invitados, plantilla virtual', async () => {
+    limpiar();
+    process.env.MEET_VIRTUAL_HABILITADO = 'true';
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    filas = [fila({ id: CITA_V, titulo: 'Cita — Marca - Infracommerce' })];
+    const r = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r.enviados, 1);
+    assert.strictEqual(fetches.length, 2);
+    assert.ok(String(fetches[0].url).includes('script.google.com'));
+    assert.strictEqual(fetches[0].body.secret, 'secret-test');
+    assert.strictEqual(fetches[0].body.asistente.email, 'juan@test.com');
+    assert.strictEqual(fetches[0].body.sponsor.email, 'pedro@sponsor.com');
+    assert.ok(String(fetches[1].url).endsWith('/v1/messages/template'));
+    assert.strictEqual(fetches[1].body.template.name, 'recordatorio_15min_antes_virtual');
+    assert.deepStrictEqual(fetches[1].body.template.params, [
+      'Juan',
+      'Infracommerce',
+      'https://meet.google.com/abc-defg-hij',
+    ]);
+    assert.ok(meets.some((m) => m.eventId === '3d162dda199a812f9265ef6b3a1ee913'));
+    assert.strictEqual(r.detalle[0].meetEventId, '3d162dda199a812f9265ef6b3a1ee913');
+  });
+
+  await okAsync('Meet ya persistido: no vuelve a llamar Apps Script; reintenta WhatsApp', async () => {
+    limpiar();
+    process.env.MEET_VIRTUAL_HABILITADO = 'true';
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    filas = [
+      fila({
+        id: CITA_V,
+        googleMeetEventId: '3d162dda199a812f9265ef6b3a1ee913',
+        googleMeetUrl: 'https://meet.google.com/abc-defg-hij',
+        intentosGoogleMeet: 1,
+      }),
+    ];
+    const r = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r.enviados, 1);
+    assert.strictEqual(fetches.filter((f) => String(f.url).includes('script.google.com')).length, 0);
+    assert.strictEqual(fetches.length, 1);
+    assert.strictEqual(fetches[0].body.template.name, 'recordatorio_15min_antes_virtual');
+    assert.deepStrictEqual(fetches[0].body.template.params, [
+      'Juan',
+      'Infracommerce',
+      'https://meet.google.com/abc-defg-hij',
+    ]);
+  });
+
+  await okAsync('Meet 500: no manda plantilla virtual; al 3er intento Omitido', async () => {
+    limpiar();
+    process.env.MEET_VIRTUAL_HABILITADO = 'true';
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    filas = [fila({ id: CITA_V })];
+    fallaMeet = true;
+
+    const r1 = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r1.fallidos, 1);
+    assert.strictEqual(fetches.filter((f) => String(f.url).includes('/v1/messages/template')).length, 0);
+    assert.strictEqual(filas[0].intentosGoogleMeet, 1);
+    filas[0].estadoRecordatorio15min = 'Falló';
+
+    const r2 = await enviarRecordatorios15minPendientes({ ahora: '2026-10-07T10:20:00-06:00' });
+    assert.strictEqual(r2.fallidos, 1);
+    assert.strictEqual(filas[0].intentosGoogleMeet, 2);
+    filas[0].estadoRecordatorio15min = 'Falló';
+
+    const r3 = await enviarRecordatorios15minPendientes({ ahora: '2026-10-07T10:25:00-06:00' });
+    assert.strictEqual(r3.omitidos, 1);
+    assert.strictEqual(r3.detalle[0].motivo, 'MEET_AGOTADO');
+    assert.strictEqual(marcas[marcas.length - 1].estado, 'Omitido');
+    assert.strictEqual(fetches.filter((f) => String(f.url).includes('/v1/messages/template')).length, 0);
+  });
+
+  await okAsync('Meet sin URL: consume intentos y al 3ro queda Omitido', async () => {
+    limpiar();
+    process.env.MEET_VIRTUAL_HABILITADO = 'true';
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    filas = [fila({ id: CITA_V })];
+    meetSinUrl = true;
+
+    const r1 = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r1.fallidos, 1);
+    assert.strictEqual(filas[0].intentosGoogleMeet, 1);
+    assert.ok(filas[0].googleMeetEventId);
+    filas[0].estadoRecordatorio15min = 'Falló';
+
+    const r2 = await enviarRecordatorios15minPendientes({ ahora: '2026-10-07T10:20:00-06:00' });
+    assert.strictEqual(r2.fallidos, 1);
+    assert.strictEqual(filas[0].intentosGoogleMeet, 2);
+    filas[0].estadoRecordatorio15min = 'Falló';
+
+    const r3 = await enviarRecordatorios15minPendientes({ ahora: '2026-10-07T10:25:00-06:00' });
+    assert.strictEqual(r3.omitidos, 1);
+    assert.strictEqual(r3.detalle[0].motivo, 'MEET_AGOTADO');
+    assert.strictEqual(filas[0].intentosGoogleMeet, 3);
+    assert.strictEqual(fetches.filter((f) => String(f.url).includes('/v1/messages/template')).length, 0);
+  });
+
+  await okAsync('Virtual sin email → Omitido SIN_EMAIL, sin Meet ni WhatsApp', async () => {
+    limpiar();
+    process.env.MEET_VIRTUAL_HABILITADO = 'true';
+    contactos['asistente-1'].ticketTipo = 'Virtual';
+    contactos['asistente-1'].email = '';
+    filas = [fila({ id: CITA_V })];
+    const r = await enviarRecordatorios15minPendientes({ ahora: AHORA });
+    assert.strictEqual(r.omitidos, 1);
+    assert.strictEqual(r.detalle[0].motivo, 'SIN_EMAIL');
+    assert.strictEqual(fetches.length, 0);
   });
 
   console.log('\n✅ recordatorio-cita-15min.manual-test.js');

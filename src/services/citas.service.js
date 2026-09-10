@@ -604,8 +604,13 @@ function datosDeCita(pagina) {
     fechaRecordatorio15min: props['Fecha Recordatorio 15min']?.date?.start || null,
     estadoRecordatorio2h: props['Estado Recordatorio 2h']?.select?.name || null,
     fechaRecordatorio2h: props['Fecha Recordatorio 2h']?.date?.start || null,
-    // Histórico: ya no se escribe ni se usa. Lo deja datosDeCita por si
-    // hay que leer filas viejas; no hay consumidores nuevos.
+    googleMeetEventId: textoRichText(props['Google Meet Event ID']) || null,
+    googleMeetUrl: props['Google Meet URL']?.url || null,
+    intentosGoogleMeet:
+      typeof props['Intentos Google Meet']?.number === 'number' ? props['Intentos Google Meet'].number : 0,
+    notasGoogleMeet: textoRichText(props['Notas Google Meet']) || '',
+    // Histórico del Calendar retirado el 27-ago. No se escribe ni se usa
+    // para Meet virtual; campos nuevos arriba.
     googleEventId: textoRichText(props['Google Event ID']) || null,
     notasEnvioEmail: textoRichText(props['Notas Envio Email']) || '',
     horarioOriginal: props['Reprogramada Horario Original']?.date?.start || null,
@@ -1428,6 +1433,36 @@ function marcarEstadoRecordatorio2h(args) {
   return marcarEstadoRecordatorio({ ...args, campos: CAMPOS_RECORDATORIO_2H });
 }
 
+/**
+ * Estado del Meet virtual (excepción 10-sep). No reusa "Google Event ID".
+ * El cron de 15 min escribe intentos antes de llamar Apps Script y el
+ * eventId/URL cuando Calendar acepta.
+ */
+async function persistirMeetVirtual({ notionPageId, eventId, meetUrl, intentos, notas }) {
+  requireDataSourceId();
+  const properties = {};
+  if (eventId !== undefined) {
+    properties['Google Meet Event ID'] = {
+      rich_text: eventId ? [{ text: { content: String(eventId).slice(0, 1900) } }] : [],
+    };
+  }
+  if (meetUrl !== undefined) {
+    properties['Google Meet URL'] = { url: meetUrl || null };
+  }
+  if (intentos !== undefined) {
+    properties['Intentos Google Meet'] = { number: Number(intentos) || 0 };
+  }
+  if (notas !== undefined) {
+    properties['Notas Google Meet'] = {
+      rich_text: notas ? [{ text: { content: String(notas).slice(0, 1900) } }] : [],
+    };
+  }
+  return notionFetch(`/pages/${notionPageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
 async function actualizarEstadoEnvioCampana(notionPageIds, { estado, fechaInicioEnvio, campanaEnviada } = {}) {
   requireDataSourceId();
   for (const notionPageId of notionPageIds) {
@@ -2074,6 +2109,7 @@ module.exports = {
   marcarEstadoRecordatorio15min,
   buscarCitasParaRecordatorio2h,
   marcarEstadoRecordatorio2h,
+  persistirMeetVirtual,
   ESTADO_RECORDATORIO_EN_CURSO,
   ESTADO_RECORDATORIO_ENVIADO,
   ESTADO_RECORDATORIO_FALLO,

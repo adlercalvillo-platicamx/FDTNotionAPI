@@ -120,6 +120,14 @@ Si el mensaje viene de un recordatorio con Confirmar / Reagendar / Cancelar:
 - **Reagendar** y **Cancelar** siguen los caminos de arriba, no se escalan
   a humano por default.
 
+## Citas Virtual (Meet, 10-sep)
+
+El Google Meet **no** se crea al reservar ni por el agente. Lo dispara el
+cron de 15 min (`MEET_VIRTUAL_HABILITADO`) para boletos `Virtual`, con
+organizador `rp@fashiondigitaltalks.com`. El recordatorio de WhatsApp incluye
+el link de Meet como `{{3}}`; Google también envía la invitación por correo.
+No prometas un link al confirmar: se crea 15 min antes.
+
 ## Componentes retirados del camino activo
 
 - `send_message` interactivo tipo `flow`;

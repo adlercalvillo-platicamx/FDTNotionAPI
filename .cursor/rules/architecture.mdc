@@ -9,6 +9,7 @@ Lee README.md completo antes de proponer cambios — tiene el porqué de cada pu
 
 - **`booking.service.js` usa un mutex en memoria de un solo proceso.** Solo funciona si este servicio corre en **1 sola réplica** de Coolify. No lo quites, no lo reemplaces, no lo "simplifiques" — no es código de más.
 - **Google Calendar propio se retiró el 27-ago (Adler).** Fuente de verdad de citas: Notion + `.ics` por correo. No reintroducir `calendar-client.service.js`, no importar googleapis, no volver a llamar `platica-google-docs-api` para crear/cancelar eventos. Si alguien pide "sincronizar Calendar", el arreglo es el `.ics`, no una segunda copia.
+- **Excepción 10-sep (Adler):** un Apps Script en `rp@fashiondigitaltalks.com` puede crear **solo** un Google Meet 15 min antes, para asistentes con `Ticket / Tipo Asistencia = Virtual`. Lo orquesta el cron de 15 min (`MEET_VIRTUAL_HABILITADO`). No arbitra mesas ni cancela/mueve eventos.
 - **Notion se llama por REST directo** (`src/utils/notion-client.js`), nunca vía MCP — la escritura tiene que ser determinística, no una decisión de un agente/LLM.
 - **Reglas de negocio ya confirmadas — no cambiarlas sin que Adler lo pida explícitamente:**
   - Bronce no participa en citas 1a1 (bloqueado con error explícito en `matchmaking.service.js`)

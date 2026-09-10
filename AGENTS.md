@@ -132,6 +132,13 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
   corrida devuelve `{ omitido: true, motivo: 'SIN_PLANTILLA' }` sin tocar Notion.
 - Filas de bloqueo de conferencia quedan fuera. `reservar`, `modificar` y
   `cancelar` no tocan recordatorios: el estado real lo pone Notion.
+- **Meet virtual (10-sep):** con `MEET_VIRTUAL_HABILITADO=true`, si el asistente
+  tiene boleto `Virtual`, el cron llama Apps Script (`rp@fashiondigitaltalks.com`)
+  **antes** de WhatsApp, invita ambos correos y manda
+  `PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL` (`{{1}}` nombre, `{{2}}` empresa,
+  `{{3}}` URL de Meet). Estado propio en Citas (`Google Meet
+  Event ID` / URL / intentos); máximo 3 fallos de Meet → `Omitido`. Flag en
+  false = plantilla presencial para todos, sin Calendar.
 
 ## Recordatorio 2 h (9-sep, cron)
 
@@ -168,7 +175,7 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Cliente: [`src/utils/notion-client.js`](src/utils/notion-client.js) contra data sources `NOTION_CONTACTOS_DATA_SOURCE_ID` / `NOTION_CITAS_DATA_SOURCE_ID`.
 - Horario: `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`. En Coolify, Names con **underscores** en la fecha (`CITAS_HORA_INICIO_2026_10_07`). Guiones en el Name no se inyectan. El query `fecha` del API sigue con guiones.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID`: contacto ficticio de bloqueo de conferencias. Default = el de pruebas. Si los data sources son de producción (prefijo `3b162dda`) y la variable falta, está vacía o trae ese default → el servicio **no arranca** (503 en `requireContactoBloqueoAgenda`).
-- `API_SECRET_KEY` es de **este** servicio. No hay `GOOGLE_API_*` en el flujo de citas (retirado 27-ago).
+- `API_SECRET_KEY` es de **este** servicio. No hay `GOOGLE_API_*` en el flujo de citas (retirado 27-ago). Meet virtual usa `MEET_VIRTUAL_*` + Apps Script, no googleapis.
 
 ## Qué no hacer
 
