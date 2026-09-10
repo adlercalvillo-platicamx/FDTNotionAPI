@@ -18,10 +18,17 @@
 const contactosService = require('./contactos.service');
 const citasService = require('./citas.service');
 const { payloadCanalYAgente } = require('./platica-client.service');
+const {
+  meetVirtualHabilitado,
+  esAsistenteVirtual,
+  asegurarMeetVirtual,
+  MAX_INTENTOS_MEET,
+} = require('./google-meet-virtual.service');
 
 const BASE_URL = (process.env.PLATICA_API_BASE_URL || 'https://api.platica.mx').replace(/\/$/, '');
 const MINUTOS_ANTES = 15;
 const TEMPLATE_ENV = 'PLATICA_TEMPLATE_CITA_15MIN';
+const TEMPLATE_VIRTUAL_ENV = 'PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL';
 
 function telefonoConversacion(raw) {
   return String(raw || '').replace(/\D/g, '').replace(/^0+/, '') || '';
@@ -111,18 +118,132 @@ async function enviarPlantillaRecordatorio({ phone, templateName, params }) {
   });
 }
 
-/** Los dos params de la plantilla: primer nombre del asistente y empresa del sponsor. */
+/** Presencial: {{1}} nombre, {{2}} empresa. Virtual añade {{3}} = URL de Meet. */
+function paramsPlantillaVirtual(params, meetUrl) {
+  const url = limpiarParametroPlantilla(meetUrl);
+  if (!url) {
+    const err = new Error('SIN_MEET_URL: el evento no trajo link de Meet');
+    err.code = 'SIN_MEET_URL';
+    throw err;
+  }
+  return [...params, url];
+}
+
 async function paramsDeRecordatorio({ asistentePageId, sponsorPageId }) {
   const [asistente, sponsor] = await Promise.all([
     contactosService.obtenerContacto(asistentePageId),
     contactosService.obtenerContacto(sponsorPageId),
   ]);
   return {
+    asistente,
+    sponsor,
     whatsapp: asistente?.whatsapp || '',
     params: [
       primerNombreParaSaludo(asistente?.nombre) || 'Asistente',
       limpiarParametroPlantilla(sponsor?.empresa || sponsor?.nombre) || 'el sponsor',
     ],
+  };
+}
+
+function emailContacto(contacto) {
+  return String(contacto?.email || '').trim();
+}
+
+/**
+ * Meet + plantilla virtual, o el camino presencial de siempre.
+ * Si el flag está apagado, Virtual usa la plantilla actual (no se miente
+ * sobre un correo de Meet que no existe).
+ */
+async function prepararEnvio({ cita, asistente, sponsor, params, templateNamePresencial }) {
+  const virtual = meetVirtualHabilitado() && esAsistenteVirtual(asistente);
+  if (!virtual) {
+    return { templateName: templateNamePresencial, params, meet: null };
+  }
+
+  const templateName = process.env[TEMPLATE_VIRTUAL_ENV];
+  if (!templateName) {
+    const err = new Error('Falta PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL');
+    err.code = 'SIN_PLANTILLA_VIRTUAL';
+    throw err;
+  }
+
+  const urlPersistida = limpiarParametroPlantilla(cita.googleMeetUrl);
+  if (cita.googleMeetEventId && urlPersistida) {
+    return {
+      templateName,
+      params: paramsPlantillaVirtual(params, urlPersistida),
+      meet: { eventId: cita.googleMeetEventId, meetUrl: urlPersistida, existing: true },
+    };
+  }
+
+  if (!emailContacto(asistente) || !emailContacto(sponsor)) {
+    const err = new Error('SIN_EMAIL: falta correo del asistente o del sponsor para invitar al Meet');
+    err.code = 'SIN_EMAIL';
+    throw err;
+  }
+
+  const intentosPrevios = Number(cita.intentosGoogleMeet) || 0;
+  if (intentosPrevios >= MAX_INTENTOS_MEET) {
+    const err = new Error(`MEET_AGOTADO: ${intentosPrevios} intentos sin Meet utilizable`);
+    err.code = 'MEET_AGOTADO';
+    throw err;
+  }
+
+  const intentos = intentosPrevios + 1;
+  await citasService.persistirMeetVirtual({
+    notionPageId: cita.id,
+    intentos,
+    notas: `intento ${intentos}/${MAX_INTENTOS_MEET}`,
+  });
+  cita.intentosGoogleMeet = intentos;
+
+  let meet;
+  try {
+    meet = await asegurarMeetVirtual({ cita, asistente, sponsor });
+  } catch (errorMeet) {
+    await citasService.persistirMeetVirtual({
+      notionPageId: cita.id,
+      intentos,
+      notas: errorMeet.message,
+    });
+    if (intentos >= MAX_INTENTOS_MEET) {
+      const agotado = new Error(`MEET_AGOTADO: ${errorMeet.message}`);
+      agotado.code = 'MEET_AGOTADO';
+      throw agotado;
+    }
+    throw errorMeet;
+  }
+
+  const meetUrl = limpiarParametroPlantilla(meet.meetUrl);
+  if (!meetUrl) {
+    await citasService.persistirMeetVirtual({
+      notionPageId: cita.id,
+      eventId: meet.eventId,
+      meetUrl: null,
+      intentos,
+      notas: 'SIN_MEET_URL: Calendar no devolvió hangoutLink',
+    });
+    if (intentos >= MAX_INTENTOS_MEET) {
+      const agotado = new Error('MEET_AGOTADO: Calendar no devolvió link de Meet');
+      agotado.code = 'MEET_AGOTADO';
+      throw agotado;
+    }
+    const sinUrl = new Error('SIN_MEET_URL: el evento no trajo link de Meet');
+    sinUrl.code = 'SIN_MEET_URL';
+    throw sinUrl;
+  }
+
+  await citasService.persistirMeetVirtual({
+    notionPageId: cita.id,
+    eventId: meet.eventId,
+    meetUrl,
+    intentos,
+    notas: meet.existing ? 'evento existente reutilizado' : '',
+  });
+  return {
+    templateName,
+    params: paramsPlantillaVirtual(params, meetUrl),
+    meet: { eventId: meet.eventId, meetUrl, existing: !!meet.existing },
   };
 }
 
@@ -173,7 +294,7 @@ async function enviarRecordatorios15minPendientes({ ahora, minutos = MINUTOS_ANT
     }
 
     try {
-      const { whatsapp, params } = await paramsDeRecordatorio({
+      const { asistente, sponsor, whatsapp, params } = await paramsDeRecordatorio({
         asistentePageId: cita.asistentePageId,
         sponsorPageId: cita.sponsorPageId,
       });
@@ -189,7 +310,39 @@ async function enviarRecordatorios15minPendientes({ ahora, minutos = MINUTOS_ANT
         continue;
       }
 
-      const respuesta = await enviarPlantillaRecordatorio({ phone: whatsapp, templateName, params });
+      let envio;
+      try {
+        envio = await prepararEnvio({
+          cita,
+          asistente,
+          sponsor,
+          params,
+          templateNamePresencial: templateName,
+        });
+      } catch (errorMeet) {
+        if (errorMeet.code === 'SIN_EMAIL' || errorMeet.code === 'MEET_AGOTADO') {
+          await citasService.marcarEstadoRecordatorio15min({
+            notionPageId: cita.id,
+            estado: citasService.ESTADO_RECORDATORIO_OMITIDO,
+            notas: errorMeet.message,
+          });
+          resultado.omitidos += 1;
+          resultado.detalle.push({
+            citaId: cita.id,
+            inicio: cita.inicio,
+            estado: 'Omitido',
+            motivo: errorMeet.code,
+          });
+          continue;
+        }
+        throw errorMeet;
+      }
+
+      const respuesta = await enviarPlantillaRecordatorio({
+        phone: whatsapp,
+        templateName: envio.templateName,
+        params: envio.params,
+      });
       await citasService.marcarEstadoRecordatorio15min({
         notionPageId: cita.id,
         estado: citasService.ESTADO_RECORDATORIO_ENVIADO,
@@ -201,11 +354,19 @@ async function enviarRecordatorios15minPendientes({ ahora, minutos = MINUTOS_ANT
         inicio: cita.inicio,
         estado: 'Enviado',
         messageId: respuesta?.messageId || null,
-        params,
+        params: envio.params,
+        plantilla: envio.templateName,
+        meetEventId: envio.meet?.eventId || null,
       });
       console.log(
         '[Recordatorio15min] Enviado',
-        JSON.stringify({ citaId: cita.id, inicio: cita.inicio, messageId: respuesta?.messageId || null })
+        JSON.stringify({
+          citaId: cita.id,
+          inicio: cita.inicio,
+          messageId: respuesta?.messageId || null,
+          plantilla: envio.templateName,
+          meetEventId: envio.meet?.eventId || null,
+        })
       );
     } catch (error) {
       console.error('[Recordatorio15min] Falló', JSON.stringify({ citaId: cita.id, error: error.message }));
@@ -236,5 +397,6 @@ module.exports = {
   limpiarParametroPlantilla,
   telefonoConversacion,
   TEMPLATE_ENV,
+  TEMPLATE_VIRTUAL_ENV,
   MINUTOS_ANTES,
 };

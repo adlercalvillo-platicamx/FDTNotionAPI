@@ -2,7 +2,7 @@
 
 Backend de citas 1a1, matchmaking y checklist para **Fashion Digital Talks 2026** — Plática.mx.
 
-Repo independiente de `platica-google-docs-api`. Este servicio **no llama** a Google Calendar: la fuente de verdad de citas es Notion + el `.ics` por correo (retiro del 27-ago). Ver razones en la sección "Por qué un repo separado" abajo.
+Repo independiente de `platica-google-docs-api`. La fuente de verdad de citas es Notion + el `.ics` por correo (retiro del Calendar propio el 27-ago). **Excepción 10-sep:** un Apps Script en `rp@fashiondigitaltalks.com` puede crear un Google Meet 15 min antes, solo para boletos Virtual y con `MEET_VIRTUAL_HABILITADO=true`. Ver razones en la sección "Por qué un repo separado" abajo.
 
 ## Stack
 - Node.js + Express
@@ -70,7 +70,7 @@ Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
-| POST | `/citas/enviar-recordatorios-15min` | **Nueva (7 sep), reemplaza el programado.** Cron cada 5 min los días del evento. Busca en Notion las citas `Confirmada` / `Confirmada sin notificar` que empiezan en los próximos 15 min y manda `notificacion_cita_15min_antes` al asistente (`{{1}}` primer nombre, `{{2}}` empresa del sponsor), sin `scheduleTime`. `X-API-Key`. Idempotente por fila: `Estado Recordatorio 15min` (`En curso` → `Enviado` / `Falló` / `Omitido`) + fecha y notas. Una cancelada no entra; una reprogramada entra con su horario nuevo. Body opcional solo para pruebas: `ahora` (ISO) y `minutos` (1–120). Responde 200 con `{ revisadas, enviados, omitidos, fallidos, detalle }`; 502 si truena la corrida completa. |
+| POST | `/citas/enviar-recordatorios-15min` | **Nueva (7 sep), reemplaza el programado.** Cron cada 5 min los días del evento. Busca en Notion las citas `Confirmada` / `Confirmada sin notificar` que empiezan en los próximos 15 min y manda `notificacion_cita_15min_antes` al asistente (`{{1}}` primer nombre, `{{2}}` empresa del sponsor), sin `scheduleTime`. Con `MEET_VIRTUAL_HABILITADO=true` y boleto `Virtual`, primero crea el Meet (Apps Script, `rp@fashiondigitaltalks.com`) e invita ambos correos; WhatsApp usa `PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL`. Si Meet falla, no manda esa plantilla (reintento hasta 3, luego `Omitido`). Flag en false = plantilla presencial para todos. `X-API-Key`. Idempotente por fila: `Estado Recordatorio 15min` (`En curso` → `Enviado` / `Falló` / `Omitido`) + fecha y notas. Una cancelada no entra; una reprogramada entra con su horario nuevo. Body opcional solo para pruebas: `ahora` (ISO) y `minutos` (1–120). Responde 200 con `{ revisadas, enviados, omitidos, fallidos, detalle }`; 502 si truena la corrida completa. |
 | POST | `/citas/enviar-recordatorios-2h` | **Nueva (9 sep).** Mismo patrón que el de 15 min, ventana de 2 horas. Cada cita `Confirmada` / `Confirmada sin notificar` (no solo la primera del día). Plantilla `notificacion_cita_2horas_antes`: `{{1}}` primer nombre, `{{2}}` hora (`3:00 pm`), `{{3}}` `Marco Trujillo, de Plática.mx`. Estado propio: `Estado Recordatorio 2h`. Body opcional `ahora` / `minutos` (1–180). |
 | POST | `/citas/programar-recordatorio-15min` | **Retirada el 7 sep → 410.** Programaba el aviso en Plática con `scheduleTime` al reservar. Plática no expone cancelar un programado, así que una cita cancelada seguía avisando a su hora vieja y una reprogramada nunca avisaba a la nueva. Lo sustituye el cron de arriba. |
 | POST | `/citas/reservar` | Reserva una cita 1a1 (mutex + Notion como árbitro). Asigna la primera mesa física libre entre 1–11 en el bloque; si una cita se canceló, reutiliza ese hueco sin duplicar una mesa todavía ocupada. Para reagendar una cancelada recibe `cita_origen_cancelada_id`: valida `Cancelada` + mismo par, crea una fila distinta enlazada y rechaza reutilizar ese origen otra vez. Genera el título `Cita — Empresa asistente - Empresa sponsor`; envía correo + `.ics` al sponsor (con datos del asistente) y al asistente (solo nombre de empresa del sponsor). El `.ics` lleva `LOCATION` = Club France (dirección completa + `GEO`); mesa y horario van en el cuerpo y en `DESCRIPTION`. Si el correo falla tras 3 SMTP inmediatos, la cita **sí queda creada** con Estatus `Confirmada sin notificar`. `sponsor_calendario_id` en el body es legado e ignorado. Rechaza `ASISTENTE_YA_OCUPADO` si esa persona ya tiene cita en el mismo bloque. |
@@ -135,6 +135,8 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 
 **Google Calendar propio se retiró el 27-ago (Adler).** Nadie del equipo lo consultaba; Notion ya era adonde todos iban, y el `.ics` cubre el calendario personal del sponsor. `calendar-client.service.js` ya no existe. Los campos `Google Event ID` (Citas) y `Calendario Google ID` (Contactos) quedan en el schema por historial; el código nuevo no los escribe ni los exige. `sponsor_calendario_id` en `POST /citas/reservar` se ignora si llega, para no romper clientes viejos.
 
+**Excepción Meet virtual (10-sep, Adler):** Calendar no vuelve a arbitrar citas. Un Apps Script en `rp@fashiondigitaltalks.com` genera **solo** la sala Meet 15 min antes para asistentes con `Ticket / Tipo Asistencia = Virtual`. El cron de 15 min lo llama si `MEET_VIRTUAL_HABILITADO=true`. Campos nuevos en Citas (`Google Meet Event ID` / URL / intentos), no el `Google Event ID` histórico. Despliegue: [apps-script/meet-citas-virtuales/README.md](apps-script/meet-citas-virtuales/README.md). Flag en Coolify en **false** hasta script + schema + plantilla Meta.
+
 **Citas conversacionales (Laura, 27-ago; canceladas 7-sep):** el asistente agenda, reagenda y cancela hablando, sin botones ni WhatsApp Flow. Al ofrecer sponsors el agente nombra **como máximo 4**; horarios y citas a elegir, **como máximo 3**. Reagendar una confirmada usa `modificar_cita`; reagendar una cancelada crea una cita nueva con `reservar_cita`, `cita_origen_cancelada_id` e idempotencia `wa:reagenda:<citaId>:<inicio>`. La cancelada se conserva y solo puede consumirse una vez; además el backend rechaza un segundo compromiso activo del mismo par aunque se omita el origen. `reservar_cita` sigue fuera del MCP. Ver [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md).
 
 ## Variables de entorno
@@ -154,6 +156,7 @@ Ver `.env.example`. Resumen:
   - `EMAIL_SMTP_USER`, `EMAIL_SMTP_APP_PASSWORD` (App Password; se puede pegar con espacios cada 4 letras)
   - `EMAIL_FROM_NAME` (default `Fashion Digital Talks`)
   - No hay `EMAIL_MAX_INTENTOS`: 3 SMTP inmediatos por envío (no cuentan en Notion); el reenvío a demanda no tiene tope.
+- **Meet virtual (10-sep):** `MEET_VIRTUAL_HABILITADO=false` (string exacto `true` para encender). `MEET_VIRTUAL_APPS_SCRIPT_URL` (Web App `/exec`), `MEET_VIRTUAL_SECRET` (mismo valor en Script Properties). `PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL=recordatorio_15min_antes_virtual` (`{{1}}` nombre, `{{2}}` empresa, `{{3}}` link Meet). La App Password de Gmail **no** sirve para Calendar. El Meet lo dispara el **mismo** cron de 15 min; no hay cron extra.
 - **Campañas de matchmaking**:
   - `NOTION_CAMPANAS_WEBHOOK_SECRET` — secret propio del botón/webhook de Notion.
   - Defaults seguros: `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true` y `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`.
@@ -170,7 +173,7 @@ Ver `.env.example`. Resumen:
 ## Por qué un repo separado (no una app más sobre `platica-google-docs-api`)
 1. **Separación de responsabilidades** — ese repo es la capa genérica de Google para todos los clientes de Plática. Las reglas de negocio de un evento específico (pesos de matchmaking, requisitos de checklist) no son su lugar natural.
 2. **Concurrencia** — `booking.service.js` depende de un mutex en memoria de un solo proceso. Compartir servidor con otro servicio cuya política de réplicas no controlas directamente es un riesgo real de que la protección se rompa en silencio.
-3. Google Calendar propio se retiró el 27-ago: ya no hay llamada HTTP a ese repo desde aquí.
+3. Google Calendar propio se retiró el 27-ago: ya no hay llamada HTTP a ese repo desde aquí. Meet virtual (10-sep) usa Apps Script en `rp@fashiondigitaltalks.com`, no `googleapis` ni `calendar-client.service.js`.
 
 ## Cómo correr las pruebas manuales
 No hay suite automatizada con Jest todavía — son scripts que se corren a mano y muestran resultado en consola, usando datos reales de los contactos de ejemplo en Notion con las llamadas de escritura simuladas:
@@ -199,6 +202,7 @@ node tests/perfil-platica.manual-test.js
 node tests/horarios-oferta.manual-test.js
 node tests/recordatorio-evento.manual-test.js
 node tests/recordatorio-cita-15min.manual-test.js
+node tests/google-meet-virtual.manual-test.js
 node tests/recordatorio-cita-2h.manual-test.js
 node tests/sugerencias-asistente.manual-test.js
 node tests/modificar-cancelar-cita.manual-test.js
