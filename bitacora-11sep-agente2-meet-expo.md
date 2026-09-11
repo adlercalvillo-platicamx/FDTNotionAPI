@@ -58,8 +58,29 @@ vez el aviso “2 horas antes”.
 - `node tests/google-meet-virtual.manual-test.js`: Event ID por ocurrencia.
 - `node tests/horarios-oferta.manual-test.js`: solo futuros.
 
+Todo lo anterior es con mocks. No se hizo un reagendamiento real.
+
+### Post-redeploy (11-sep, commit `920f8d0`)
+
+- Schema de Citas en Laura (`3b162dda`), lectura REST: existen los 10
+  campos que ahora escribe `reprogramarCita` (`Estado/Fecha/Notas
+  Recordatorio 15min` y `2h`, `Google Meet Event ID` / `URL` / `Intentos` /
+  `Notas`). Un PATCH con un nombre inexistente sería 400, así que se
+  verificó antes de mover nada.
+- `GET /health` 200 en `f8wwwgc0g88wccscww4cccco.appsplatica.site`.
+- Probe de solo lectura: `POST /citas/modificar-cita` con destino
+  `2026-09-10T10:00` → **400 `HORARIO_EN_PASADO`** con el texto nuevo
+  ("ya empezó o quedó en el pasado"). El rechazo ocurre antes de Notion,
+  así que no escribió nada. El build viejo habría respondido "ya pasó
+  hace N minutos".
+
 ## Pendientes
 
+- Prueba real del no-show (mover una cita pasada sin check-in y ver los
+  campos en Notion + los dos crons). Requiere ok de Adler y destinatarios
+  SMTP en allowlist: `modificar_cita` manda correo a sponsor y asistente.
 - Encender Meet en Coolify tras prueba nombrada (Luis / Adler).
+- `CITAS_MARGEN_MODIFICACION_MINUTOS` quedó sin uso en el código; se puede
+  borrar de Coolify y del `.env` local (ya salió de `.env.example`).
 - `reservar_cita` sigue sin rechazar Expo en código; el filtro está en el
   prompt y en matchmaking.
