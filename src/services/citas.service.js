@@ -25,13 +25,6 @@ const {
 } = require('../utils/estado-envio-campana');
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
-// Mismo margen que usa modificar-cita para rechazar un destino pasado.
-// Vive aquí porque la selección compartida alimenta tanto la disponibilidad
-// conversacional como (si la plantilla final los incluye) la oferta inicial.
-const MARGEN_MODIFICACION_MINUTOS = Number(
-  process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5
-);
-
 // Contacto ficticio "Bloqueo de Agenda (Programa del Evento)" — las filas
 // Confirmada sin notificar que lo tienen en Contacto Principal ocupan al
 // sponsor (conferencia/conversatorio) pero NO restan de las 11 mesas.
@@ -633,14 +626,48 @@ function tieneCancelacionPendienteDeAviso(pagina) {
  * "Reprogramada Horario Original" guarda el horario de la PRIMERA
  * reprogramación — mover la cita tres veces no borra dónde empezó.
  */
-async function reprogramarCita({ notionPageId, inicio, fin, mesa, horarioOriginal, horarioOriginalYaGuardado }) {
+const MINUTOS_RECORDATORIO_2H = 120;
+
+function debeReiniciarRecordatorio2h(inicio, ahora) {
+  const inicioMs = Date.parse(inicio);
+  const ahoraMs = ahora ? new Date(ahora).getTime() : Date.now();
+  if (!Number.isFinite(inicioMs) || !Number.isFinite(ahoraMs)) return false;
+  return inicioMs - ahoraMs > MINUTOS_RECORDATORIO_2H * 60 * 1000;
+}
+
+async function reprogramarCita({
+  notionPageId,
+  inicio,
+  fin,
+  mesa,
+  horarioOriginal,
+  horarioOriginalYaGuardado,
+  ahora,
+}) {
   requireDataSourceId();
   const properties = {
     Estatus: { select: { name: 'Confirmada' } },
     'Fecha y Hora': { date: { start: inicio, end: fin } },
     Reprogramada: { checkbox: true },
     'Notas Envio Email': { rich_text: [] },
+    // 15 min siempre se reinicia: el cron vuelve a tomar la fila y, si es
+    // Virtual, crea otra sala de Meet para el horario nuevo.
+    'Estado Recordatorio 15min': { select: null },
+    'Fecha Recordatorio 15min': { date: null },
+    'Notas Recordatorio 15min': { rich_text: [] },
+    // El Meet anterior pertenece al horario anterior.
+    'Google Meet Event ID': { rich_text: [] },
+    'Google Meet URL': { url: null },
+    'Intentos Google Meet': { number: 0 },
+    'Notas Google Meet': { rich_text: [] },
   };
+  // El de 2 h solo se reinicia si el destino queda a más de 2 h. Si ya
+  // está dentro de esa ventana, no se manda de nuevo el aviso "2 horas antes".
+  if (debeReiniciarRecordatorio2h(inicio, ahora)) {
+    properties['Estado Recordatorio 2h'] = { select: null };
+    properties['Fecha Recordatorio 2h'] = { date: null };
+    properties['Notas Recordatorio 2h'] = { rich_text: [] };
+  }
   if (mesa) {
     properties['Mesa / Ubicacion'] = { rich_text: [{ text: { content: `Mesa ${mesa}` } }] };
   }
@@ -1864,7 +1891,7 @@ function esHorarioOfrecible(inicio, ahora = new Date()) {
   const inicioMs = new Date(inicio).getTime();
   const ahoraMs = ahora instanceof Date ? ahora.getTime() : new Date(ahora).getTime();
   if (!Number.isFinite(inicioMs) || !Number.isFinite(ahoraMs)) return false;
-  return inicioMs >= ahoraMs - MARGEN_MODIFICACION_MINUTOS * 60 * 1000;
+  return inicioMs > ahoraMs;
 }
 
 function fechaDeInicio(inicio) {
@@ -2129,7 +2156,8 @@ module.exports = {
   esHorarioOfrecible,
   horaDeInicio,
   normalizarHoraPedido,
-  MARGEN_MODIFICACION_MINUTOS,
+  MINUTOS_RECORDATORIO_2H,
+  debeReiniciarRecordatorio2h,
   formatearHorarioLegible,
   periodoDeHorario,
   finDeBloque,

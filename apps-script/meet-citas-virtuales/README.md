@@ -24,7 +24,7 @@ POST JSON:
 ```json
 {
   "secret": "…",
-  "citaId": "uuid-de-notion",
+  "citaId": "clave-hex-de-fila-y-horario",
   "inicio": "2026-10-07T12:30:00-06:00",
   "fin": "2026-10-07T13:00:00-06:00",
   "titulo": "Cita 1a1 virtual — Empresa A - Empresa B",
@@ -45,4 +45,7 @@ Respuesta ok:
 }
 ```
 
-`eventId` es el `citaId` sin guiones. Si el evento ya existe, `existing: true` y el mismo Meet.
+`citaId` ya llega como una clave hexadecimal de 32 caracteres calculada por
+el backend con la fila de Notion + hora de inicio. Si el evento ya existe,
+`existing: true` y se reutiliza el mismo Meet. Al reagendar, la clave cambia:
+el cron crea otra sala y no reutiliza la del horario anterior.

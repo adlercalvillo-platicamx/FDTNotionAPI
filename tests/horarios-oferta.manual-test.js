@@ -62,10 +62,11 @@ function caso1MananaDia1YaPaso() {
     { ahora }
   );
   assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-08T14:00:00-06:00',
     '2026-10-07T15:30:00-06:00',
-    '2026-10-07T15:00:00-06:00',
     '2026-10-08T09:00:00-06:00',
   ]);
+  assert.ok(!iniciosDe(elegidos).includes('2026-10-07T15:00:00-06:00'), 'nunca ofrece el bloque que ya empezó');
   assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
 }
 
@@ -110,7 +111,7 @@ function casoMenosDeTres() {
   ]);
 }
 
-function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
+function casoDescartaHorariosQueYaEmpezaron() {
   const ahora = new Date('2026-10-07T11:05:01-06:00');
   const elegidos = seleccionarHorariosParaOferta(
     [
@@ -230,7 +231,7 @@ caso1MananaDia1YaPaso();
 caso2SinDia2();
 caso3SinTardeDia1();
 casoMenosDeTres();
-casoDescartaHorariosPasadosConMismoMargenDeModificar();
+casoDescartaHorariosQueYaEmpezaron();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque();
 casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14();

@@ -5,8 +5,8 @@
 //
 // Cubre: disponibilidad del horario nuevo, degradación por fallo de
 // correo, validación de que la cita sea de quien la pide, las dos reglas
-// de coherencia temporal (margen de 5 min al horario destino / check-in
-// de la cita original) y el reintento del aviso de cancelación.
+// de coherencia temporal (destino estrictamente futuro / check-in de la
+// cita original), reinicio de avisos/Meet y reintento de cancelación.
 //
 // Notion, Contactos y Calendar son mocks en memoria. El correo NO: se usa
 // el email.service real con un transporter falso, para poder afirmar
@@ -97,6 +97,11 @@ function crearPagina({
   titulo = 'Cita — DINUS - Platica.mx',
   notasEnvioEmail = '',
   horarioOriginal = null,
+  estadoRecordatorio15min = null,
+  estadoRecordatorio2h = null,
+  googleMeetEventId = null,
+  googleMeetUrl = null,
+  intentosGoogleMeet = 0,
 }) {
   const pagina = {
     id,
@@ -112,6 +117,16 @@ function crearPagina({
       'Notas Envio Email': texto(notasEnvioEmail),
       'Reprogramada Horario Original': { date: horarioOriginal ? { start: horarioOriginal } : null },
       Reprogramada: { checkbox: false },
+      'Estado Recordatorio 15min': { select: estadoRecordatorio15min ? { name: estadoRecordatorio15min } : null },
+      'Fecha Recordatorio 15min': { date: estadoRecordatorio15min ? { start: inicio } : null },
+      'Notas Recordatorio 15min': texto(estadoRecordatorio15min ? 'aviso anterior' : ''),
+      'Estado Recordatorio 2h': { select: estadoRecordatorio2h ? { name: estadoRecordatorio2h } : null },
+      'Fecha Recordatorio 2h': { date: estadoRecordatorio2h ? { start: inicio } : null },
+      'Notas Recordatorio 2h': texto(estadoRecordatorio2h ? 'aviso anterior' : ''),
+      'Google Meet Event ID': texto(googleMeetEventId),
+      'Google Meet URL': { url: googleMeetUrl },
+      'Intentos Google Meet': { number: intentosGoogleMeet },
+      'Notas Google Meet': texto(googleMeetEventId ? 'meet anterior' : ''),
     },
   };
   paginas.set(id, pagina);
@@ -192,13 +207,25 @@ Object.assign(citasReal, {
     const ocupacion = await this.obtenerOcupacionMesasEnBloque({ inicio, exceptPageId });
     return ocupacion.cantidad;
   },
-  async reprogramarCita({ notionPageId, inicio, fin, mesa, horarioOriginal, horarioOriginalYaGuardado }) {
+  async reprogramarCita({ notionPageId, inicio, fin, mesa, horarioOriginal, horarioOriginalYaGuardado, ahora }) {
     const pagina = paginas.get(notionPageId);
     pagina.properties.Estatus = { select: { name: 'Confirmada' } };
     pagina.properties['Fecha y Hora'] = { date: { start: inicio, end: fin } };
     pagina.properties['Mesa / Ubicacion'] = texto(`Mesa ${mesa}`);
     pagina.properties.Reprogramada = { checkbox: true };
     pagina.properties['Notas Envio Email'] = texto('');
+    pagina.properties['Estado Recordatorio 15min'] = { select: null };
+    pagina.properties['Fecha Recordatorio 15min'] = { date: null };
+    pagina.properties['Notas Recordatorio 15min'] = texto('');
+    if (citasReal.debeReiniciarRecordatorio2h(inicio, ahora)) {
+      pagina.properties['Estado Recordatorio 2h'] = { select: null };
+      pagina.properties['Fecha Recordatorio 2h'] = { date: null };
+      pagina.properties['Notas Recordatorio 2h'] = texto('');
+    }
+    pagina.properties['Google Meet Event ID'] = texto('');
+    pagina.properties['Google Meet URL'] = { url: null };
+    pagina.properties['Intentos Google Meet'] = { number: 0 };
+    pagina.properties['Notas Google Meet'] = texto('');
     if (horarioOriginal && !horarioOriginalYaGuardado) {
       pagina.properties['Reprogramada Horario Original'] = { date: { start: horarioOriginal } };
     }
@@ -754,14 +781,17 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T14:00:00-06:00');
   });
 
-  await ok('Son las 11:04 y se pide mover a las 11:00 (4 min) → PERMITIDO', async () => {
-    const r = await modificarCita({
-      citaId: 'cita-margen',
-      nuevaFechaHora: '2026-10-07T11:00:00-06:00',
-      ahora: '2026-10-07T11:04:00-06:00',
-    });
-    assert.strictEqual(r.inicio, '2026-10-07T11:00:00-06:00');
-    assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T11:00:00-06:00');
+  await ok('Son las 11:04 y se pide mover a las 11:00 (4 min) → RECHAZADO', async () => {
+    await assert.rejects(
+      () =>
+        modificarCita({
+          citaId: 'cita-margen',
+          nuevaFechaHora: '2026-10-07T11:00:00-06:00',
+          ahora: '2026-10-07T11:04:00-06:00',
+        }),
+      (e) => e instanceof BookingError && e.code === 'HORARIO_EN_PASADO'
+    );
+    assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T14:00:00-06:00');
   });
 
   await ok('Horario claramente futuro → sin cambios de comportamiento', async () => {
@@ -781,6 +811,11 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
       inicio: '2026-10-07T10:30:00-06:00',
       fin: '2026-10-07T11:00:00-06:00',
       checkIn: false,
+      estadoRecordatorio15min: 'Enviado',
+      estadoRecordatorio2h: 'Enviado',
+      googleMeetEventId: 'meet-event-anterior',
+      googleMeetUrl: 'https://meet.google.com/anterior',
+      intentosGoogleMeet: 1,
     });
     const r = await modificarCita({
       citaId: 'cita-noshow',
@@ -788,6 +823,40 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
       ahora: '2026-10-07T13:00:00-06:00',
     });
     assert.strictEqual(r.inicio, '2026-10-07T16:00:00-06:00');
+    const props = paginas.get('cita-noshow').properties;
+    assert.strictEqual(props['Estado Recordatorio 15min'].select, null);
+    assert.strictEqual(props['Fecha Recordatorio 15min'].date, null);
+    assert.strictEqual(props['Estado Recordatorio 2h'].select, null);
+    assert.strictEqual(props['Fecha Recordatorio 2h'].date, null);
+    assert.deepStrictEqual(props['Google Meet Event ID'].rich_text, []);
+    assert.strictEqual(props['Google Meet URL'].url, null);
+    assert.strictEqual(props['Intentos Google Meet'].number, 0);
+  });
+
+  await ok('No-show a un horario a menos de 2 h → 15 min y Meet sí, 2 h no', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-noshow-cerca',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+      checkIn: false,
+      estadoRecordatorio15min: 'Enviado',
+      estadoRecordatorio2h: 'Enviado',
+      googleMeetEventId: 'meet-event-anterior',
+      googleMeetUrl: 'https://meet.google.com/anterior',
+      intentosGoogleMeet: 1,
+    });
+    const r = await modificarCita({
+      citaId: 'cita-noshow-cerca',
+      nuevaFechaHora: '2026-10-07T14:00:00-06:00',
+      ahora: '2026-10-07T13:00:00-06:00',
+    });
+    assert.strictEqual(r.inicio, '2026-10-07T14:00:00-06:00');
+    const props = paginas.get('cita-noshow-cerca').properties;
+    assert.strictEqual(props['Estado Recordatorio 15min'].select, null);
+    assert.strictEqual(props['Estado Recordatorio 2h'].select.name, 'Enviado');
+    assert.deepStrictEqual(props['Google Meet Event ID'].rich_text, []);
+    assert.strictEqual(props['Intentos Google Meet'].number, 0);
   });
 
   await ok('Cita pasada CON check-in → RECHAZADO, ya ocurrió de verdad', async () => {

@@ -5,8 +5,9 @@
  * Desplegar como esa cuenta. Calendar avanzado + conferenceDataVersion 1.
  * Secret en Script Properties: MEET_VIRTUAL_SECRET
  *
- * Idempotencia: eventId = citaId sin guiones (hex). Un reintento con el
- * mismo citaId no crea otra sala ni otra invitación distinta.
+ * Idempotencia: el backend manda en `citaId` una clave hexadecimal de
+ * fila + horario. Un reintento del mismo horario no duplica; una reagenda
+ * manda otra clave y crea otra sala.
  */
 
 var CALENDAR_ID = 'primary';

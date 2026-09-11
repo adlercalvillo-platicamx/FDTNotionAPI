@@ -83,9 +83,10 @@ vuelta a ISO: copiar los campos exactos de las tools.
 6. Si el correo falla: `exito_parcial` — el horario nuevo sí quedó; no
    digas que el aviso ya salió.
 
-No hay ventana mínima de anticipación sobre la cita original. El destino no
-puede estar más de 5 minutos en el pasado. Una cita original ya pasada solo
-se mueve si `Check-in Realizado` es falso.
+No hay ventana mínima de anticipación sobre la cita original. El destino debe
+ser estrictamente posterior al momento actual. Una cita original ya pasada
+solo se mueve si `Check-in Realizado` es falso. Al mover, se reinicia siempre el recordatorio de 15 min (y el Meet, si
+aplicaba). El de 2 h solo se reinicia si el destino queda a más de 2 h.
 
 ## Reagendar una cancelada (`reservar_cita`)
 
@@ -126,7 +127,9 @@ El Google Meet **no** se crea al reservar ni por el agente. Lo dispara el
 cron de 15 min (`MEET_VIRTUAL_HABILITADO`) para boletos `Virtual`, con
 organizador `rp@fashiondigitaltalks.com`. El recordatorio de WhatsApp incluye
 el link de Meet como `{{3}}`; Google también envía la invitación por correo.
-No prometas un link al confirmar: se crea 15 min antes.
+No prometas un link al confirmar: se crea 15 min antes. El id es por cita +
+horario: reintentos del mismo horario reutilizan la sala; una reprogramación
+genera una sala nueva.
 
 ## Componentes retirados del camino activo
 

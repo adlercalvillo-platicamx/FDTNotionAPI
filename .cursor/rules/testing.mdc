@@ -41,7 +41,7 @@ node tests/notion-429.manual-test.js
 - `followup-72h.manual-test.js`: 71:59 no vence y 72:00 sí; horario CDMX y fin de semana; respuesta recuperada por polling; cita confirmada; simulación sin escrituras; primer nombre; estados En curso/Enviado/Falló; reconciliación sin duplicado.
 - `lastcall.manual-test.js`: 6-oct 09:29 CDMX no abre y 09:30 sí; fuera de horario no consulta Notion; respondió no excluye; Confirmada omite; Cancelada entra; simulación sin escrituras; primer nombre `Ana`; estados En curso/Enviado/Falló; reconciliación de En curso vencido.
 - `recordatorio-cita-15min.manual-test.js`: flag apagado = Virtual usa plantilla presencial y no llama Apps Script; flag on = Meet antes de WhatsApp, ambos invitados, plantilla virtual con `{{3}}` = URL Meet; Meet ya persistido no rellama Calendar; Meet 500 no manda WhatsApp y al 3er intento `Omitido`; sin email → `SIN_EMAIL`.
-- `google-meet-virtual.manual-test.js`: eventId = UUID Notion sin guiones; organizador `rp@fashiondigitaltalks.com`; flag solo con `true`; payload lleva ambos emails.
+- `google-meet-virtual.manual-test.js`: eventId determinista por UUID Notion + horario (mismo horario reusa, otra hora cambia); organizador `rp@fashiondigitaltalks.com`; flag solo con `true`; payload lleva ambos emails.
 - `matchmaking-paginacion.manual-test.js`: `buscarAsistentesCandidatos` concatena 2 páginas (102 VIP); el ranking individual ve `pool-102` y no llama `existeCitaActivaEntre`.
 - `notion-429.manual-test.js`: `notionFetch` reintenta un 429 con `Retry-After: 0` y resuelve en el segundo intento.
 - `global-cache-citas.manual-test.js`: `obtenerParesConCitaActiva` **y** `buscarAsistentesCandidatos` una sola vez por corrida global.
