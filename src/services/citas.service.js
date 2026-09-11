@@ -562,9 +562,12 @@ async function marcarCitaFallida({ notionPageId, motivo }) {
 // MODIFICAR / CANCELAR una cita ya real (27-ago)
 //
 // Verificado contra el schema real de Citas antes de escribir esto:
-//   - "Cancelada" ya existe en el select Estatus, y NO está en
-//     ESTATUS_ACTIVOS ni en los queries de confirmadas → cambiar el
-//     Estatus ya libera el bloque, sin trabajo adicional.
+//   - "Cancelada" ya existe en el select Estatus. No entra en los
+//     queries de confirmadas ni en los conteos de mesa/sponsor →
+//     cambiar el Estatus ya libera el bloque, sin trabajo adicional.
+//     Desde 11-sep SÍ está en ESTATUS_ACTIVOS: el matchmaking no
+//     vuelve a crear un Sugerido de ese par; reagendar usa
+//     cita_origen_cancelada_id.
 //   - "Check-in Realizado" (checkbox) y "Reprogramada" /
 //     "Reprogramada Horario Original" ya existen — los agregó Luis y
 //     hasta hoy nadie los leía desde el backend.
@@ -1137,6 +1140,61 @@ function formatearCitaConfirmadaAsistente(cita) {
   };
 }
 
+/**
+ * Lista que el Agente 2 ofrece al preguntar por sugerencias: primero las
+ * canceladas que aún se pueden reagendar, luego Aprobado. Un sponsor con
+ * cita real activa no se vuelve a ofrecer. Tope lo aplica el llamador.
+ */
+function armarSugeridasParaOfrecer({ sugeridas, citasCanceladas, citasConfirmadas } = {}) {
+  const sponsorsConfirmados = new Set(
+    (citasConfirmadas || [])
+      .map((cita) => pageIdCanonico(cita.sponsor_notion_id || cita.sponsorPageId))
+      .filter(Boolean)
+  );
+  const vistos = new Set();
+  const mezcladas = [];
+
+  const meter = (item, sponsorId) => {
+    const clave = pageIdCanonico(sponsorId);
+    if (clave) {
+      if (sponsorsConfirmados.has(clave) || vistos.has(clave)) return;
+      vistos.add(clave);
+    }
+    mezcladas.push(item);
+  };
+
+  for (const cita of citasCanceladas || []) {
+    meter(
+      {
+        estatus: 'Cancelada',
+        para_reagendar: true,
+        citaId: cita.citaId || cita.id,
+        sponsor_notion_id: cita.sponsor_notion_id || cita.sponsorPageId || null,
+        sponsor_nombre: cita.sponsorNombre || cita.sponsor_nombre || null,
+        sponsor_empresa: cita.sponsorEmpresa || cita.sponsor_empresa || cita.sponsorNombre || null,
+        fechaHora: cita.fechaHora || cita.inicio || null,
+      },
+      cita.sponsor_notion_id || cita.sponsorPageId
+    );
+  }
+
+  for (const sugerida of sugeridas || []) {
+    meter(
+      {
+        ...sugerida,
+        para_reagendar: false,
+        citaId: sugerida.citaId || sugerida.cita_page_id || null,
+        sponsor_notion_id: sugerida.sponsor_notion_id || null,
+        sponsor_nombre: sugerida.sponsor_nombre || sugerida.sponsorNombre || null,
+        sponsor_empresa: sugerida.sponsor_empresa || sugerida.sponsorEmpresa || null,
+      },
+      sugerida.sponsor_notion_id
+    );
+  }
+
+  return mezcladas;
+}
+
 function filtrarCanceladasReagendables(canceladas, citasReales) {
   const origenesYaConsumidos = new Set(
     [...(citasReales || []), ...(canceladas || [])]
@@ -1572,6 +1630,9 @@ async function marcarCitaAprobada(notionPageId) {
  * matchmaking individual volvería a sugerir el mismo par.
  * DECISIÓN (23 de agosto): "Rechazado" también bloquea el par. Conserva el
  * historial y solo vuelve a evaluarse si un humano cambia el Estatus.
+ * DECISIÓN (11 de septiembre, Adler): "Cancelada" también bloquea. No se
+ * vuelve a crear un Sugerido del mismo par; reagendar usa la fila
+ * cancelada (`cita_origen_cancelada_id`), no matchmaking.
  */
 async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
   requireDataSourceId();
@@ -1590,6 +1651,7 @@ async function existeCitaActivaEntre({ sponsorPageId, asistentePageId }) {
               { property: 'Estatus', select: { equals: 'Confirmada sin notificar' } },
               { property: 'Estatus', select: { equals: 'Pendiente Calendar' } },
               { property: 'Estatus', select: { equals: 'Rechazado' } },
+              { property: 'Estatus', select: { equals: 'Cancelada' } },
             ],
           },
         ],
@@ -1627,6 +1689,7 @@ const ESTATUS_ACTIVOS = [
   'Confirmada sin notificar',
   'Pendiente Calendar',
   'Rechazado',
+  'Cancelada',
 ];
 
 /**
@@ -2137,6 +2200,7 @@ module.exports = {
   formatearSugerenciaAprobada,
   formatearCitaConfirmadaAsistente,
   filtrarCanceladasReagendables,
+  armarSugeridasParaOfrecer,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,

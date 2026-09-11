@@ -369,8 +369,11 @@ async function ok(nombre, fn) {
     assert.strictEqual(body.canceladas_para_ofrecer.length, 3);
     assert.strictEqual(body.canceladas_para_ofrecer[0].citaId, 'cita-cancelada-1');
     assert.strictEqual(body.hay_mas_canceladas, true);
-    assert.strictEqual(body.sugeridas_para_ofrecer.length, 1);
-    assert.strictEqual(body.hay_mas_sugeridas, false);
+    assert.strictEqual(body.sugeridas_para_ofrecer.length, 4);
+    assert.ok(body.sugeridas_para_ofrecer.every((s) => s.para_reagendar === true));
+    assert.strictEqual(body.sugeridas_para_ofrecer[0].citaId, 'cita-cancelada-1');
+    assert.strictEqual(body.hay_mas_sugeridas, true);
+    assert.ok(body.sponsors_para_agendar.some((s) => s.para_reagendar === false));
     assert.ok(!JSON.stringify(body).includes('calendarioGoogleId'));
     assert.ok(!JSON.stringify(body).includes('sponsor_calendario_id'));
   });
@@ -382,12 +385,16 @@ async function ok(nombre, fn) {
       sugeridas: [1, 2, 3, 4].map((n) => ({
         cita_page_id: `sug-${n}`,
         estatus: 'Aprobado',
+        sponsor_notion_id: `sponsor-aprobado-${n}`,
         sponsor_empresa: `Empresa ${n}`,
       })),
+      citasConfirmadas: [],
+      citasCanceladas: [],
     });
     const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
     assert.strictEqual(body.sugeridas_para_ofrecer.length, 4);
     assert.strictEqual(body.hay_mas_sugeridas, false);
+    assert.ok(body.sugeridas_para_ofrecer.every((s) => s.para_reagendar === false));
     assert.ok(body.aviso.includes('máximo 4'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
@@ -399,12 +406,56 @@ async function ok(nombre, fn) {
       sugeridas: [1, 2, 3, 4, 5].map((n) => ({
         cita_page_id: `sug-${n}`,
         estatus: 'Aprobado',
+        sponsor_notion_id: `sponsor-aprobado-${n}`,
         sponsor_empresa: `Empresa ${n}`,
       })),
+      citasConfirmadas: [],
+      citasCanceladas: [],
     });
     const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
     assert.strictEqual(body.sugeridas_para_ofrecer.length, 4);
     assert.strictEqual(body.hay_mas_sugeridas, true);
+    citasService.consultarSugeridasPorIdentificador = previa;
+  });
+
+  await ok('canceladas van primero en sugeridas_para_ofrecer y no pisan un Confirmada', async () => {
+    const previa = citasService.consultarSugeridasPorIdentificador;
+    citasService.consultarSugeridasPorIdentificador = async (args) => ({
+      ...(await previa(args)),
+      sugeridas: [
+        {
+          cita_page_id: 'sug-nueva',
+          estatus: 'Aprobado',
+          sponsor_notion_id: 'sponsor-nuevo',
+          sponsor_empresa: 'Nueva Co',
+        },
+        {
+          cita_page_id: 'sug-platica',
+          estatus: 'Aprobado',
+          sponsor_notion_id: 'sponsor-platica',
+          sponsor_empresa: 'Platica.mx',
+        },
+      ],
+      citasConfirmadas: [{ citaId: 'cita-ok', sponsor_notion_id: 'sponsor-platica' }],
+      citasCanceladas: [
+        {
+          citaId: 'cita-cancelada-revie',
+          sponsor_notion_id: 'sponsor-revie',
+          sponsorNombre: 'Renata Raya',
+          sponsorEmpresa: 'Revie',
+          estatus: 'Cancelada',
+        },
+      ],
+    });
+    const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
+    assert.deepStrictEqual(
+      body.sugeridas_para_ofrecer.map((s) => s.sponsor_notion_id),
+      ['sponsor-revie', 'sponsor-nuevo']
+    );
+    assert.strictEqual(body.sugeridas_para_ofrecer[0].para_reagendar, true);
+    assert.strictEqual(body.sugeridas_para_ofrecer[0].citaId, 'cita-cancelada-revie');
+    assert.strictEqual(body.sugeridas_para_ofrecer[1].para_reagendar, false);
+    assert.ok(!body.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === 'sponsor-platica'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
@@ -416,6 +467,7 @@ async function ok(nombre, fn) {
     assert.ok(bloque, 'debe existir la tool');
     assert.ok(bloque[0].includes('citasConfirmadas'));
     assert.ok(bloque[0].includes('Aprobado'));
+    assert.ok(bloque[0].includes('para_reagendar'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });

@@ -55,12 +55,20 @@ async function main() {
     filtroIndividual.some((condicion) => condicion.property === 'Estatus' && condicion.select?.equals === 'Rechazado'),
     'existeCitaActivaEntre debe incluir Estatus=Rechazado'
   );
+  assert.ok(
+    filtroIndividual.some((condicion) => condicion.property === 'Estatus' && condicion.select?.equals === 'Cancelada'),
+    'existeCitaActivaEntre debe incluir Estatus=Cancelada'
+  );
 
   const pares = await citasService.obtenerParesConCitaActiva();
   const filtroCache = cuerpos[1].filter.or;
   assert.ok(
     filtroCache.some((condicion) => condicion.property === 'Estatus' && condicion.select?.equals === 'Rechazado'),
     'ESTATUS_ACTIVOS debe incluir Rechazado'
+  );
+  assert.ok(
+    filtroCache.some((condicion) => condicion.property === 'Estatus' && condicion.select?.equals === 'Cancelada'),
+    'ESTATUS_ACTIVOS debe incluir Cancelada'
   );
   assert.strictEqual(
     citasService.existeCitaActivaEntreEnCache(pares, {
@@ -70,7 +78,7 @@ async function main() {
     true
   );
 
-  console.log('✅ Rechazado bloquea el par en consulta individual y caché global.');
+  console.log('✅ Rechazado y Cancelada bloquean el par en consulta individual y caché global.');
 }
 
 main().catch((err) => {
