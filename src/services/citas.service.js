@@ -25,9 +25,9 @@ const {
 } = require('../utils/estado-envio-campana');
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
-// Tolerancia que usa modificar-cita para aceptar un destino que acaba de
-// empezar (reloj del cliente, latencia de WhatsApp). NO aplica a lo que se
-// ofrece: `esHorarioOfrecible` solo propone bloques futuros (Adler, 11-sep).
+// Un bloque que acaba de empezar sigue contando como válido (reloj del
+// cliente, latencia de WhatsApp). Mismo umbral al ofrecer y al escribir:
+// a los 11:04 aún se ofrece/acepta las 11:00; a los 11:06 ya no.
 const MARGEN_MODIFICACION_MINUTOS = Number(
   process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5
 );
@@ -1797,10 +1797,13 @@ function finDeBloque(inicioIso) {
   return `${fecha}T${h}:${min}:00${zona}`;
 }
 
-function armarBloqueDisponibilidad({ inicio, sponsorOcupado, citasEnBloque, asistenteOcupado }) {
+function armarBloqueDisponibilidad({ inicio, sponsorOcupado, citasEnBloque, asistenteOcupado, ahora }) {
   const mesas_ocupadas = citasEnBloque;
   const mesas_libres = Math.max(0, CAPACIDAD_MAXIMA_MESAS - citasEnBloque);
   const fin = finDeBloque(inicio);
+  if (!esHorarioOfrecible(inicio, ahora)) {
+    return { inicio, fin, disponible: false, motivo: 'HORARIO_EN_PASADO', mesas_ocupadas, mesas_libres };
+  }
   if (sponsorOcupado) {
     return { inicio, fin, disponible: false, motivo: 'SPONSOR_YA_OCUPADO', mesas_ocupadas, mesas_libres };
   }
@@ -1898,7 +1901,7 @@ function esHorarioOfrecible(inicio, ahora = new Date()) {
   const inicioMs = new Date(inicio).getTime();
   const ahoraMs = ahora instanceof Date ? ahora.getTime() : new Date(ahora).getTime();
   if (!Number.isFinite(inicioMs) || !Number.isFinite(ahoraMs)) return false;
-  return inicioMs > ahoraMs;
+  return inicioMs >= ahoraMs - MARGEN_MODIFICACION_MINUTOS * 60 * 1000;
 }
 
 function fechaDeInicio(inicio) {

@@ -42,12 +42,12 @@ const emailService = require('./email.service');
 const { UBICACION_ICS_EVENTO } = require('../utils/sede-evento');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
-// Tolerancia sobre qué tan "pasado" puede estar el horario DESTINO de una
-// modificación (Adler, 27-ago). NO es un colchón de anticipación sobre la
-// cita original: esa se puede mover o cancelar 5 minutos antes sin
-// problema. Hace falta explícito porque un bloque que ya pasó aparece
-// "libre" en disponibilidad (nada lo está ocupando) y sin esta regla se
-// podría mover una cita a un horario que ya ocurrió.
+// Tolerancia sobre qué tan "pasado" puede estar un bloque (Adler, 27-ago;
+// unificado 11-sep: misma regla al ofrecer y al escribir). A las 11:06 ya
+// no se ofrece ni se reserva/mueve a las 11:00; a las 11:04 sí. NO es un
+// colchón de anticipación sobre la cita original: esa se puede mover o
+// cancelar 5 minutos antes sin problema. Hace falta explícito porque un
+// bloque que ya pasó aparece "libre" en ocupación (nada lo está ocupando).
 const MARGEN_MODIFICACION_MINUTOS = citasService.MARGEN_MODIFICACION_MINUTOS;
 // Texto pendiente de afinar con Sam. La limitación es real y no se oculta:
 // Gmail/Outlook procesan bien el .ics de actualización/cancelación, otros
@@ -511,6 +511,7 @@ async function validarOrigenDeReagenda({
  * @param {string} [params.titulo]
  * @param {string} [params.descripcion]         - ya no alimenta el correo (descripción auto); se conserva en la firma por compatibilidad
  * @param {string[]} [params.asistentes_email]  - emails extra (se suman a Contactos)
+ * @param {string|number|Date} [params.ahora] - solo para tests; default Date.now()
  */
 async function reservarCita({
   sponsor_calendario_id: _sponsorCalendarioId, // eslint-disable-line no-unused-vars -- legado 27-ago
@@ -524,6 +525,7 @@ async function reservarCita({
   titulo,
   descripcion, // eslint-disable-line no-unused-vars -- firma pública; descripción real = auto desde Contactos
   asistentes_email,
+  ahora,
 }) {
   if (!request_id) {
     throw new BookingError('INVALID_INPUT', '"request_id" es requerido (clave de idempotencia)');
@@ -544,6 +546,15 @@ async function reservarCita({
   if (existenteFuera) {
     const interp = interpretarFilaIdempotente(existenteFuera);
     if (!interp.reanudar) return interp.resultado;
+  }
+
+  // Misma regla que disponibilidad / modificar-cita. Después del lookup
+  // de idempotencia: un reintento de una Confirmada ya hecha no se
+  // rechaza solo porque el bloque ya empezó.
+  const inicioMs = Date.parse(inicio);
+  const ahoraMs = ahora ? new Date(ahora).getTime() : Date.now();
+  if (Number.isFinite(inicioMs)) {
+    requerirHorarioNoPasado(inicioMs, ahoraMs);
   }
 
   // A partir de aquí, todo corre serializado. Es la sección crítica completa:

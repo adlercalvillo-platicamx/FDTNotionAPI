@@ -515,7 +515,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada. Devuelve como máximo 3 opciones (opciones_para_ofrecer) en el mismo orden; nunca listes más ni reordenes. Sin fecha: casillas Día 1 Mañana / Día 1 Tarde / Día 2. Con fecha: solo ese día. Si el usuario pide una hora concreta (ej. las 15:00), PASA hora=15:00 y fecha si dijo el día — no niegues esa hora solo porque no salía en las 3 casillas; mira horario_solicitado. Si hay_mas=true y pide otras horas, excluirInicios. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Foto: reservar_cita / modificar_cita revalidan. También al reagendar.',
+    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada y bloques que ya superaron CITAS_MARGEN_MODIFICACION_MINUTOS (5 min). Devuelve como máximo 3 opciones (opciones_para_ofrecer) en el mismo orden; nunca listes más ni reordenes. Sin fecha: casillas Día 1 Mañana / Día 1 Tarde / Día 2. Con fecha: solo ese día. Si el usuario pide una hora concreta (ej. las 15:00), PASA hora=15:00 y fecha si dijo el día — no niegues esa hora solo porque no salía en las 3 casillas; mira horario_solicitado. Si hay_mas=true y pide otras horas, excluirInicios. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Foto: reservar_cita / modificar_cita revalidan el mismo umbral. También al reagendar.',
     {
       sponsorPageId: z
         .string()

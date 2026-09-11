@@ -61,13 +61,12 @@ function caso1MananaDia1YaPaso() {
     3,
     { ahora }
   );
-  assert.deepStrictEqual(iniciosDe(elegidos), [
-    '2026-10-08T14:00:00-06:00',
-    '2026-10-07T15:30:00-06:00',
-    '2026-10-08T09:00:00-06:00',
-  ]);
-  assert.ok(!iniciosDe(elegidos).includes('2026-10-07T15:00:00-06:00'), 'nunca ofrece el bloque que ya empezó');
-  assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
+    assert.deepStrictEqual(iniciosDe(elegidos), [
+      '2026-10-07T15:30:00-06:00',
+      '2026-10-07T15:00:00-06:00',
+      '2026-10-08T09:00:00-06:00',
+    ]);
+    assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
 }
 
 function caso2SinDia2() {
@@ -111,7 +110,7 @@ function casoMenosDeTres() {
   ]);
 }
 
-function casoDescartaHorariosQueYaEmpezaron() {
+function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
   const ahora = new Date('2026-10-07T11:05:01-06:00');
   const elegidos = seleccionarHorariosParaOferta(
     [
@@ -127,6 +126,41 @@ function casoDescartaHorariosQueYaEmpezaron() {
     '2026-10-07T11:30:00-06:00',
     '2026-10-07T14:00:00-06:00',
   ]);
+}
+
+function casoDentroDelMargenAunSeOfrece() {
+  const ahora = new Date('2026-10-07T11:04:00-06:00');
+  const elegidos = seleccionarHorariosParaOferta(
+    [
+      bloque('2026-10-07T11:00:00-06:00'),
+      bloque('2026-10-07T11:30:00-06:00'),
+      bloque('2026-10-07T14:00:00-06:00'),
+    ],
+    3,
+    { ahora }
+  );
+  assert.ok(iniciosDe(elegidos).includes('2026-10-07T11:00:00-06:00'));
+}
+
+function casoFotoDisponibilidadMarcaPasado() {
+  const pasado = armarBloqueDisponibilidad({
+    inicio: '2026-10-07T11:00:00-06:00',
+    sponsorOcupado: false,
+    asistenteOcupado: false,
+    citasEnBloque: 0,
+    ahora: '2026-10-07T11:06:00-06:00',
+  });
+  assert.strictEqual(pasado.disponible, false);
+  assert.strictEqual(pasado.motivo, 'HORARIO_EN_PASADO');
+
+  const dentro = armarBloqueDisponibilidad({
+    inicio: '2026-10-07T11:00:00-06:00',
+    sponsorOcupado: false,
+    asistenteOcupado: false,
+    citasEnBloque: 0,
+    ahora: '2026-10-07T11:04:00-06:00',
+  });
+  assert.strictEqual(dentro.disponible, true);
 }
 
 function casoDisponibilidadDelSponsorTopNoCruzaConOtros() {
@@ -231,7 +265,9 @@ caso1MananaDia1YaPaso();
 caso2SinDia2();
 caso3SinTardeDia1();
 casoMenosDeTres();
-casoDescartaHorariosQueYaEmpezaron();
+casoDescartaHorariosPasadosConMismoMargenDeModificar();
+casoDentroDelMargenAunSeOfrece();
+casoFotoDisponibilidadMarcaPasado();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque();
 casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14();

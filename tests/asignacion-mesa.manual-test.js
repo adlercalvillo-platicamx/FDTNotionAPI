@@ -523,6 +523,57 @@ function baseParams(overrides = {}) {
     );
   });
 
+  console.log('\n=== Horario ya empezó (mismo margen de 5 min que disponibilidad) ===');
+  await ok('Son las 11:06 y se pide reservar las 11:00 → HORARIO_EN_PASADO', async () => {
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: 's-pasado',
+            request_id: 'req-pasado-6min',
+            inicio: '2026-10-07T11:00:00-06:00',
+            fin: '2026-10-07T11:30:00-06:00',
+            ahora: '2026-10-07T11:06:00-06:00',
+          })
+        ),
+      (e) => e instanceof BookingError && e.code === 'HORARIO_EN_PASADO'
+    );
+  });
+
+  await ok('Son las 11:04 y se pide reservar las 11:00 → PERMITIDO', async () => {
+    const r = await reservarCita(
+      baseParams({
+        sponsor: 's-margen',
+        request_id: 'req-margen-4min',
+        inicio: '2026-10-07T11:00:00-06:00',
+        fin: '2026-10-07T11:30:00-06:00',
+        ahora: '2026-10-07T11:04:00-06:00',
+      })
+    );
+    assert.strictEqual(r.estado, 'Confirmada');
+  });
+
+  await ok('Reintento de una Confirmada no se rechaza aunque el bloque ya pasó', async () => {
+    estado.seedConfirmada({
+      id: 'ya-ok',
+      sponsor: 's-ya',
+      inicio: '2026-10-07T11:00:00-06:00',
+      mesa: 3,
+      requestId: 'req-ya-existia-pasado',
+    });
+    const r = await reservarCita(
+      baseParams({
+        sponsor: 's-ya',
+        request_id: 'req-ya-existia-pasado',
+        inicio: '2026-10-07T11:00:00-06:00',
+        fin: '2026-10-07T11:30:00-06:00',
+        ahora: '2026-10-07T12:00:00-06:00',
+      })
+    );
+    assert.strictEqual(r.ya_existia, true);
+    assert.strictEqual(r.estado, 'Confirmada');
+  });
+
   console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);
   process.exit(fallos === 0 ? 0 : 1);
 })();
