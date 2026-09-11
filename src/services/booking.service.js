@@ -48,6 +48,7 @@ const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas 
 // problema. Hace falta explícito porque un bloque que ya pasó aparece
 // "libre" en disponibilidad (nada lo está ocupando) y sin esta regla se
 // podría mover una cita a un horario que ya ocurrió.
+const MARGEN_MODIFICACION_MINUTOS = citasService.MARGEN_MODIFICACION_MINUTOS;
 // Texto pendiente de afinar con Sam. La limitación es real y no se oculta:
 // Gmail/Outlook procesan bien el .ics de actualización/cancelación, otros
 // clientes menos comunes pueden no reaccionar.
@@ -1065,12 +1066,14 @@ function requerirQueNoHayaOcurrido(cita, ahoraMs) {
   );
 }
 
-/** Regla 1 (Adler, 11-sep): el horario destino debe ser posterior al momento actual. */
-function requerirHorarioFuturo(nuevoInicioMs, ahoraMs) {
-  if (nuevoInicioMs <= ahoraMs) {
+/** Regla 1: el horario destino no puede estar más de MARGEN_MODIFICACION_MINUTOS en el pasado. */
+function requerirHorarioNoPasado(nuevoInicioMs, ahoraMs) {
+  const minutosEnPasado = (ahoraMs - nuevoInicioMs) / 60000;
+  if (minutosEnPasado > MARGEN_MODIFICACION_MINUTOS) {
     throw new BookingError(
       'HORARIO_EN_PASADO',
-      'El horario nuevo ya empezó o quedó en el pasado; elige un horario posterior al momento actual.'
+      `El horario nuevo ya pasó hace ${Math.round(minutosEnPasado)} minutos. ` +
+        `Solo se acepta un margen de ${MARGEN_MODIFICACION_MINUTOS} minutos hacia atrás; elige un horario posterior.`
     );
   }
 }
@@ -1183,7 +1186,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
   const { cita } = await resolverCitaObjetivo({ telefono, citaId, sponsorEmpresa });
   requerirCitaReal(cita, 'modificar');
   requerirQueNoHayaOcurrido(cita, ahoraMs);
-  requerirHorarioFuturo(nuevoInicioMs, ahoraMs);
+  requerirHorarioNoPasado(nuevoInicioMs, ahoraMs);
 
   const fin = citasService.finDeBloque(inicio);
   validarDuracionYFecha(inicio, fin);
@@ -1373,6 +1376,7 @@ module.exports = {
   resolverNotificacionCita,
   BookingError,
   validarDuracionYFecha,
+  MARGEN_MODIFICACION_MINUTOS,
   NOTA_CALENDARIO,
   NOTA_CALENDARIO_ACTUALIZAR,
   NOTA_CALENDARIO_CANCELAR,

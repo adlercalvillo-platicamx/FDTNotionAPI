@@ -30,7 +30,8 @@ No se tocaron tools, knowledge ni guardrails.
 Backend:
 
 - `modificarCita` conserva la regla: una cita pasada se mueve solo sin
-  check-in. El destino ahora debe ser estrictamente futuro.
+  check-in. El destino sigue con el margen de
+  `CITAS_MARGEN_MODIFICACION_MINUTOS` (5 min) — ver corrección abajo.
 - `reprogramarCita` limpia siempre 15 min + Meet. El de 2 h solo si el
   destino queda a más de 2 horas.
 - El Event ID de Meet es determinista por fila + horario. Reintentar la
@@ -80,7 +81,33 @@ Todo lo anterior es con mocks. No se hizo un reagendamiento real.
   campos en Notion + los dos crons). Requiere ok de Adler y destinatarios
   SMTP en allowlist: `modificar_cita` manda correo a sponsor y asistente.
 - Encender Meet en Coolify tras prueba nombrada (Luis / Adler).
-- `CITAS_MARGEN_MODIFICACION_MINUTOS` quedó sin uso en el código; se puede
-  borrar de Coolify y del `.env` local (ya salió de `.env.example`).
 - `reservar_cita` sigue sin rechazar Expo en código; el filtro está en el
   prompt y en matchmaking.
+- `reservar_cita` no valida que el horario esté en el futuro (nunca lo hizo);
+  solo `modificar-cita` tiene esa regla. Si importa, decidirlo aparte.
+
+## Corrección 11-sep — el margen de 5 min se queda
+
+Adler pidió que **sugerir** solo ofreciera horarios posteriores al actual.
+En `920f8d0` extendí eso a la validación de escritura y borré
+`CITAS_MARGEN_MODIFICACION_MINUTOS`; eso nadie lo pidió.
+
+Revertido: `modificar-cita` vuelve a aceptar un destino hasta 5 min en el
+pasado (`requerirHorarioNoPasado`, env configurable, default 5). Es
+tolerancia de reloj y latencia de WhatsApp, no un horario que el agente
+ofrezca. La oferta (`esHorarioOfrecible`, disponibilidad y casillas) **sí**
+queda estricta en `inicio > ahora`, que era el pedido original.
+
+Efecto operativo: la variable **sí se lee**, no la borres de Coolify ni del
+`.env` local. Si falta, el default es 5.
+
+| Camino | Regla |
+|---|---|
+| Ofrecer horarios (disponibilidad, MCP, casillas) | solo `inicio > ahora` |
+| Escribir `modificar-cita` | destino ≥ ahora − 5 min |
+
+Evidencia: `node tests/modificar-cancelar-cita.manual-test.js` (11:04 → 11:00
+PERMITIDO, 11:06 → 11:00 `HORARIO_EN_PASADO`) y
+`node tests/horarios-oferta.manual-test.js`, ambos pasando. El mensaje de
+error vuelve a ser "ya pasó hace N minutos", así que el probe post-redeploy
+de arriba ya no sirve como huella del build; usa el `git log`.

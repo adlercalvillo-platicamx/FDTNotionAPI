@@ -83,8 +83,9 @@ vuelta a ISO: copiar los campos exactos de las tools.
 6. Si el correo falla: `exito_parcial` — el horario nuevo sí quedó; no
    digas que el aviso ya salió.
 
-No hay ventana mínima de anticipación sobre la cita original. El destino debe
-ser estrictamente posterior al momento actual. Una cita original ya pasada
+No hay ventana mínima de anticipación sobre la cita original. El agente solo
+ofrece bloques futuros; el servidor además tolera un destino que acabe de
+empezar (`CITAS_MARGEN_MODIFICACION_MINUTOS`, 5 min). Una cita original ya pasada
 solo se mueve si `Check-in Realizado` es falso. Al mover, se reinicia siempre el recordatorio de 15 min (y el Meet, si
 aplicaba). El de 2 h solo se reinicia si el destino queda a más de 2 h.
 

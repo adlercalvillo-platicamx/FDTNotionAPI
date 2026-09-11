@@ -781,17 +781,14 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T14:00:00-06:00');
   });
 
-  await ok('Son las 11:04 y se pide mover a las 11:00 (4 min) → RECHAZADO', async () => {
-    await assert.rejects(
-      () =>
-        modificarCita({
-          citaId: 'cita-margen',
-          nuevaFechaHora: '2026-10-07T11:00:00-06:00',
-          ahora: '2026-10-07T11:04:00-06:00',
-        }),
-      (e) => e instanceof BookingError && e.code === 'HORARIO_EN_PASADO'
-    );
-    assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T14:00:00-06:00');
+  await ok('Son las 11:04 y se pide mover a las 11:00 (4 min) → PERMITIDO', async () => {
+    const r = await modificarCita({
+      citaId: 'cita-margen',
+      nuevaFechaHora: '2026-10-07T11:00:00-06:00',
+      ahora: '2026-10-07T11:04:00-06:00',
+    });
+    assert.strictEqual(r.inicio, '2026-10-07T11:00:00-06:00');
+    assert.strictEqual(inicioDe('cita-margen'), '2026-10-07T11:00:00-06:00');
   });
 
   await ok('Horario claramente futuro → sin cambios de comportamiento', async () => {

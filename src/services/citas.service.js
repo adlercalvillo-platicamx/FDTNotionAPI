@@ -25,6 +25,13 @@ const {
 } = require('../utils/estado-envio-campana');
 
 const CITAS_DATA_SOURCE_ID = process.env.NOTION_CITAS_DATA_SOURCE_ID;
+// Tolerancia que usa modificar-cita para aceptar un destino que acaba de
+// empezar (reloj del cliente, latencia de WhatsApp). NO aplica a lo que se
+// ofrece: `esHorarioOfrecible` solo propone bloques futuros (Adler, 11-sep).
+const MARGEN_MODIFICACION_MINUTOS = Number(
+  process.env.CITAS_MARGEN_MODIFICACION_MINUTOS || 5
+);
+
 // Contacto ficticio "Bloqueo de Agenda (Programa del Evento)" — las filas
 // Confirmada sin notificar que lo tienen en Contacto Principal ocupan al
 // sponsor (conferencia/conversatorio) pero NO restan de las 11 mesas.
@@ -2156,6 +2163,7 @@ module.exports = {
   esHorarioOfrecible,
   horaDeInicio,
   normalizarHoraPedido,
+  MARGEN_MODIFICACION_MINUTOS,
   MINUTOS_RECORDATORIO_2H,
   debeReiniciarRecordatorio2h,
   formatearHorarioLegible,
