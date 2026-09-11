@@ -369,8 +369,12 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(Number(campoIcs(ics, 'SEQUENCE')) > 0, 'SEQUENCE debe superar el 0 del envío original');
     assert.strictEqual(campoIcs(ics, 'DTSTART'), '20261007T180000Z', '12:00 -06:00 = 18:00Z');
     assert.ok(icsPlano.includes('Club France'), 'LOCATION del .ics es la sede, no la mesa');
-    assert.ok(icsPlano.includes('Tu cita será en la mesa 1.'));
+    assert.ok(icsPlano.includes('Mesa: 1'));
     assert.ok(correos[0].subject.startsWith('Cambio de horario —'));
+    assert.strictEqual(
+      correos[1].subject,
+      'Actualización de horario | Tu cita en Fashion Digital Talks'
+    );
 
     const textoSponsor = correos[0].text;
     const textoAsistente = correos[1].text;
@@ -385,12 +389,43 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
     assert.ok(textoSponsor.includes('Ana Dinus'));
     assert.ok(textoSponsor.includes('ana@dinus.test'));
-    assert.ok(textoAsistente.includes('El espacio con Platica.mx ahora es:'));
-    assert.ok(textoAsistente.includes('Tu cita será en la mesa 1.'));
-    assert.ok(textoAsistente.includes('Club France'));
+    assert.ok(textoAsistente.includes('Hola Ana, te confirmo el cambio de horario de cita con Sam Sponsor de Platica.mx'));
+    assert.ok(textoAsistente.includes('📅 Fecha: miércoles 7 de octubre'));
+    assert.ok(textoAsistente.includes('🕐 Nuevo horario: 12:00 h'));
+    assert.ok(textoAsistente.includes('📍 Mesa: 1'));
+    assert.ok(textoAsistente.includes('Club France | Francia 75-Interior'));
+    assert.ok(textoAsistente.includes('aprovechar al máximo los 20 minutos'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
-    assert.ok(!textoAsistente.includes('Sam Sponsor'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));
+  });
+
+  await ok('Notion en mayúsculas → Hola con primer nombre Title Case', async () => {
+    const nombreAsistenteOriginal = CONTACTOS[ASISTENTE_DINUS].nombre;
+    const nombreSponsorOriginal = CONTACTOS[SPONSOR_PLATICA].nombre;
+    paginas.clear();
+    CONTACTOS[ASISTENTE_DINUS].nombre = 'ANA MARIA PEREZ LOPEZ';
+    CONTACTOS[SPONSOR_PLATICA].nombre = 'LAURA ERRE GONZALEZ';
+    try {
+      crearPagina({
+        id: 'cita-nombres',
+        inicio: '2026-10-07T10:30:00-06:00',
+        fin: '2026-10-07T11:00:00-06:00',
+      });
+      const r = await modificarCita({
+        citaId: 'cita-nombres',
+        nuevaFechaHora: '2026-10-07T14:00:00-06:00',
+        ahora: AHORA_ANTES_DEL_EVENTO,
+      });
+      assert.strictEqual(r.estado, 'Confirmada');
+      const textoAsistente = correos[1].text;
+      assert.ok(textoAsistente.startsWith('Hola Ana, te confirmo el cambio de horario de cita con Laura Erre de Platica.mx'));
+      assert.ok(textoAsistente.includes('🕐 Nuevo horario: 14:00 h'));
+      assert.ok(!textoAsistente.includes('ANA MARIA'));
+      assert.ok(!textoAsistente.includes('Gonzalez'));
+    } finally {
+      CONTACTOS[ASISTENTE_DINUS].nombre = nombreAsistenteOriginal;
+      CONTACTOS[SPONSOR_PLATICA].nombre = nombreSponsorOriginal;
+    }
   });
 
   await ok('Dos modificaciones seguidas → SEQUENCE estrictamente creciente', async () => {
@@ -586,6 +621,11 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(correos[0].subject.startsWith('Cambio de horario —'));
     assert.ok(correos[0].text.includes('cambió de horario'));
     assert.ok(!correos[0].text.includes('está confirmada'));
+    assert.strictEqual(
+      correos[1].subject,
+      'Actualización de horario | Tu cita en Fashion Digital Talks'
+    );
+    assert.ok(correos[1].text.includes('Hola Ana, te confirmo el cambio de horario'));
   });
 
   console.log('\n=== Cancelar ===');
@@ -605,6 +645,7 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(ics.includes('Club France'), 'el .ics de baja conserva la sede');
     assert.strictEqual(correos[0].icalEvent.method, 'CANCEL');
     assert.ok(correos[0].subject.startsWith('Cita cancelada —'));
+    assert.strictEqual(correos[1].subject, 'CANCELACIÓN DE CITA');
 
     const textoSponsor = correos[0].text;
     const textoAsistente = correos[1].text;
@@ -616,11 +657,12 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(textoSponsor.includes('Datos de contacto del asistente'));
     assert.ok(textoSponsor.includes('Ana Dinus'));
     assert.ok(textoSponsor.includes('ana@dinus.test'));
-    assert.ok(textoAsistente.includes('con Platica.mx fue cancelada'));
+    assert.ok(textoAsistente.includes('Hola Ana, confirmo la cancelación de tu cita con Sam Sponsor de Platica.mx'));
+    assert.ok(!textoAsistente.includes('en con'));
+    assert.ok(textoAsistente.includes('abre el archivo .ics adjunto'));
+    assert.ok(textoAsistente.includes('+52 33 3236 1963'));
     assert.ok(!textoAsistente.includes('Tu cita será en la mesa'));
-    assert.ok(!textoAsistente.includes('Club France'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
-    assert.ok(!textoAsistente.includes('Sam Sponsor'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));
 
     const enBloque = await citasReal.contarCitasEnBloque({ inicio: '2026-10-07T10:30:00-06:00' });

@@ -43,6 +43,7 @@ class EmailError extends Error {
 
 function crearHarness({
   emailsPorId = {},
+  contactosPorId = {},
   emailFailCategoria = null,
   emailFailTimes = null, // si number: falla N veces y luego OK; si null + categoria: siempre falla
   emailCalls = [],
@@ -251,14 +252,15 @@ function crearHarness({
     exports: {
       async obtenerContacto(pageId) {
         if (!pageId) throw new Error('obtenerContacto(undefined) — no debería llegar aquí');
-        const email = emailsPorId[pageId];
+        const extra = contactosPorId[pageId] || {};
+        const email = extra.email !== undefined ? extra.email : emailsPorId[pageId];
         return {
           id: pageId,
-          nombre: `Nombre ${pageId}`,
-          empresa: `Empresa ${pageId}`,
-          rolPuesto: 'CEO',
+          nombre: extra.nombre || `Nombre ${pageId}`,
+          empresa: extra.empresa || `Empresa ${pageId}`,
+          rolPuesto: extra.rolPuesto || 'CEO',
           email: email === undefined ? 'sponsor@test.com' : email,
-          whatsapp: '555',
+          whatsapp: extra.whatsapp || '555',
         };
       },
     },
@@ -348,20 +350,39 @@ function baseParams(overrides = {}) {
     assert.ok(mailSponsor.descripcion.includes('Agregar al calendario'));
     assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
 
-    // Asistente: solo empresa del sponsor, SIN datos de contacto
-    assert.ok(mailAsistente.descripcion.includes('Agendaste un espacio con Empresa sponsor-a'));
-    assert.ok(mailAsistente.descripcion.includes('Horario: miércoles, 7 de octubre, 12:00 h.'));
-    assert.ok(mailAsistente.descripcion.includes('Tu cita será en la mesa 1.'));
-    assert.ok(mailAsistente.descripcion.includes('Club France'));
+    // Asistente: encargada + empresa del sponsor, SIN datos de contacto
+    assert.strictEqual(mailAsistente.asunto, h.booking.ASUNTO_CONFIRMACION_ASISTENTE);
+    assert.ok(mailAsistente.descripcion.includes('Hemos reservado tu espacio con Nombre Sponsor-A de la empresa Empresa sponsor-a'));
+    assert.ok(mailAsistente.descripcion.includes('📅 Fecha: miércoles 7 de octubre'));
+    assert.ok(mailAsistente.descripcion.includes('🕐 Horario: 12:00 hrs'));
+    assert.ok(mailAsistente.descripcion.includes('💼 Mesa: 1'));
+    assert.ok(mailAsistente.descripcion.includes('Club France | Francia 75-Interior'));
     assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
+    assert.ok(mailAsistente.descripcion.includes('aprovechar al máximo los 20 minutos'));
+    assert.ok(mailAsistente.descripcion.includes('+52 33 3236 1963'));
     assert.ok(!mailAsistente.descripcion.includes('Datos de contacto'));
-    assert.ok(!mailAsistente.descripcion.includes('Nombre sponsor-a'));
     assert.ok(!mailAsistente.descripcion.includes('a@t.com'));
     assert.ok(!mailAsistente.descripcion.includes('Teléfono'));
 
     assert.strictEqual(h.porId.get(r.notion_page_id).titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(r.titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
+  });
+
+  await ok('nombre en mayúsculas de Notion → representante Title Case, sin apellido materno', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'sponsor-a': { nombre: 'LAURA ERRE GONZALEZ', empresa: 'Tiendanube' },
+        'asistente-b': { nombre: 'ANA MARIA PEREZ LOPEZ', empresa: 'DINUS' },
+      },
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-nombres-copy' }));
+    assert.strictEqual(r.estado, 'Confirmada');
+    const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    assert.ok(mailAsistente.descripcion.includes('Laura Erre de la empresa Tiendanube'));
+    assert.ok(!mailAsistente.descripcion.includes('LAURA ERRE'));
+    assert.ok(!mailAsistente.descripcion.includes('Gonzalez'));
   });
 
   console.log('\n=== Match Aprobado no queda huérfano al confirmar ===');
@@ -472,7 +493,12 @@ function baseParams(overrides = {}) {
     assert.strictEqual(r.estado, 'Confirmada');
     assert.strictEqual(h.emailCalls.length, 1);
     assert.deepStrictEqual(h.emailCalls[0].destinatarios, ['solo-asistente@t.com']);
-    assert.ok(h.emailCalls[0].descripcion.includes('Agendaste un espacio con Empresa sponsor-a'));
+    assert.ok(
+      h.emailCalls[0].descripcion.includes(
+        'Hemos reservado tu espacio con Nombre Sponsor-A de la empresa Empresa sponsor-a'
+      )
+    );
+    assert.strictEqual(h.emailCalls[0].asunto, h.booking.ASUNTO_CONFIRMACION_ASISTENTE);
     assert.ok(!h.emailCalls[0].descripcion.includes('Datos de contacto'));
   });
 

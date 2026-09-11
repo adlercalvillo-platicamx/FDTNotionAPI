@@ -39,6 +39,10 @@ const citasService = require('./citas.service');
 const contactosService = require('./contactos.service');
 const { hidratarPerfilPlatica } = require('./perfil-platica.service');
 const emailService = require('./email.service');
+const {
+  primerNombreParaSaludo,
+  nombreRepresentanteParaOferta,
+} = require('./campanas-matchmaking.service');
 const { UBICACION_ICS_EVENTO } = require('../utils/sede-evento');
 
 const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
@@ -61,6 +65,16 @@ const NOTA_CALENDARIO_CANCELAR =
   'Abre el archivo .ics adjunto para quitar la cita de tu calendario. Si no se elimina solo, bórralo a mano.';
 // Alias histórico: tests/docs que aún nombran NOTA_CALENDARIO leen la de modificación.
 const NOTA_CALENDARIO = NOTA_CALENDARIO_ACTUALIZAR;
+// Copys de asistente (11-sep, Adler). El del sponsor no cambia.
+const ASUNTO_CONFIRMACION_ASISTENTE =
+  '¡Tu cita en Fashion Digital Talks 2026 está confirmada!';
+const ASUNTO_MODIFICACION_ASISTENTE =
+  'Actualización de horario | Tu cita en Fashion Digital Talks';
+const ASUNTO_CANCELACION_ASISTENTE = 'CANCELACIÓN DE CITA';
+const WHATSAPP_SOPORTE_CITAS = '+52 33 3236 1963';
+const SEDE_CORREO_ASISTENTE =
+  'Club France | Francia 75-Interior, Florida, Álvaro Obregón, 01030 Ciudad de México, CDMX.';
+const DURACION_REUNION_COPY_MINUTOS = 20;
 // Cada envío SMTP se reintenta hasta 3 veces de inmediato (timeouts).
 // No hay tope de reintentos del endpoint: se dispara a demanda (MCP/API)
 // cuantas veces haga falta tras corregir el dato (Adler, 18-ago).
@@ -211,8 +225,9 @@ function interpretarFilaIdempotente(existente) {
  * Contactos en Notion (sponsor + asistente). Dos correos distintos:
  *   - Sponsor: texto cálido + datos de contacto del asistente (Laura,
  *     Segunda Sesión — el sponsor debe recibir el contacto "en automático").
- *   - Asistente: aviso de confirmación + empresa del sponsor + .ics.
- *     SIN datos de contacto del sponsor (pedido Adler, 18-ago).
+ *   - Asistente: copy operativo (encargada 1a1 + empresa, mesa, fecha, horario).
+ *     SIN correo/teléfono del sponsor. Primer nombre y representante se
+ *     normalizan desde Notion (Ticketópolis suele ir en mayúsculas).
  *
  * En el párrafo de apertura se usan las empresas (campo Empresa), no los
  * nombres de persona (pedido Adler, 18-ago). Si Empresa viene vacío, se
@@ -246,9 +261,13 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
 
   const empresaAsistente = asistente.empresa || asistente.nombre || 'El asistente';
   const empresaSponsor = sponsor.empresa || sponsor.nombre || 'el sponsor';
+  const representanteSponsor =
+    nombreRepresentanteParaOferta(sponsor.nombre) || empresaSponsor;
+  const primerNombreAsistente = primerNombreParaSaludo(asistente.nombre) || 'Asistente';
   const datosContactoAsistente = lineasDatosContactoAsistente(asistente);
   const horario = inicio ? citasService.formatearHorarioLegible(inicio) : null;
   const lugar = parrafoMesaYSede(mesa);
+  const partes = partesFechaHora(inicio);
 
   const descripcionSponsor = [
     '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
@@ -266,18 +285,13 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     'Equipo Fashion Digital Talks',
   ].join('\n');
 
-  // Solo empresa del sponsor — nada de persona, correo, teléfono ni WhatsApp.
-  const descripcionAsistente = [
-    '¡Tu cita 1 a 1 en Fashion Digital Talks 2026 está confirmada!',
-    '',
-    `Agendaste un espacio con ${empresaSponsor}. Nos dará mucho gusto recibirte.`,
-    '',
-    ...(horario ? [`Horario: ${horario}.`, lugar, ''] : [lugar, '']),
-    'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics).',
-    '',
-    '¡Te esperamos en Fashion Digital Talks 2026!',
-    'Equipo Fashion Digital Talks',
-  ].join('\n');
+  const descripcionAsistente = cuerpoConfirmacionAsistente({
+    representanteSponsor,
+    empresaSponsor,
+    fecha: partes.fecha,
+    hora: partes.hora,
+    mesa,
+  });
 
   return {
     emailSponsor,
@@ -285,6 +299,7 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     emailsExtra: extrasUnicos,
     descripcionSponsor,
     descripcionAsistente,
+    asuntoAsistente: ASUNTO_CONFIRMACION_ASISTENTE,
     // Alias para Calendar (calendario del sponsor → contacto del asistente).
     descripcion: descripcionSponsor,
     // Título único para Notion, Calendar y correos. Empresa primero; el
@@ -292,6 +307,8 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
     tituloCita: `Cita — ${empresaAsistente} - ${empresaSponsor}`,
     empresaAsistente,
     empresaSponsor,
+    representanteSponsor,
+    primerNombreAsistente,
     datosContactoAsistente,
   };
 }
@@ -321,6 +338,108 @@ function parrafoMesaYSede(mesa) {
     ? `Tu cita será en la mesa ${n}. En los días previos al evento te enviaremos más detalle para ubicarla en piso.`
     : 'En los días previos al evento te enviaremos más detalle para ubicar tu mesa en piso.';
   return [lineaMesa, `Recuerda que el evento se llevará a cabo en ${UBICACION_ICS_EVENTO}.`].join('\n');
+}
+
+function partesFechaHora(inicio) {
+  const match = String(inicio || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):/);
+  if (!match) return { fecha: null, hora: null };
+  const fechaObj = new Date(`${match[1]}T12:00:00Z`);
+  const fechaConComa = new Intl.DateTimeFormat('es-MX', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(fechaObj);
+  return {
+    fecha: fechaConComa.replace(',', ''),
+    hora: `${match[2]}:${match[3]}`,
+  };
+}
+
+function fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa }) {
+  const nombre = String(representanteSponsor || '').trim();
+  const empresa = String(empresaSponsor || '').trim();
+  if (nombre && empresa && nombre.toLowerCase() !== empresa.toLowerCase()) {
+    return deLaEmpresa ? `${nombre} de la empresa ${empresa}` : `${nombre} de ${empresa}`;
+  }
+  return empresa || nombre || 'el sponsor';
+}
+
+function cuerpoConfirmacionAsistente({ representanteSponsor, empresaSponsor, fecha, hora, mesa }) {
+  const conQuien = fraseConEncargada({
+    representanteSponsor,
+    empresaSponsor,
+    deLaEmpresa: true,
+  });
+  const n = numeroDeMesa(mesa);
+  const lineas = [
+    `Hemos reservado tu espacio con ${conQuien}. Te compartimos los detalles de tu reunión:`,
+    '',
+  ];
+  if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
+  if (hora) lineas.push(`🕐 Horario: ${hora} hrs`, '');
+  lineas.push(
+    `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
+    '',
+    n ? `💼 Mesa: ${n}` : '💼 Mesa: te la confirmamos en los días previos al evento.',
+    '',
+    'En los días previos al evento te compartiremos más información para que puedas ubicar fácilmente tu mesa dentro del evento.',
+    '',
+    'Para guardar esta reunión en tu agenda, selecciona “Agregar al calendario” en la invitación adjunta (.ics).',
+    '',
+    `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
+    '',
+    `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    '',
+    '¡Nos vemos pronto!',
+    '',
+    'Equipo Fashion Digital Talks'
+  );
+  return lineas.join('\n');
+}
+
+function cuerpoModificacionAsistente({
+  primerNombreAsistente,
+  representanteSponsor,
+  empresaSponsor,
+  fecha,
+  hora,
+  mesa,
+}) {
+  const conQuien = fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa: false });
+  const n = numeroDeMesa(mesa);
+  const lineas = [
+    `Hola ${primerNombreAsistente}, te confirmo el cambio de horario de cita con ${conQuien} y los nuevos detalles de tu reunión:`,
+    '',
+  ];
+  if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
+  if (hora) lineas.push(`🕐 Nuevo horario: ${hora} h`, '');
+  if (n) lineas.push(`📍 Mesa: ${n}`, '');
+  lineas.push(
+    `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
+    '',
+    `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
+    '',
+    `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    '',
+    '¡Nos vemos pronto!'
+  );
+  return lineas.join('\n');
+}
+
+function cuerpoCancelacionAsistente({ primerNombreAsistente, representanteSponsor, empresaSponsor }) {
+  const conQuien = fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa: false });
+  return [
+    `Hola ${primerNombreAsistente}, confirmo la cancelación de tu cita con ${conQuien}.`,
+    '',
+    'Para eliminar esta reunión de tu agenda, abre el archivo .ics adjunto. Si no se elimina automáticamente, te recomendamos eliminar el evento manualmente de tu calendario.',
+    '',
+    `Si quieres agendar una nueva cita o requieres información adicional, escríbenos un whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    '',
+    '¡Nos vemos pronto!',
+    '',
+    'Equipo Fashion Digital Talks',
+  ].join('\n');
 }
 
 /**
@@ -374,6 +493,7 @@ async function enviarCorreosDeCita({
     envios.push({
       destinatarios: [notificacion.emailSponsor],
       descripcion: notificacion.descripcionSponsor,
+      asunto: notificacion.asuntoSponsor || asunto,
     });
   }
 
@@ -386,6 +506,7 @@ async function enviarCorreosDeCita({
     envios.push({
       destinatarios: destinatariosAsistenteUnicos,
       descripcion: notificacion.descripcionAsistente,
+      asunto: notificacion.asuntoAsistente || asunto,
     });
   }
 
@@ -394,7 +515,7 @@ async function enviarCorreosDeCita({
       notionPageId,
       destinatarios: envio.destinatarios,
       titulo,
-      asunto,
+      asunto: envio.asunto,
       descripcion: envio.descripcion,
       inicio,
       fin,
@@ -1096,6 +1217,7 @@ function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo, 
   const empresaSponsor = notificacion.empresaSponsor || 'el sponsor';
   const datosAsistente = (notificacion.datosContactoAsistente || []).join('\n');
   const lugar = parrafoMesaYSede(mesa);
+  const partes = partesFechaHora(horarioNuevo);
 
   return {
     ...notificacion,
@@ -1116,19 +1238,15 @@ function conTextosDeModificacion(notificacion, { horarioAnterior, horarioNuevo, 
       '¡Te esperamos en Fashion Digital Talks 2026!',
       'Equipo Fashion Digital Talks',
     ].join('\n'),
-    descripcionAsistente: [
-      'Tu cita 1 a 1 en Fashion Digital Talks 2026 cambió de horario.',
-      '',
-      `El espacio con ${empresaSponsor} ahora es: ${horarioNuevoLegible}`,
-      `Horario anterior: ${horarioAnteriorLegible}`,
-      '',
-      lugar,
-      '',
-      NOTA_CALENDARIO_ACTUALIZAR,
-      '',
-      '¡Te esperamos en Fashion Digital Talks 2026!',
-      'Equipo Fashion Digital Talks',
-    ].join('\n'),
+    descripcionAsistente: cuerpoModificacionAsistente({
+      primerNombreAsistente: notificacion.primerNombreAsistente || 'Asistente',
+      representanteSponsor: notificacion.representanteSponsor,
+      empresaSponsor,
+      fecha: partes.fecha,
+      hora: partes.hora,
+      mesa,
+    }),
+    asuntoAsistente: ASUNTO_MODIFICACION_ASISTENTE,
   };
 }
 
@@ -1152,16 +1270,12 @@ function conTextosDeCancelacion(notificacion, inicio) {
       '¡Nos vemos en Fashion Digital Talks 2026!',
       'Equipo Fashion Digital Talks',
     ].join('\n'),
-    descripcionAsistente: [
-      `Tu cita 1 a 1 en Fashion Digital Talks 2026 con ${empresaSponsor} fue cancelada.`,
-      '',
-      `Horario cancelado: ${horario}`,
-      '',
-      NOTA_CALENDARIO_CANCELAR,
-      '',
-      '¡Nos vemos en Fashion Digital Talks 2026!',
-      'Equipo Fashion Digital Talks',
-    ].join('\n'),
+    descripcionAsistente: cuerpoCancelacionAsistente({
+      primerNombreAsistente: notificacion.primerNombreAsistente || 'Asistente',
+      representanteSponsor: notificacion.representanteSponsor,
+      empresaSponsor,
+    }),
+    asuntoAsistente: ASUNTO_CANCELACION_ASISTENTE,
   };
 }
 
@@ -1391,4 +1505,7 @@ module.exports = {
   NOTA_CALENDARIO,
   NOTA_CALENDARIO_ACTUALIZAR,
   NOTA_CALENDARIO_CANCELAR,
+  ASUNTO_CONFIRMACION_ASISTENTE,
+  ASUNTO_MODIFICACION_ASISTENTE,
+  ASUNTO_CANCELACION_ASISTENTE,
 };
