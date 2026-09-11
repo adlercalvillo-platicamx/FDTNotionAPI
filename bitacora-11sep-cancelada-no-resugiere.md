@@ -33,7 +33,25 @@ Tras el deploy del backend, el siguiente `sugerir-todos` ya omite pares cancelad
 
 Mocks. No se corrió matchmaking real.
 
+## Verificación en vivo (11-sep, tras el commit)
+
+Adler reportó que el Agente 2, al preguntarle "¿con quién me sugieres citas?", no
+ofrecía la cancelada. No es el prompt: la versión activa `pzj6kAa0zQxtsyE2loQh`
+ya trae `para_reagendar` y `sponsors_para_agendar`.
+
+`tools/list` contra `https://f8wwwgc0g88wccscww4cccco.appsplatica.site/mcp`
+(HTTP 200) devolvió la descripción **vieja** de
+`consultar_sugeridas_para_asistente`: "…las canceladas (citasCanceladas) … usando
+los campos *_para_ofrecer". Coolify corre el commit anterior, así que
+`sugeridas_para_ofrecer` sigue siendo solo `Aprobado` y el campo `para_reagendar`
+no existe en la respuesta. El agente no puede ofrecer lo que la tool no le manda.
+
 ## Pendientes
 
-- Redeploy Coolify para que el filtro de `Cancelada` viva en producción.
+- Redeploy Coolify para que el filtro de `Cancelada` y la mezcla de
+  `sugeridas_para_ofrecer` vivan en producción. Es el bloqueo del reporte de
+  arriba.
+- Tras el redeploy, `refresh_mcp_server` / `sync_mcp_server_tools` sobre
+  `Backend MCP` (`YfE1GCT5D6KLwZ48lXzz`) en el workspace de Plática: la
+  descripción de las tools está cacheada del deploy anterior.
 - Filas `Sugerido` que el cron haya creado *después* de una cancelación, antes de este deploy, hay que revisar a mano si quedaron.
