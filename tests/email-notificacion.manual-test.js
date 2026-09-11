@@ -721,7 +721,13 @@ function baseParams(overrides = {}) {
       filename: contactosPath,
       loaded: true,
       exports: {
-        async obtenerContacto() {
+        async obtenerContacto(pageId) {
+          // La guarda de boleto lee al asistente antes de escribir. Dejar que
+          // esa validación pase y simular aquí la falla posterior del sponsor
+          // para conservar la cobertura de compensación de la fila pendiente.
+          if (pageId === 'a1') {
+            return { id: pageId, nombre: 'Asistente', ticketTipo: 'Presencial' };
+          }
           throw new Error('Notion boom');
         },
       },

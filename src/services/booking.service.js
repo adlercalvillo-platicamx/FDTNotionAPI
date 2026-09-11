@@ -240,7 +240,14 @@ function interpretarFilaIdempotente(existente) {
  * asistente — mismo tono corto, sin datos de contacto. No reemplaza a
  * Contactos. Deduplicado contra el email del sponsor/asistente.
  */
-async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emailsExtra, inicio, mesa }) {
+async function resolverNotificacionCita({
+  sponsorPageId,
+  asistentePageId,
+  asistenteResuelto,
+  emailsExtra,
+  inicio,
+  mesa,
+}) {
   if (!sponsorPageId || !asistentePageId) {
     throw new BookingError(
       'CONTACTO_NO_RESUELTO',
@@ -250,7 +257,9 @@ async function resolverNotificacionCita({ sponsorPageId, asistentePageId, emails
 
   const [sponsor, asistente] = await Promise.all([
     contactosService.obtenerContacto(sponsorPageId),
-    contactosService.obtenerContacto(asistentePageId),
+    asistenteResuelto
+      ? Promise.resolve(asistenteResuelto)
+      : contactosService.obtenerContacto(asistentePageId),
   ]);
 
   const emailSponsor = sponsor.email || null;
@@ -562,6 +571,38 @@ function errorDeContactoInexistente(error, { sponsorPageId, asistentePageId }) {
   );
 }
 
+/**
+ * La elegibilidad también se valida en la escritura final. Matchmaking y los
+ * prompts excluyen Expo, pero reservar_cita puede llamarse sin sugerencia
+ * previa; sin esta guarda un page_id Expo podía crear mesa, correos e .ics.
+ */
+async function requerirAsistenteConAccesoCitas(asistentePageId) {
+  let asistente;
+  try {
+    asistente = await contactosService.obtenerContacto(asistentePageId);
+  } catch (error) {
+    if (error?.status === 404) {
+      throw new BookingError(
+        'ASISTENTE_NO_ENCONTRADO',
+        `asistente_notion_id "${asistentePageId}" no existe en Contactos de Notion, así que la cita no se creó.`
+      );
+    }
+    throw new BookingError(
+      'CONTACTO_NO_RESUELTO',
+      `No se pudo leer al asistente antes de reservar: ${error.message}`
+    );
+  }
+
+  if (asistente.ticketTipo === 'Expo') {
+    throw new BookingError(
+      'BOLETO_EXPO_NO_PERMITE_CITAS',
+      'El boleto Expo solo incluye acceso al piso de exhibición y no permite agendar citas 1a1. La cita no se creó.'
+    );
+  }
+
+  return asistente;
+}
+
 async function validarOrigenDeReagenda({
   citaOrigenCanceladaId,
   sponsorPageId,
@@ -677,6 +718,10 @@ async function reservarCita({
   if (Number.isFinite(inicioMs)) {
     requerirHorarioNoPasado(inicioMs, ahoraMs);
   }
+
+  // Validar antes del mutex y antes de cualquier escritura. Esto protege
+  // también las reservas directas del equipo, sin fila de matchmaking.
+  const asistenteValidado = await requerirAsistenteConAccesoCitas(asistente_notion_id);
 
   // A partir de aquí, todo corre serializado. Es la sección crítica completa:
   // verificar + reservar-en-Notion + confirmar — sin que ninguna otra
@@ -802,6 +847,7 @@ async function reservarCita({
       notificacion = await resolverNotificacionCita({
         sponsorPageId: sponsor_notion_id,
         asistentePageId: asistente_notion_id,
+        asistenteResuelto: asistenteValidado,
         emailsExtra: asistentes_email,
         inicio,
         mesa: numeroMesa,

@@ -14,6 +14,8 @@ const COPY = {
   ASISTENTE_YA_OCUPADO: 'Ya tienes una cita en ese horario. Elige otra hora.',
   CAPACIDAD_MESAS_LLENA: 'Ya no hay lugar en ese horario. Elige otra hora.',
   HORARIO_EN_PASADO: 'Ese horario ya empezó. Elige otra hora.',
+  BOLETO_EXPO_NO_PERMITE_CITAS:
+    'Tu boleto Expo solo incluye acceso al piso de exhibición y no permite agendar citas 1a1.',
   DEFAULT: 'Hubo un error técnico al agendar. Inténtalo de nuevo.',
 };
 

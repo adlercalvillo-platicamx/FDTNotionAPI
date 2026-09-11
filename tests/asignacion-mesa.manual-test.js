@@ -232,7 +232,16 @@ require.cache[contactosPath] = {
   loaded: true,
   exports: {
     async obtenerContacto(pageId) {
-      return { id: pageId, nombre: 'Mock', empresa: '', email: '', whatsapp: '', rolPuesto: '' };
+      if (pageId === 'asistente-error') throw new Error('Notion no disponible');
+      return {
+        id: pageId,
+        nombre: 'Mock',
+        empresa: '',
+        email: '',
+        whatsapp: '',
+        rolPuesto: '',
+        ticketTipo: pageId === 'asistente-expo' ? 'Expo' : 'Presencial',
+      };
     },
   },
 };
@@ -572,6 +581,43 @@ function baseParams(overrides = {}) {
     );
     assert.strictEqual(r.ya_existia, true);
     assert.strictEqual(r.estado, 'Confirmada');
+  });
+
+  console.log('\n=== Elegibilidad por boleto ===');
+  await ok('Boleto Expo → error explícito y ninguna fila creada', async () => {
+    const filasAntes = estado.porId.size;
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: 's-expo',
+            asistente_notion_id: 'asistente-expo',
+            request_id: 'req-expo',
+          })
+        ),
+      (e) =>
+        e instanceof BookingError &&
+        e.code === 'BOLETO_EXPO_NO_PERMITE_CITAS' &&
+        /solo incluye acceso al piso de exhibición/i.test(e.message) &&
+        /no permite agendar citas 1a1/i.test(e.message)
+    );
+    assert.strictEqual(estado.porId.size, filasAntes);
+  });
+
+  await ok('Falla al leer el boleto → CONTACTO_NO_RESUELTO y ninguna fila creada', async () => {
+    const filasAntes = estado.porId.size;
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: 's-error-contacto',
+            asistente_notion_id: 'asistente-error',
+            request_id: 'req-error-contacto',
+          })
+        ),
+      (e) => e instanceof BookingError && e.code === 'CONTACTO_NO_RESUELTO'
+    );
+    assert.strictEqual(estado.porId.size, filasAntes);
   });
 
   console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);

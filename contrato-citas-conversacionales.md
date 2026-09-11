@@ -4,6 +4,15 @@
 hablando con el agente. No se usan botones ni WhatsApp Flows en el camino
 activo.
 
+**Duración:** la cita efectiva comunicada dura **20 minutos**. El backend
+reserva un bloque operativo de **30 minutos** para dejar margen entre reuniones;
+`inicio` y `fin` conservan esa grilla.
+
+**Boleto Expo:** solo incluye acceso al piso de exhibición y no permite citas
+1a1. El Agente 2 no debe iniciar el flujo de citas si la ficha trae Expo y
+`reservar_cita` lo refuerza con `BOLETO_EXPO_NO_PERMITE_CITAS` antes de
+escribir en Notion.
+
 **Opciones en el chat:** como máximo **4** sponsors a la vez (`sugeridas_para_ofrecer`)
 y como máximo **3** horarios, citas confirmadas o canceladas a elegir. Si `hay_mas_sugeridas` /
 `hay_mas` / `hay_mas_citas` / `hay_mas_canceladas`, pregunta si quiere ver más. Nunca pegues
@@ -40,8 +49,9 @@ la grilla completa ni una lista larga.
 6. Antes de reservar repite sponsor, fecha y hora y pregunta explícitamente
    si confirma.
 7. Solo ante un sí inequívoco llama la API tool `reservar_cita`.
-8. `reservar_cita` vuelve a validar dentro del mutex (sponsor, mesas y
-   que el asistente no choque). La foto de disponibilidad no garantiza el
+8. `reservar_cita` valida el boleto antes de escribir y vuelve a validar dentro
+   del mutex sponsor, mesas y que el asistente no choque. Expo responde
+   `BOLETO_EXPO_NO_PERMITE_CITAS`. La foto de disponibilidad no garantiza el
    bloque.
 
 ## Parámetros de `reservar_cita`
@@ -67,6 +77,8 @@ vuelta a ISO: copiar los campos exactos de las tools.
   pendiente.
 - `SPONSOR_YA_OCUPADO` / `ASISTENTE_YA_OCUPADO` / `CAPACIDAD_MESAS_LLENA`: no insistir con el mismo
   bloque; refrescar disponibilidad y ofrecer otras 3.
+- `BOLETO_EXPO_NO_PERMITE_CITAS`: explicar que Expo solo incluye piso de
+  exhibición, que la cita no se creó y no reintentar con otro `request_id`.
 - Cualquier respuesta ambigua o error técnico: no afirmar que quedó.
 
 ## Reagendar (`modificar_cita`)

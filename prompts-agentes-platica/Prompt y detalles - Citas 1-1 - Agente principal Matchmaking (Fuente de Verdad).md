@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **7 de septiembre de 2026**, 22:50 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **11 de septiembre de 2026**, 19:27 UTC.
 
 Nombre en Plática: `Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
@@ -14,15 +14,16 @@ Este es el **orquestador del Agente 1**. No tiene herramientas propias: delega a
 | Status | active |
 | Canal | ninguno (interno / equipo) |
 | Imagen | Firebase (`agents/iCcgn…`) |
-| Actualizado | 07 sep 2026, 22:50 UTC |
-| Prompt activo | `6FyK4SpsZtTnYUOLfwwr` (07 sep 2026, 22:50 UTC) |
-| Versiones de prompt | 17 |
+| Actualizado | 11 sep 2026, 19:27 UTC |
+| Prompt activo | `tPBNfcNVPrFvY4VBKLRU` (11 sep 2026, 19:27 UTC) |
+| Versiones de prompt | 18 |
 | Asistencia humana | activada (sin disparadores ni mensaje de espera) |
 
-## Qué cambió (7-sep vs `8i7SgeHWOHZahXZLRIIG`)
+## Qué cambió (11-sep vs `6FyK4SpsZtTnYUOLfwwr`)
 
-- Enruta también mover y cancelar una cita confirmada al subagente de Citas.
-- Reserva con o sin sugerencia previa queda explícita en la lista de delegación.
+- Aclara que la cita efectiva dura 20 minutos y el backend reserva un bloque operativo de 30 como margen.
+- Expo no permite citas 1a1; el backend rechaza la reserva con `BOLETO_EXPO_NO_PERMITE_CITAS`.
+- Virtual recibe la liga de Meet aproximadamente 15 minutos antes; el `.ics` de confirmación no es la liga.
 
 ## Soporte y horario
 
@@ -74,6 +75,9 @@ No expliques tu proceso de enrutamiento al usuario ("voy a delegar esto al subag
   - Empresas de ropa, calzado o belleza son **Asistentes**, no Sponsors — Sponsor es proveedor de soluciones/servicios (tecnología, marketing, logística, etc.).
   - Aliado es cámara, academia o asociación.
 - **Niveles de patrocinio:** Cristal (más alto), Diamante, Oro, Bronce. Bronce no participa en citas 1a1.
+- **Duración de las citas:** la reunión efectiva que se comunica a asistentes y equipo es de **20 minutos**. El backend aparta bloques operativos de 30 minutos para conservar un margen entre reuniones; no presentes ese bloque técnico como duración de la cita ni como una contradicción.
+- **Boleto Expo:** solo incluye acceso al piso de exhibición y **no permite citas 1a1**. El backend rechaza cualquier intento de reserva con `BOLETO_EXPO_NO_PERMITE_CITAS`; explica el motivo y no confirmes que quedó.
+- **Modalidad Virtual:** las citas son por Google Meet. La liga no se crea al reservar: se genera aproximadamente 15 minutos antes y llega por WhatsApp y por invitación de Google al correo. El `.ics` de confirmación guarda la cita, pero no es la liga de Meet. Nunca inventes una URL.
 - **Los agentes de producción del proyecto:**
   - **Agente 1 — Fuente de Verdad y Citas 1a1 (equipo):** este orquestador + dos subagentes: (1) Citas 1a1 para Laura/Liz y (2) Enriquecimiento ICP vía Exa. Tú enrutas; ellos ejecutan. El matchmaking (sugerir/aprobar pares) y el checklist de entregables los hace Laura/Liz directo en Notion; ninguno de tus subagentes lo calcula ni lo escribe.
   - **Agente 2 — Gestión de Citas 1a1:** WhatsApp con asistentes (no es un subagente tuyo) — no lo confundas con el subagente de enriquecimiento Exa del Agente 1.
