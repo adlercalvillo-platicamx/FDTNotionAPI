@@ -218,6 +218,12 @@ async function obtenerContacto(pageId) {
   return parsearContacto(pagina);
 }
 
+const GIROS_ELEGIBLES_MATCHMAKING = [
+  'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
+  'Retailer / tienda multimarca / Marketplace',
+  'Manufactura / produccion / sourcing',
+];
+
 /**
  * Capa 1 — filtros duros que Notion puede resolver en un solo query.
  *
@@ -304,12 +310,6 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // Los proveedores de servicios (marketing, tecnología, logística, etc.)
   // no se sientan con otros proveedores de servicios (que es el perfil de
   // los sponsors) — se sientan con marcas de moda, retailers y manufactura.
-  const GIROS_ELEGIBLES_MATCHMAKING = [
-    'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
-    'Retailer / tienda multimarca / Marketplace',
-    'Manufactura / produccion / sourcing',
-  ];
-
   const condiciones = [
     { property: 'Categoria', select: { equals: 'Asistente' } },
     { property: 'Dado de Baja', checkbox: { equals: false } },
@@ -807,4 +807,5 @@ module.exports = {
   marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,
   listarSponsorsActivos,
+  GIROS_ELEGIBLES_MATCHMAKING,
 };

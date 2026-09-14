@@ -980,6 +980,10 @@ async function buscarSugerenciasPendientesPorSponsor(sponsorPageId) {
 }
 
 const RANGO_SUGERIDA = { Aprobado: 2, Sugerido: 1 };
+const LIMITE_SUGERIDAS_PARA_OFRECER = 4;
+const LIMITE_CITAS_PARA_OFRECER = 3;
+const LIMITE_CANCELADAS_PARA_OFRECER = 3;
+const LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER = 4;
 
 /**
  * Filas del asistente (Contacto Principal) hidratadas con empresa y nombre
@@ -1018,7 +1022,12 @@ async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = fal
     if (previa && (RANGO_SUGERIDA[previa.estatus] || 0) >= (RANGO_SUGERIDA[estatus] || 0)) {
       continue;
     }
-    porSponsor.set(sponsorId, { cita_page_id: fila.id, estatus, sponsor_notion_id: sponsorId });
+    porSponsor.set(sponsorId, {
+      cita_page_id: fila.id,
+      estatus,
+      sponsor_notion_id: sponsorId,
+      score: scoreDeFilaCita(fila),
+    });
   }
 
   const sugeridas = [];
@@ -1033,6 +1042,7 @@ async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = fal
         sponsor_nombre: null,
         sponsor_empresa: null,
         nivel_patrocinio: null,
+        solucion: [],
       });
       continue;
     }
@@ -1041,6 +1051,7 @@ async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = fal
       sponsor_nombre: sponsor.nombre || null,
       sponsor_empresa: sponsor.empresa || null,
       nivel_patrocinio: sponsor.nivelPatrocinio || null,
+      solucion: Array.isArray(sponsor.solucion) ? sponsor.solucion : [],
     });
   }
 
@@ -1050,12 +1061,15 @@ async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = fal
 /**
  * Consulta sugeridas por WhatsApp (identificador del agente) o page_id.
  * Si hay teléfono, Notion se resuelve aquí; el cliente no necesita el UUID.
+ * `sugeridas` es solo Aprobado. Las filas Sugerido y los sponsors no
+ * sugeridos que pasan giro+tamaño van en opciones_adicionales.
  */
 async function consultarSugeridasPorIdentificador({
   whatsapp,
   asistentePageId,
   soloAprobado = false,
 } = {}) {
+  void soloAprobado;
   const phone = String(whatsapp || '').trim();
   let id = String(asistentePageId || '').trim();
   let asistente = null;
@@ -1083,11 +1097,14 @@ async function consultarSugeridasPorIdentificador({
     asistente = await contactos.obtenerContacto(id);
   }
 
-  const [sugeridas, citasReales, canceladas] = await Promise.all([
-    listarSugeridasPorAsistente(id, { soloAprobado }),
+  const [sugeridasTodas, citasReales, canceladas, sponsorsActivos] = await Promise.all([
+    listarSugeridasPorAsistente(id, { soloAprobado: false }),
     listarCitasRealesPorAsistente(id),
     listarCitasCanceladasPorAsistente(id),
+    contactos.listarSponsorsActivos(),
   ]);
+  const sugeridasAprobado = (sugeridasTodas || []).filter((fila) => fila.estatus === 'Aprobado');
+  const sugeridasSugerido = (sugeridasTodas || []).filter((fila) => fila.estatus === 'Sugerido');
   const citasConfirmadas = citasReales
     .slice()
     .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')))
@@ -1100,14 +1117,54 @@ async function consultarSugeridasPorIdentificador({
       estatus: 'Cancelada',
       avisoPendiente: cita.notasEnvioEmail.startsWith(MARCA_CANCELACION_PENDIENTE),
     }));
+
+  const sponsorMap = mapaSponsorsParaOpciones(sponsorsActivos, sugeridasTodas);
+  const sponsorsParaAgendar = armarSugeridasParaOfrecer({
+    sugeridas: sugeridasAprobado,
+    citasCanceladas,
+    citasConfirmadas,
+  }).map((item) => enriquecerOpcionOfrecida(item, asistente, sponsorMap));
+  const opcionesAdicionales = armarOpcionesAdicionales({
+    asistente,
+    sugeridasSugerido,
+    sponsorsParaAgendar,
+    citasConfirmadas,
+    sponsorsActivos,
+    sponsorMap,
+  });
+
   return {
     asistente_notion_id: id,
     asistente_nombre: asistente?.nombre || null,
     asistente_empresa: asistente?.empresa || null,
     whatsapp: asistente?.whatsapp || phone || null,
-    sugeridas,
+    sugeridas: sugeridasAprobado.map((item) =>
+      enriquecerOpcionOfrecida(
+        {
+          ...item,
+          para_reagendar: false,
+          citaId: item.cita_page_id,
+          estatus_origen: 'aprobado',
+        },
+        asistente,
+        sponsorMap
+      )
+    ),
     citasConfirmadas,
     citasCanceladas,
+    sponsors_para_agendar: sponsorsParaAgendar,
+    sugeridas_para_ofrecer: sponsorsParaAgendar.slice(0, LIMITE_SUGERIDAS_PARA_OFRECER),
+    hay_mas_sugeridas: sponsorsParaAgendar.length > LIMITE_SUGERIDAS_PARA_OFRECER,
+    opciones_adicionales: opcionesAdicionales,
+    opciones_adicionales_para_ofrecer: opcionesAdicionales.slice(
+      0,
+      LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER
+    ),
+    hay_mas_opciones: opcionesAdicionales.length > LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER,
+    citas_para_ofrecer: citasConfirmadas.slice(0, LIMITE_CITAS_PARA_OFRECER),
+    hay_mas_citas: citasConfirmadas.length > LIMITE_CITAS_PARA_OFRECER,
+    canceladas_para_ofrecer: citasCanceladas.slice(0, LIMITE_CANCELADAS_PARA_OFRECER),
+    hay_mas_canceladas: citasCanceladas.length > LIMITE_CANCELADAS_PARA_OFRECER,
   };
 }
 
@@ -1140,6 +1197,130 @@ function formatearCitaConfirmadaAsistente(cita) {
   };
 }
 
+function mapaSponsorsParaOpciones(sponsorsActivos, sugeridasTodas) {
+  const map = new Map();
+  for (const sponsor of sponsorsActivos || []) {
+    const clave = pageIdCanonico(sponsor.id);
+    if (clave) map.set(clave, sponsor);
+  }
+  for (const fila of sugeridasTodas || []) {
+    const clave = pageIdCanonico(fila.sponsor_notion_id);
+    if (!clave || map.has(clave)) continue;
+    map.set(clave, {
+      id: fila.sponsor_notion_id,
+      nombre: fila.sponsor_nombre,
+      empresa: fila.sponsor_empresa,
+      nivelPatrocinio: fila.nivel_patrocinio,
+      solucion: fila.solucion,
+      categoria: 'Sponsor',
+    });
+  }
+  return map;
+}
+
+function enriquecerOpcionOfrecida(item, asistente, sponsorMap) {
+  const matchmaking = require('./matchmaking.service');
+  const clave = pageIdCanonico(item.sponsor_notion_id);
+  const sponsor = (clave && sponsorMap.get(clave)) || {
+    solucion: item.solucion,
+    nombre: item.sponsor_nombre,
+    empresa: item.sponsor_empresa,
+  };
+  const { soluciones_en_comun, otras_soluciones } = matchmaking.solucionesEnComunYOtras(
+    asistente,
+    sponsor
+  );
+  let estatusOrigen = item.estatus_origen;
+  if (!estatusOrigen) {
+    if (item.para_reagendar) estatusOrigen = 'cancelada';
+    else if (item.estatus === 'Sugerido') estatusOrigen = 'sugerido';
+    else if (item.estatus === 'Aprobado') estatusOrigen = 'aprobado';
+    else estatusOrigen = 'tamano';
+  }
+  return {
+    ...item,
+    estatus_origen: estatusOrigen,
+    soluciones_en_comun,
+    otras_soluciones,
+  };
+}
+
+function armarOpcionesAdicionales({
+  asistente,
+  sugeridasSugerido,
+  sponsorsParaAgendar,
+  citasConfirmadas,
+  sponsorsActivos,
+  sponsorMap,
+} = {}) {
+  const matchmaking = require('./matchmaking.service');
+  const usados = new Set(
+    [...(sponsorsParaAgendar || []), ...(citasConfirmadas || [])]
+      .map((item) => pageIdCanonico(item.sponsor_notion_id || item.sponsorPageId))
+      .filter(Boolean)
+  );
+  const items = [];
+
+  const sugeridosOrdenados = (sugeridasSugerido || [])
+    .slice()
+    .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  for (const fila of sugeridosOrdenados) {
+    const clave = pageIdCanonico(fila.sponsor_notion_id);
+    if (!clave || usados.has(clave)) continue;
+    usados.add(clave);
+    items.push(
+      enriquecerOpcionOfrecida(
+        {
+          estatus: 'Sugerido',
+          estatus_origen: 'sugerido',
+          para_reagendar: false,
+          citaId: fila.cita_page_id,
+          sponsor_notion_id: fila.sponsor_notion_id,
+          sponsor_nombre: fila.sponsor_nombre,
+          sponsor_empresa: fila.sponsor_empresa,
+          nivel_patrocinio: fila.nivel_patrocinio || null,
+          score: fila.score || 0,
+        },
+        asistente,
+        sponsorMap
+      )
+    );
+  }
+
+  const resto = (sponsorsActivos || []).filter((sponsor) => {
+    const clave = pageIdCanonico(sponsor.id);
+    if (!clave || usados.has(clave)) return false;
+    return matchmaking.esSponsorElegibleParaMasOpciones(asistente, sponsor);
+  });
+  resto.sort((a, b) => {
+    const pa = matchmaking.PRIORIDAD_NIVEL_PATROCINIO[a.nivelPatrocinio] ?? -1;
+    const pb = matchmaking.PRIORIDAD_NIVEL_PATROCINIO[b.nivelPatrocinio] ?? -1;
+    if (pb !== pa) return pb - pa;
+    return String(a.empresa || a.nombre || '').localeCompare(String(b.empresa || b.nombre || ''));
+  });
+  for (const sponsor of resto) {
+    const clave = pageIdCanonico(sponsor.id);
+    usados.add(clave);
+    items.push(
+      enriquecerOpcionOfrecida(
+        {
+          estatus: null,
+          estatus_origen: 'tamano',
+          para_reagendar: false,
+          citaId: null,
+          sponsor_notion_id: sponsor.id,
+          sponsor_nombre: sponsor.nombre || null,
+          sponsor_empresa: sponsor.empresa || null,
+          nivel_patrocinio: sponsor.nivelPatrocinio || null,
+        },
+        asistente,
+        sponsorMap
+      )
+    );
+  }
+  return items;
+}
+
 /**
  * Lista que el Agente 2 ofrece al preguntar por sugerencias: primero las
  * canceladas que aún se pueden reagendar, luego Aprobado. Un sponsor con
@@ -1167,6 +1348,7 @@ function armarSugeridasParaOfrecer({ sugeridas, citasCanceladas, citasConfirmada
     meter(
       {
         estatus: 'Cancelada',
+        estatus_origen: 'cancelada',
         para_reagendar: true,
         citaId: cita.citaId || cita.id,
         sponsor_notion_id: cita.sponsor_notion_id || cita.sponsorPageId || null,
@@ -1182,6 +1364,7 @@ function armarSugeridasParaOfrecer({ sugeridas, citasCanceladas, citasConfirmada
     meter(
       {
         ...sugerida,
+        estatus_origen: 'aprobado',
         para_reagendar: false,
         citaId: sugerida.citaId || sugerida.cita_page_id || null,
         sponsor_notion_id: sugerida.sponsor_notion_id || null,
@@ -2201,6 +2384,11 @@ module.exports = {
   formatearCitaConfirmadaAsistente,
   filtrarCanceladasReagendables,
   armarSugeridasParaOfrecer,
+  armarOpcionesAdicionales,
+  LIMITE_SUGERIDAS_PARA_OFRECER,
+  LIMITE_CITAS_PARA_OFRECER,
+  LIMITE_CANCELADAS_PARA_OFRECER,
+  LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,

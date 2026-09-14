@@ -360,7 +360,7 @@ async function ok(nombre, fn) {
     const r = await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' });
     assert.ok(!r.isError);
     const body = parse(r);
-    assert.strictEqual(ultimaConsultaSugeridas.soloAprobado, true);
+    assert.ok(ultimaConsultaSugeridas.soloAprobado !== true);
     assert.ok(Array.isArray(body.sugeridas));
     assert.ok(body.sugeridas.every((s) => s.estatus === 'Aprobado'));
     assert.ok(Array.isArray(body.citasConfirmadas));
@@ -459,7 +459,7 @@ async function ok(nombre, fn) {
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
-  await ok('la descripción dice solo Aprobado, no Sugerido como ofrecible', async () => {
+  await ok('la descripción cubre Aprobado y opciones_adicionales', async () => {
     const src = fs.readFileSync(path.join(__dirname, '../src/mcp/server.js'), 'utf8');
     const bloque = src.match(
       /server\.tool\(\s*'consultar_sugeridas_para_asistente'[\s\S]*?^\s{2}\);/m
@@ -467,7 +467,8 @@ async function ok(nombre, fn) {
     assert.ok(bloque, 'debe existir la tool');
     assert.ok(bloque[0].includes('citasConfirmadas'));
     assert.ok(bloque[0].includes('Aprobado'));
-    assert.ok(bloque[0].includes('para_reagendar'));
+    assert.ok(bloque[0].includes('opciones_adicionales'));
+    assert.ok(bloque[0].includes('para_reagendar') === false || bloque[0].includes('Cancelada'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });
