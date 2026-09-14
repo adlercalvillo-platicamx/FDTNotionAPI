@@ -16,10 +16,11 @@ El subrayado de los nombres en el Word se descarta — WhatsApp no tiene subraya
   envuelve la empresa en `*…*` y el bloque completo de soluciones (incluidos los ` · `)
   en `**…**`. Formato nuevo:
   `1. Alexandro Huerta de la empresa *Reevolution*, expertos en **Analitica / data · CRM / automatizacion**`.
-- Se usa la misma convención que ya tiene el cuerpo aprobado en Meta (`**` negrita,
-  `*` cursiva). No es la sintaxis clásica de WhatsApp (`*negrita*`, `_cursiva_`): si en la
-  prueba real se ven asteriscos literales, hay que cambiar `MARCA_NEGRITA` / `MARCA_CURSIVA`
-  y las plantillas, no solo el código.
+- **Corregido el mismo día tras la prueba real:** primero se usó la convención del editor de
+  Meta (`**` negrita, `*` cursiva) y el envío a Adler salió mal — WhatsApp aplica su propia
+  sintaxis, así que `**texto**` se ve en negrita **con un asterisco literal a cada lado** y
+  `*empresa*` se ve en negrita, no en cursiva. La versión final usa la sintaxis nativa:
+  `MARCA_NEGRITA = '*'`, `MARCA_CURSIVA = '_'`.
 - La comparación “persona igual a empresa” sigue contra el texto **sin** marcas; si no, ese
   dedupe dejaba de funcionar y salía `Revie de la empresa *Revie*`.
 - `CUERPO_BASE_OFERTA` (y la copia del preview one-shot) estaban desfasados del cuerpo real:
@@ -53,18 +54,22 @@ renderiza las marcas y no las muestra crudas. Hasta esa confirmación, no dispar
 
   ```
   {{1}} Liz
-  {{2}} 1. Alexandro Huerta de la empresa *Reevolution*, expertos en **Analitica / data · CRM / automatizacion · Customer experience**
-  {{3}} 2. Magali Parra de la empresa *CaaS*, expertos en **Customer experience · Estrategia de marketing digital · Plataforma eCommerce**
-  {{4}} 3. Renata Raya de la empresa *Revie*, expertos en **CRM / automatizacion · Customer experience · Plataforma eCommerce**
-  {{5}} 4. Mauricio Ledezma de la empresa *Leadin*, expertos en **Customer experience · Estrategia de marketing digital**
+  {{2}} 1. Alexandro Huerta de la empresa _Reevolution_, expertos en *Analitica / data · CRM / automatizacion · Customer experience*
+  {{3}} 2. Magali Parra de la empresa _CaaS_, expertos en *Customer experience · Estrategia de marketing digital · Plataforma eCommerce*
+  {{4}} 3. Renata Raya de la empresa _Revie_, expertos en *CRM / automatizacion · Customer experience · Plataforma eCommerce*
+  {{5}} 4. Mauricio Ledezma de la empresa _Leadin_, expertos en *Customer experience · Estrategia de marketing digital*
   ```
 
-- No se envió ningún WhatsApp ni se escribió Notion en este turno.
+- Envío real a Adler (12:40, plantilla de 4 sponsors) con la primera versión de marcas: llegó
+  con asteriscos literales y la empresa en negrita en vez de cursiva. Esa evidencia es la que
+  motivó el cambio a la sintaxis nativa. Ningún otro número recibió nada.
 
 ## Pendientes
 
-- Confirmar el render real en el teléfono de Adler. Si sale crudo: `*empresa*` → `_empresa_`
-  y `**soluciones**` → `*soluciones*`, y el texto fijo de las cuatro plantillas se reaprueba.
+- **El texto fijo de las cuatro plantillas sigue con `**` en Meta**, así que se lee
+  `*Fashion Digital Talks 2026.*` con asteriscos a la vista. Arreglarlo es editar el cuerpo en
+  Meta (`**X**` → `*X*`) y volver a aprobar; el backend no puede tocarlo. Cuando se haga, hay
+  que bajar esas marcas también en `CUERPO_BASE_OFERTA` (son 8 caracteres del presupuesto).
 - El preview `preview-oferta-liz-08sep.js` ya no encuentra filas `Aprobado` de Liz en el Notion
   de producción (0 filas). Para volver a usarlo hay que apuntarlo a un asistente con filas
   aprobadas; no es una regresión del código.

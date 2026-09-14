@@ -606,11 +606,11 @@ async function casoTopCuatroYParamsEstables() {
   assert.strictEqual(payload.params[0], 'Ana');
   assert.strictEqual(
     payload.params[1],
-    '1. Persona 1 de la empresa *Empresa 1*, expertos en **Solución 1**'
+    '1. Persona 1 de la empresa _Empresa 1_, expertos en *Solución 1*'
   );
   assert.strictEqual(
     payload.params[4],
-    '4. Persona 4 de la empresa *Empresa 4*, expertos en **Solución 4**'
+    '4. Persona 4 de la empresa _Empresa 4_, expertos en *Solución 4*'
   );
   assert.ok(!payload.params.join(' ').includes('Empresa 5'));
   assert.ok(
@@ -634,7 +634,7 @@ async function casoParametroSaneadoParaWhatsApp() {
   assert.strictEqual(payload.params[0], 'Ana');
   assert.strictEqual(
     payload.params[1],
-    '1. la empresa *Revie*, expertos en **Reseñas de clientes · Marketing por WhatsApp**'
+    '1. la empresa _Revie_, expertos en *Reseñas de clientes · Marketing por WhatsApp*'
   );
 }
 
@@ -680,8 +680,8 @@ async function casoSolucionesCruzadasConLoQueBusca() {
   });
   assert.strictEqual(payload.templateName, 'oferta-inicial-test-2');
   assert.deepStrictEqual(payload.params.slice(1), [
-    '1. la empresa *Blip*, expertos en **Omnichannel · Pagos · Analitica / data**',
-    '2. la empresa *Envia.com*',
+    '1. la empresa _Blip_, expertos en *Omnichannel · Pagos · Analitica / data*',
+    '2. la empresa _Envia.com_',
   ]);
 }
 
@@ -732,8 +732,8 @@ async function casoNombreRepresentanteDosTokens() {
     modoSimulacion: true,
   });
   assert.deepStrictEqual(payload.params.slice(1), [
-    '1. Zuleyma Chávez de la empresa *Blip*, expertos en **Omnichannel**',
-    '2. Marco Trujillo de la empresa *Platica.mx*, expertos en **Omnichannel**',
+    '1. Zuleyma Chávez de la empresa _Blip_, expertos en *Omnichannel*',
+    '2. Marco Trujillo de la empresa _Platica.mx_, expertos en *Omnichannel*',
   ]);
 }
 

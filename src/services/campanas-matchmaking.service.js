@@ -117,10 +117,12 @@ const CIERRE_CUERPO_OFERTA =
 const COLCHON_CONTEO_META = 24;
 // 'Otro' es el comodín del multi-select: no le dice nada al asistente.
 const SOLUCION_COMODIN = 'Otro';
-// Misma convención que el cuerpo aprobado en Meta. Las marcas viajan dentro del
-// parámetro y cuentan para el 1024; no las toca limpiarParametroPlantilla.
-const MARCA_NEGRITA = '**';
-const MARCA_CURSIVA = '*';
+// Sintaxis nativa de WhatsApp, no la del editor de Meta: probado en vivo el
+// 14-sep, `**texto**` sale en negrita pero con un asterisco literal a cada lado.
+// Las marcas viajan dentro del parámetro y cuentan para el 1024;
+// limpiarParametroPlantilla no las toca.
+const MARCA_NEGRITA = '*';
+const MARCA_CURSIVA = '_';
 
 function limpiarParametroPlantilla(texto) {
   return String(texto ?? '')
