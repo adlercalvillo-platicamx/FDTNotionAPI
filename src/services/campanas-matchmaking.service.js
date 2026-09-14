@@ -99,12 +99,14 @@ function plantillaPara(cantidadSponsors, modoSimulacion) {
 // Meta rechaza saltos, tabs y más de 4 espacios seguidos dentro de un parámetro.
 // No hay tope de Meta por variable: el recorte es solo para el cuerpo de 1024.
 const TOPE_CUERPO_META = 1024;
+// Copia del cuerpo aprobado en Meta, marcas incluidas: si difiere, el
+// presupuesto de 1024 se calcula contra un texto que nadie va a recibir.
 const CUERPO_BASE_OFERTA = [
   '¡Hola, {{1}}! Qué gusto saludarte 😊',
   '',
-  'Te escribo de parte del equipo de Fashion Digital Talks 2026.',
+  'Te escribo de parte del equipo de **Fashion Digital Talks 2026.**',
   '',
-  '¡Estamos a tan solo unos días del evento! Y tu acceso incluye reuniones privadas de 20 minutos con expertos, pensadas para ayudarte a resolver retos actuales de tu empresa y conectar con soluciones relevantes para ti.',
+  '¡Estamos a tan solo unos días del evento! Y tu acceso incluye **reuniones privadas de 20 minutos con expertos,** pensadas para ayudarte a resolver retos actuales de tu empresa y conectar con soluciones relevantes para ti.',
   '',
   'Te comparto algunas opciones que encontramos de acuerdo a tu perfil:',
 ];
@@ -115,6 +117,10 @@ const CIERRE_CUERPO_OFERTA =
 const COLCHON_CONTEO_META = 24;
 // 'Otro' es el comodín del multi-select: no le dice nada al asistente.
 const SOLUCION_COMODIN = 'Otro';
+// Misma convención que el cuerpo aprobado en Meta. Las marcas viajan dentro del
+// parámetro y cuentan para el 1024; no las toca limpiarParametroPlantilla.
+const MARCA_NEGRITA = '**';
+const MARCA_CURSIVA = '*';
 
 function limpiarParametroPlantilla(texto) {
   return String(texto ?? '')
@@ -192,22 +198,31 @@ function solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones) {
   return lista.slice(0, maxSoluciones);
 }
 
+function resaltar(texto, marca) {
+  return texto ? `${marca}${texto}${marca}` : texto;
+}
+
+// Pedido Adler 14-sep: empresa en cursiva y soluciones en negrita. El nombre del
+// representante va sin marcas.
 function parametrosSugerencias(sugerencias, solucionesBuscadas, maxSoluciones) {
   return (sugerencias || []).map((sponsor, indice) => {
     const empresa = limpiarParametroPlantilla(sponsor.empresa);
+    const empresaEnCursiva = resaltar(empresa, MARCA_CURSIVA);
     const persona = nombreRepresentanteParaOferta(sponsor.nombre);
     const soluciones = solucionesRelevantes(sponsor, solucionesBuscadas, maxSoluciones);
     let quien;
     if (persona && empresa && persona.localeCompare(empresa, 'es', { sensitivity: 'accent' }) !== 0) {
-      quien = `${persona} de la empresa ${empresa}`;
+      quien = `${persona} de la empresa ${empresaEnCursiva}`;
     } else if (empresa) {
-      quien = `la empresa ${empresa}`;
+      quien = `la empresa ${empresaEnCursiva}`;
     } else if (persona) {
       quien = persona;
     } else {
       quien = 'Sponsor';
     }
-    const experiencia = soluciones.length ? `, expertos en ${soluciones.join(' · ')}` : '';
+    const experiencia = soluciones.length
+      ? `, expertos en ${resaltar(soluciones.join(' · '), MARCA_NEGRITA)}`
+      : '';
     return limpiarParametroPlantilla(`${indice + 1}. ${quien}${experiencia}`);
   });
 }
