@@ -211,6 +211,8 @@ async function hidratarPerfilPlatica({
 module.exports = {
   CAMPOS,
   nombreParaPerfilPlatica,
+  textoEnTitulo,
+  textoEnTituloSiGritado,
   lineaCita,
   payloadPerfil,
   hidratarPerfilPlatica,
