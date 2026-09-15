@@ -464,6 +464,39 @@ async function ok(nombre, fn) {
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
+  await ok('el copy de cierre viaja literal en el payload, no se deja al agente', async () => {
+    const previa = citasService.consultarSugeridasPorIdentificador;
+    citasService.consultarSugeridasPorIdentificador = async () => ({
+      asistente_notion_id: 'asis-1',
+      sugeridas: [],
+      citasConfirmadas: [],
+      citasCanceladas: [],
+    });
+    const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
+    assert.strictEqual(
+      body.copy_sin_mas_opciones,
+      'De momento esas son las opciones que hacen match con tu empresa. ' +
+        'Con mucho gusto revisamos más de nuestro lado y te confirmamos. ' +
+        '¿Agendamos con alguno de los que ya vimos?',
+      'el texto es aprobado por el equipo: si cambia sin pedido explícito, es regresión'
+    );
+    assert.ok(body.aviso.includes('textualmente copy_sin_mas_opciones'));
+    assert.ok(body.aviso.includes('no lo edites'));
+    citasService.consultarSugeridasPorIdentificador = previa;
+  });
+
+  await ok('el camino que ya trae sugeridas_para_ofrecer también lleva el copy', async () => {
+    const previa = citasService.consultarSugeridasPorIdentificador;
+    citasService.consultarSugeridasPorIdentificador = async () => ({
+      asistente_notion_id: 'asis-1',
+      sugeridas_para_ofrecer: [],
+      hay_mas_sugeridas: false,
+    });
+    const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
+    assert.ok(body.copy_sin_mas_opciones.startsWith('De momento esas son las opciones'));
+    citasService.consultarSugeridasPorIdentificador = previa;
+  });
+
   await ok('la descripción cubre Aprobado y opciones_adicionales', async () => {
     const src = fs.readFileSync(path.join(__dirname, '../src/mcp/server.js'), 'utf8');
     const bloque = src.match(
@@ -475,6 +508,7 @@ async function ok(nombre, fn) {
     assert.ok(bloque[0].includes('opciones_adicionales'));
     assert.ok(bloque[0].includes('campaña cuenta como Aprobado ya visto'));
     assert.ok(bloque[0].includes('iniciar otra pasada'));
+    assert.ok(bloque[0].includes('copy_sin_mas_opciones'));
     assert.ok(bloque[0].includes('expertos en'));
     assert.ok(bloque[0].includes('para_reagendar') === false || bloque[0].includes('Cancelada'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));

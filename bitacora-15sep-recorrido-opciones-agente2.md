@@ -40,11 +40,33 @@ Qué se ajustó, aprobado por Adler, sin tocar backend:
 - Se cubren los dos momentos: pegado al final del último lote, y como respuesta única si ya se dijo todo y vuelve a pedir más.
 - El paso 2 del flujo Agendar repite las dos reglas para no contradecir la sección principal.
 
+## Corrección 19:20 UTC — el copy de cierre se movió al payload del MCP
+
+Prueba de Adler en la conversación `y1gBHTy0x9Uy4x50qEOZ` (19:01–19:03). El recorrido salió completo y los tres lotes llevaron la pregunta de dos salidas. Fallaron dos cosas:
+
+1. El último lote (Infracommerce, Envia.com) volvió a preguntar “¿o prefieres que te busque otras opciones?” cuando ya no quedaba nada. La regla nueva quedó redactada como obligatoria para todos los lotes.
+2. Al volver a pedir opciones respondió “Por ahora ya te compartí las opciones adicionales disponibles. ¿Agendamos con alguno de los que ya vimos?”: conservó la última frase del copy y tiró las dos primeras.
+
+Causa de fondo, y la razón de cambiar de enfoque: el texto vivía **solo en el prompt**, así que el agente lo reconstruía de memoria y al hacerlo lo pasaba por TONO / ANTI-TELLS, que le exigen frases cortas y “si una frase no aporta un dato o una pregunta, córtala”. “Con mucho gusto revisamos más de nuestro lado y te confirmamos” es exactamente lo que esa regla manda tirar. Pedirle “es literal” competía contra una sección entera de tono, y perdió dos veces. Lo que el agente **sí** copia sin fallar es lo que viene en la respuesta de la tool: ids, ISO, `horario_legible`.
+
+Cambio de backend (requiere deploy + refresh del MCP, a diferencia de las correcciones anteriores):
+- `src/mcp/server.js` expone `copy_sin_mas_opciones` en `consultar_sugeridas_para_asistente`, en los dos caminos del payload. Constante `COPY_SIN_MAS_OPCIONES`, texto idéntico al aprobado.
+- El `aviso` y la descripción de la tool ahora dicen: al agotar la pasada, responde textualmente ese campo, sin editarlo.
+- Cobertura en `tests/mcp-modificar-cancelar.manual-test.js`: el texto se compara **carácter por carácter** — si cambia sin pedido explícito de Adler, es regresión, no un test que “arreglar”.
+
+Prompt (`8UbLHEVgk2r1A4R3jPqF`):
+- El copy se copia del payload, palabra por palabra, como un id o un horario.
+- Es la única excepción declarada a TONO y ANTI-TELLS: va completo aunque una frase parezca relleno.
+- El último lote **ya no lleva** la pregunta de dos salidas; cierra con el copy, que trae su propia pregunta.
+- `NUNCA` prohíbe parafrasearlo, y el fallback de listas vacías apunta al mismo campo.
+
+Lección, hermana de la anterior: el texto que tiene que salir palabra por palabra viaja como dato en el payload, no como instrucción de redacción — sobre todo cuando el prompt tiene reglas de tono que lo contradicen.
+
 ## Operación
-1. Prompt vivo del Agente 2: `17k1QeuZKBOJ3FpJMbjm` (98 versiones). Intermedias del 15-sep: `hGY5PqFpf4dOTmrOP2um` (16:46), `3cCCdSLbJ7ZdSQn7d2Si` (16:40), `SasevaynfmPoaf4xBTvs` (16:39), `p9beXAkx7MxaYFjjX8P0` (15:51).
+1. Prompt vivo del Agente 2: `8UbLHEVgk2r1A4R3jPqF` (102 versiones). Intermedias del 15-sep: `vPygRjKZjZUJVkjKQNVf` (19:19), `4zSU2aLwMLD2x1stCtuQ` (19:18), `xl5Kglzhwhs5B9evpMip` (19:17), `17k1QeuZKBOJ3FpJMbjm` (16:47), `hGY5PqFpf4dOTmrOP2um` (16:46), `3cCCdSLbJ7ZdSQn7d2Si` (16:40), `SasevaynfmPoaf4xBTvs` (16:39), `p9beXAkx7MxaYFjjX8P0` (15:51).
 2. Snapshot actualizado en `prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md`.
-3. Para que Plática reciba el `aviso` y la descripción nuevos del backend: deploy de Coolify y después refresh del MCP `fdt-notion-api`. Ya hecho y verificado el 15-sep. La corrección de 16:40 es solo prompt: **no** requiere deploy ni refresh.
-4. No se enviaron campañas ni mensajes durante este cambio.
+3. La corrección de 19:20 **sí** necesita deploy de Coolify y después refresh del MCP `fdt-notion-api` en Plática, porque `copy_sin_mas_opciones` viaja en el payload. Sin refresh, Plática sigue con la descripción vieja y el agente no verá el campo. Las correcciones de 16:40 y 16:47 fueron solo prompt y no requerían nada.
+4. No se enviaron campañas ni mensajes durante estos cambios.
 
 ## Evidencia
 La conversación `jKC43IShhPKjpafBbXBc` mostró correctamente los dos lotes adicionales, pero después de cancelar Platica.mx una nueva consulta volvió a cancelada+Aprobado y terminó sin recorrer de nuevo Leadin–Envia.com. El backend sí devolvía `opciones_adicionales`; la falla estaba en las instrucciones conversacionales.
