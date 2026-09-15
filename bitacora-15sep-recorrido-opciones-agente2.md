@@ -27,8 +27,21 @@ Qué se ajustó en el prompt vivo, sin tocar backend:
 
 Lección: las condiciones de cierre van como banderas que el agente puede leer del JSON, no como juicio narrativo.
 
+## Corrección 16:47 UTC — pregunta de dos salidas y cierre literal
+
+Con la corrección anterior el recorrido ya funcionó (16:36 Leadin/Reversso/Flow/Revie, 16:37 Infracommerce/Envia.com), pero Adler marcó dos cosas en esa misma prueba:
+
+1. Ningún lote preguntaba si quería que le buscaran más opciones; todos cerraban con “¿Con quién te gustaría revisar horarios?”. La instrucción existía, pero como sugerencia entre paréntesis, y FORMATO pide “una sola pregunta relevante por turno”: el agente se quedaba con la mitad obvia y la persona no sabía que había más.
+2. El mensaje final no fue el copy acordado. A las 16:37 mandó el último lote sin pegar el cierre y a las 16:38 improvisó “ya te compartimos todas las opciones que me salen para ti”, que es ambiguo y suena a sistema. El prompt solo contemplaba el cierre “pegado al último lote”, no el caso de que vuelva a pedir más en un turno aparte.
+
+Qué se ajustó, aprobado por Adler, sin tocar backend:
+- Todo lote que no sea el último cierra con las dos salidas en una sola pregunta, literal: “¿Con quién te gustaría revisar horarios, o prefieres que te busque otras opciones?”. Prohibido recortarla.
+- El copy de cierre se declara texto literal aprobado por el equipo: no se parafrasea ni se resume a quién ya nombró. Prohibidas las variantes tipo “ya te compartí todas las opciones” o “todas las que me salen”.
+- Se cubren los dos momentos: pegado al final del último lote, y como respuesta única si ya se dijo todo y vuelve a pedir más.
+- El paso 2 del flujo Agendar repite las dos reglas para no contradecir la sección principal.
+
 ## Operación
-1. Prompt vivo del Agente 2: `3cCCdSLbJ7ZdSQn7d2Si` (96 versiones). Intermedias: `SasevaynfmPoaf4xBTvs` (16:39), `p9beXAkx7MxaYFjjX8P0` (15:51).
+1. Prompt vivo del Agente 2: `17k1QeuZKBOJ3FpJMbjm` (98 versiones). Intermedias del 15-sep: `hGY5PqFpf4dOTmrOP2um` (16:46), `3cCCdSLbJ7ZdSQn7d2Si` (16:40), `SasevaynfmPoaf4xBTvs` (16:39), `p9beXAkx7MxaYFjjX8P0` (15:51).
 2. Snapshot actualizado en `prompts-agentes-platica/Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md`.
 3. Para que Plática reciba el `aviso` y la descripción nuevos del backend: deploy de Coolify y después refresh del MCP `fdt-notion-api`. Ya hecho y verificado el 15-sep. La corrección de 16:40 es solo prompt: **no** requiere deploy ni refresh.
 4. No se enviaron campañas ni mensajes durante este cambio.
