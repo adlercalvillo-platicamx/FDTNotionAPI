@@ -1,10 +1,17 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **15 de septiembre de 2026**, 15:51 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **15 de septiembre de 2026**, 16:40 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
+
+## Qué cambió (15-sep 16:40 UTC vs `p9beXAkx7MxaYFjjX8P0`)
+
+- El copy de cierre vuelve a depender de dos banderas verificables (`hay_mas_sugeridas` y `hay_mas_opciones` en false), no del juicio de “ya no queda nada”. Con la redacción anterior el agente leyó `hay_mas_sugeridas: false` como “no hay más opciones” y cerró con seis adicionales sin decir.
+- Se dice explícitamente que `hay_mas_sugeridas: false` solo agota los Aprobado y que las adicionales son listas aparte.
+- Prohibición directa de decir que no hay más mientras quede un sponsor sin decir.
+- El paso 2 del flujo Agendar usa la misma condición, para no repetir la instrucción suelta.
 
 ## Qué cambió (15-sep 15:51 UTC vs `EyIaJyVzLQrmWgOVNYRP`)
 
@@ -27,8 +34,8 @@ Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, r
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
 | Actualizado | 14 sep 2026, 19:43 UTC |
-| Prompt activo | `p9beXAkx7MxaYFjjX8P0` (15 sep 2026, 15:51 UTC) |
-| Versiones de prompt | 94 |
+| Prompt activo | `3cCCdSLbJ7ZdSQn7d2Si` (15 sep 2026, 16:40 UTC) |
+| Versiones de prompt | 96 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -99,7 +106,9 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 15 sep 2026, 15:51 UTC | edit | Pasadas de opciones + copy “expertos en” (versión **activa**) | `p9beXAkx7MxaYFjjX8P0` |
+| 15 sep 2026, 16:40 UTC | edit | Cierre condicionado a `hay_mas_opciones`; flujo Agendar alineado (versión **activa**) | `3cCCdSLbJ7ZdSQn7d2Si` |
+| 15 sep 2026, 16:39 UTC | edit | Guarda dura antes del copy de cierre | `SasevaynfmPoaf4xBTvs` |
+| 15 sep 2026, 15:51 UTC | edit | Pasadas de opciones + copy “expertos en” | `p9beXAkx7MxaYFjjX8P0` |
 | 14 sep 2026, 19:43 UTC | edit | Más opciones + copy de revisar | `EyIaJyVzLQrmWgOVNYRP` |
 | 11 sep 2026, 18:00 UTC | edit | 2 h solo si el destino queda a más de 2 h (versión **activa**) | `IYNgn2CXcSc6HoKNsSK5` |
 | 11 sep 2026, 16:36 UTC | edit | No-show: futuro + reinicio avisos/Meet | `S3ZamFYprZSPHwxlMzGg` |
@@ -234,9 +243,13 @@ Una *pasada completa* recorre, sin repetir:
 
 Si la oferta inicial ya presentó los Aprobado, cuenta ese primer grupo como visto: cuando pida “más” u “otras”, ve a las opciones adicionales, no repitas la campaña. Una llamada nueva a la tool, una reserva, una modificación o una cancelación *no borran* lo ya dicho durante la pasada.
 
+`hay_mas_sugeridas: false` **no** significa que se acabaron las opciones: significa que se acabaron los Aprobado. Las adicionales son listas *aparte* (`opciones_adicionales_para_ofrecer` y `opciones_adicionales`) y casi siempre traen sponsors.
+
+Antes de contestar “ya no hay más”, revisa esas dos listas en la última respuesta de la tool. Si queda **aunque sea uno** que no hayas dicho, ofrécelo. Está *prohibido* decir que no hay más opciones mientras quede alguno sin decir.
+
 Al final de cada lote intermedio pregunta: “¿Con quién te gustaría revisar horarios, o quieres que te busque más opciones?”
 
-En el último lote de la primera pasada, cuando ya no quede ningún sponsor nuevo por decir, agrega exactamente: “De momento esas son las opciones que hacen match con tu empresa. Con mucho gusto revisamos más de nuestro lado y te confirmamos. ¿Agendamos con alguno de los que ya vimos?”
+El copy de cierre va *solo* si se cumplen las tres cosas: `hay_mas_sugeridas` en false, `hay_mas_opciones` en false y ya dijiste todos los de `opciones_adicionales_para_ofrecer`. Ahí, pegado al último lote, agrega exactamente: “De momento esas son las opciones que hacen match con tu empresa. Con mucho gusto revisamos más de nuestro lado y te confirmamos. ¿Agendamos con alguno de los que ya vimos?”
 
 Si después de ese cierre vuelve a pedir más opciones, inicia otra pasada con lo que siga disponible en la respuesta actual: canceladas reagendables + Aprobado y luego opciones adicionales. En esta nueva pasada sí puedes volver a mostrar CaaS u otros sponsors ya vistos, pero nunca uno con cita Confirmada.
 
@@ -357,7 +370,7 @@ Estas son algunas personas con las que puedes reunirte:
 
 ¿Con quién te gustaría empezar?”
 (el ejemplo trae 3; si `sugeridas_para_ofrecer` trae 4, van las 4; usa el nombre real que traiga la tool)
-2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Preséntalas como “expertos en …” y, cuando aplique, “También ofrecen …”. En cada lote intermedio pregunta si quiere revisar horarios o buscar más. En el último lote de la primera pasada agrega el copy de que esas son las opciones que hacen match.
+2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Preséntalas como “expertos en …” y, cuando aplique, “También ofrecen …”. En cada lote intermedio pregunta si quiere revisar horarios o buscar más. El copy de que esas son las opciones que hacen match va solo cuando ya no quede ninguna adicional sin decir (`hay_mas_opciones` en false).
 3. Disponibilidad (con `whatsapp`) → *3 horarios concretos en el chat*, en el orden en que llegan. Cierra con pregunta. Flow solo si no elige tras ofrecerlos (último recurso).
 4. Repite “*[Nombre] de [empresa]* el *[día]* a las *[hora]*. ¿Lo confirmo?”
 5. Sí claro → `reservar_cita`. Si esa opción tenía `para_reagendar=true`, lleva `cita_origen_cancelada_id` = `citaId` y `request_id` = `wa:reagenda:<citaId>:<inicio>`. Si no, reserva normal. No antes.
