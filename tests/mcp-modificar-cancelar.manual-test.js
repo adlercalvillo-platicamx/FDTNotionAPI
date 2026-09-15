@@ -456,6 +456,11 @@ async function ok(nombre, fn) {
     assert.strictEqual(body.sugeridas_para_ofrecer[0].citaId, 'cita-cancelada-revie');
     assert.strictEqual(body.sugeridas_para_ofrecer[1].para_reagendar, false);
     assert.ok(!body.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === 'sponsor-platica'));
+    assert.ok(body.aviso.includes('oferta inicial también cuenta'));
+    assert.ok(body.aviso.includes('no reinicia la pasada'));
+    assert.ok(body.aviso.includes('inicia otra pasada'));
+    assert.ok(body.aviso.includes('“expertos en”'));
+    assert.ok(!body.aviso.includes('Si pide más y ya no hay Aprobado'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
@@ -468,6 +473,9 @@ async function ok(nombre, fn) {
     assert.ok(bloque[0].includes('citasConfirmadas'));
     assert.ok(bloque[0].includes('Aprobado'));
     assert.ok(bloque[0].includes('opciones_adicionales'));
+    assert.ok(bloque[0].includes('campaña cuenta como Aprobado ya visto'));
+    assert.ok(bloque[0].includes('iniciar otra pasada'));
+    assert.ok(bloque[0].includes('expertos en'));
     assert.ok(bloque[0].includes('para_reagendar') === false || bloque[0].includes('Cancelada'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));

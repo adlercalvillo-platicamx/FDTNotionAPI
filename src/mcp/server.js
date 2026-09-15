@@ -145,7 +145,7 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
       asistentePageId: whatsapp ? undefined : asistentePageId,
     });
     const aviso =
-      'En el chat ofrece máximo 4 de sugeridas_para_ofrecer (Cancelada para_reagendar=true primero, luego Aprobado). Si hay_mas_sugeridas, las siguientes salen de sponsors_para_agendar. Si pide más y ya no hay Aprobado, ofrece opciones_adicionales_para_ofrecer (Sugerido, luego tamaño/giro; máximo 4). Si hay_mas_opciones, el resto está en opciones_adicionales. Usa soluciones_en_comun y otras_soluciones; no inventes. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
+      'Ofrece máximo 4 por lote y recuerda cuáles ya dijiste en esta conversación; la oferta inicial también cuenta. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. Si la campaña ya mostró los Aprobado, “más opciones” empieza en adicionales. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. Al agotar por primera vez, di que de momento esas son las opciones que hacen match; si vuelve a pedir más después, inicia otra pasada con lo actualmente disponible. Presenta soluciones_en_comun como “expertos en”; otras_soluciones como “También ofrecen”. Si no hay comunes, usa otras_soluciones como “expertos en” sin decir que no coinciden. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
     if (Array.isArray(resultado.sugeridas_para_ofrecer)) {
       return respuestaJson({ ...resultado, aviso });
     }
@@ -503,7 +503,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 en `Aprobado` (sugeridas / sugeridas_para_ofrecer), las reales (citasConfirmadas) y las canceladas reagendables. Si pide más y ya no hay Aprobado, opciones_adicionales_para_ofrecer: primero Sugerido, luego sponsors que coinciden en giro y tamaño (Grande/Consolidado a todos; PyME=Mediana+Pequeña; no Micro por Exa). Trae soluciones_en_comun y otras_soluciones. Un sponsor con cita Confirmada no se vuelve a ofrecer. reservar_cita confirma también Sugerido o sin fila (estatus_origen=tamano, sin citaId). No recalcula matchmaking ni escribe.',
+    'Lista las citas 1a1 en `Aprobado` (sugeridas / sugeridas_para_ofrecer), las reales (citasConfirmadas), las canceladas reagendables y opciones_adicionales. En conversación se recorren por pasadas: cancelada+Aprobado y luego adicionales; la campaña cuenta como Aprobado ya visto. Consultar de nuevo o reservar/modificar/cancelar no reinicia una pasada. Al agotar la primera, se avisa que de momento no hay más matches; una petición posterior puede iniciar otra pasada. opciones_adicionales: primero Sugerido, luego giro+tamaño (Grande/Consolidado a todos; PyME=Mediana+Pequeña; no Micro por Exa). soluciones_en_comun se dice como “expertos en” y otras_soluciones como “También ofrecen”; si no hay comunes, otras_soluciones pasa a “expertos en”. Un sponsor Confirmado no se ofrece. reservar_cita confirma también Sugerido o sin fila (estatus_origen=tamano, sin citaId). No recalcula matchmaking ni escribe.',
     {
       whatsapp: z
         .string()
