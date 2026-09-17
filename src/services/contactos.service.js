@@ -218,6 +218,12 @@ async function obtenerContacto(pageId) {
   return parsearContacto(pagina);
 }
 
+const GIROS_ELEGIBLES_MATCHMAKING = [
+  'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
+  'Retailer / tienda multimarca / Marketplace',
+  'Manufactura / produccion / sourcing',
+];
+
 /**
  * Capa 1 — filtros duros que Notion puede resolver en un solo query.
  *
@@ -304,12 +310,6 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // Los proveedores de servicios (marketing, tecnología, logística, etc.)
   // no se sientan con otros proveedores de servicios (que es el perfil de
   // los sponsors) — se sientan con marcas de moda, retailers y manufactura.
-  const GIROS_ELEGIBLES_MATCHMAKING = [
-    'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
-    'Retailer / tienda multimarca / Marketplace',
-    'Manufactura / produccion / sourcing',
-  ];
-
   const condiciones = [
     { property: 'Categoria', select: { equals: 'Asistente' } },
     { property: 'Dado de Baja', checkbox: { equals: false } },
@@ -400,6 +400,26 @@ async function buscarDadoDeBajaPorEmailOTelefono({ email, telefono }) {
     }),
   });
   return data.results[0] ? parsearContacto(data.results[0]) : null;
+}
+
+/**
+ * Busca coincidencias exactas de email para la identificación de la página
+ * pública de reservas. No decide elegibilidad: devuelve también bajas y otras
+ * categorías para que la capa pública distinga "no existe" de "no elegible".
+ */
+async function buscarContactosPorEmail(emailEntrada) {
+  requireDataSourceId();
+  const valor = String(emailEntrada || '').trim().toLowerCase();
+  if (!valor) return [];
+
+  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: { property: 'Email', email: { equals: valor } },
+      page_size: 10,
+    }),
+  });
+  return (data.results || []).map(parsearContacto);
 }
 
 const CATEGORIAS_BUSQUEDA = new Set(['Asistente', 'Sponsor']);
@@ -790,6 +810,7 @@ module.exports = {
   buscarAsistentesCandidatos,
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
+  buscarContactosPorEmail,
   buscarContactoPorNombre,
   buscarContacto,
   buscarAsistentePorWhatsApp,
@@ -807,4 +828,5 @@ module.exports = {
   marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,
   listarSponsorsActivos,
+  GIROS_ELEGIBLES_MATCHMAKING,
 };

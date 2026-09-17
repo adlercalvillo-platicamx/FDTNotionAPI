@@ -83,6 +83,8 @@ require.cache[contactosPath] = {
       nombre: 'Ana Test',
       empresa: 'Marca Test',
       whatsapp: '+52 55 1111 1111',
+      giroIndustria:
+        'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
     }),
     obtenerContacto: async (id) => {
       if (id === asistenteId) {
@@ -91,6 +93,8 @@ require.cache[contactosPath] = {
           nombre: 'Ana Test',
           empresa: 'Marca Test',
           whatsapp: '+52 55 1111 1111',
+          giroIndustria:
+            'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
         };
       }
       if (id === sponsorSugeridoId) {
@@ -99,6 +103,8 @@ require.cache[contactosPath] = {
           nombre: 'Luis Test',
           empresa: 'Marca Sugerida',
           nivelPatrocinio: 'Oro',
+          categoria: 'Sponsor',
+          solucion: ['Pagos'],
         };
       }
       assert.strictEqual(id, sponsorId);
@@ -108,8 +114,16 @@ require.cache[contactosPath] = {
         empresa: 'Sponsor Test',
         calendarioGoogleId: 'calendar@test',
         nivelPatrocinio: 'Diamante',
+        categoria: 'Sponsor',
+        solucion: ['CRM / Automatización'],
       };
     },
+    listarSponsorsActivos: async () => [],
+    GIROS_ELEGIBLES_MATCHMAKING: [
+      'Marca de moda / Fashion brand (ropa - calzado - accesorios - belleza)',
+      'Retailer / tienda multimarca / Marketplace',
+      'Manufactura / produccion / sourcing',
+    ],
   },
 };
 
@@ -118,12 +132,17 @@ const { consultarSugeridasPorIdentificador } = require('../src/services/citas.se
 async function main() {
   const porWhatsapp = await consultarSugeridasPorIdentificador({ whatsapp: '525511111111' });
   assert.strictEqual(porWhatsapp.asistente_empresa, 'Marca Test');
-  assert.strictEqual(porWhatsapp.sugeridas.length, 2);
+  assert.strictEqual(porWhatsapp.sugeridas.length, 1);
   const aprobada = porWhatsapp.sugeridas.find((s) => s.estatus === 'Aprobado');
-  const pendiente = porWhatsapp.sugeridas.find((s) => s.estatus === 'Sugerido');
   assert.strictEqual(aprobada.sponsor_empresa, 'Sponsor Test');
   assert.strictEqual(aprobada.sponsor_nombre, 'Daniela Test');
-  assert.strictEqual(pendiente.sponsor_empresa, 'Marca Sugerida');
+  assert.ok(Array.isArray(aprobada.soluciones_en_comun));
+  assert.strictEqual(aprobada.estatus_origen, 'aprobado');
+  assert.strictEqual(porWhatsapp.opciones_adicionales.length, 1);
+  assert.strictEqual(porWhatsapp.opciones_adicionales[0].estatus_origen, 'sugerido');
+  assert.strictEqual(porWhatsapp.opciones_adicionales[0].sponsor_empresa, 'Marca Sugerida');
+  assert.strictEqual(porWhatsapp.hay_mas_opciones, false);
+  assert.ok(!porWhatsapp.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === sponsorId));
   assert.strictEqual(aprobada.sponsor_calendario_id, undefined);
   assert.ok(!JSON.stringify(porWhatsapp).includes('calendarioGoogleId'));
   assert.ok(!JSON.stringify(porWhatsapp).includes('sponsor_calendario_id'));
@@ -170,16 +189,13 @@ async function main() {
   );
   assert.strictEqual(paraAgente.sugeridas[0].cita_page_id, 'cita-aprobada');
   assert.deepStrictEqual(paraAgente.citasConfirmadas, porWhatsapp.citasConfirmadas);
+  assert.strictEqual(paraAgente.opciones_adicionales[0].estatus, 'Sugerido');
   const filtrosMcp = filtros.slice(nFiltrosAntesMcp);
-  assert.ok(filtrosMcp.some((f) => JSON.stringify(f).includes('"Aprobado"')));
-  assert.ok(
-    !filtrosMcp.some((f) => JSON.stringify(f).includes('"Sugerido"')),
-    'el camino MCP no debe pedir Sugerido a Notion'
-  );
+  assert.ok(filtrosMcp.some((f) => JSON.stringify(f).includes('"Sugerido"')));
 
   console.log('✅ sugeridas hidrata empresas por WhatsApp y page_id');
-  console.log('✅ GET /citas/sugeridas (default) consulta Sugerido y Aprobado');
-  console.log('✅ soloAprobado (MCP y WhatsApp Flow) deja fuera Sugerido y no toca citasConfirmadas');
+  console.log('✅ sugeridas (capa 1) es solo Aprobado; Sugerido va a opciones_adicionales');
+  console.log('✅ Confirmada no se vuelve a ofrecer en sugeridas_para_ofrecer');
   console.log('✅ incluye citasConfirmadas y ya no expone calendarioGoogleId');
 }
 

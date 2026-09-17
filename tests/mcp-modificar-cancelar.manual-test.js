@@ -360,7 +360,7 @@ async function ok(nombre, fn) {
     const r = await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' });
     assert.ok(!r.isError);
     const body = parse(r);
-    assert.strictEqual(ultimaConsultaSugeridas.soloAprobado, true);
+    assert.ok(ultimaConsultaSugeridas.soloAprobado !== true);
     assert.ok(Array.isArray(body.sugeridas));
     assert.ok(body.sugeridas.every((s) => s.estatus === 'Aprobado'));
     assert.ok(Array.isArray(body.citasConfirmadas));
@@ -456,10 +456,48 @@ async function ok(nombre, fn) {
     assert.strictEqual(body.sugeridas_para_ofrecer[0].citaId, 'cita-cancelada-revie');
     assert.strictEqual(body.sugeridas_para_ofrecer[1].para_reagendar, false);
     assert.ok(!body.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === 'sponsor-platica'));
+    assert.ok(body.aviso.includes('oferta inicial también cuenta'));
+    assert.ok(body.aviso.includes('no reinicia la pasada'));
+    assert.ok(body.aviso.includes('inicia otra pasada'));
+    assert.ok(body.aviso.includes('“expertos en”'));
+    assert.ok(!body.aviso.includes('Si pide más y ya no hay Aprobado'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
-  await ok('la descripción dice solo Aprobado, no Sugerido como ofrecible', async () => {
+  await ok('el copy de cierre viaja literal en el payload, no se deja al agente', async () => {
+    const previa = citasService.consultarSugeridasPorIdentificador;
+    citasService.consultarSugeridasPorIdentificador = async () => ({
+      asistente_notion_id: 'asis-1',
+      sugeridas: [],
+      citasConfirmadas: [],
+      citasCanceladas: [],
+    });
+    const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
+    assert.strictEqual(
+      body.copy_sin_mas_opciones,
+      'De momento esas son las opciones que hacen match con tu empresa. ' +
+        'Con mucho gusto revisamos más de nuestro lado y te confirmamos. ' +
+        '¿Agendamos con alguno de los que ya vimos?',
+      'el texto es aprobado por el equipo: si cambia sin pedido explícito, es regresión'
+    );
+    assert.ok(body.aviso.includes('textualmente copy_sin_mas_opciones'));
+    assert.ok(body.aviso.includes('no lo edites'));
+    citasService.consultarSugeridasPorIdentificador = previa;
+  });
+
+  await ok('el camino que ya trae sugeridas_para_ofrecer también lleva el copy', async () => {
+    const previa = citasService.consultarSugeridasPorIdentificador;
+    citasService.consultarSugeridasPorIdentificador = async () => ({
+      asistente_notion_id: 'asis-1',
+      sugeridas_para_ofrecer: [],
+      hay_mas_sugeridas: false,
+    });
+    const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
+    assert.ok(body.copy_sin_mas_opciones.startsWith('De momento esas son las opciones'));
+    citasService.consultarSugeridasPorIdentificador = previa;
+  });
+
+  await ok('la descripción cubre Aprobado y opciones_adicionales', async () => {
     const src = fs.readFileSync(path.join(__dirname, '../src/mcp/server.js'), 'utf8');
     const bloque = src.match(
       /server\.tool\(\s*'consultar_sugeridas_para_asistente'[\s\S]*?^\s{2}\);/m
@@ -467,7 +505,12 @@ async function ok(nombre, fn) {
     assert.ok(bloque, 'debe existir la tool');
     assert.ok(bloque[0].includes('citasConfirmadas'));
     assert.ok(bloque[0].includes('Aprobado'));
-    assert.ok(bloque[0].includes('para_reagendar'));
+    assert.ok(bloque[0].includes('opciones_adicionales'));
+    assert.ok(bloque[0].includes('campaña cuenta como Aprobado ya visto'));
+    assert.ok(bloque[0].includes('iniciar otra pasada'));
+    assert.ok(bloque[0].includes('copy_sin_mas_opciones'));
+    assert.ok(bloque[0].includes('expertos en'));
+    assert.ok(bloque[0].includes('para_reagendar') === false || bloque[0].includes('Cancelada'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });

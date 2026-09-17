@@ -11,12 +11,11 @@
 // en desuso el 9 de agosto.
 // reservar_cita sigue sin exponerse aquí — ver nota abajo.
 //
-// reservar_cita NO se expone aquí ni se debe exponer sin decisión explícita
-// aparte con Laura — cada cita necesita aprobación humana antes de
-// ofrecerse, y el agente llamándola por una interpretación equivocada ya
-// deja el daño hecho (cita real + correo). Modificar y cancelar SÍ se
-// exponen (27-ago, pedido explícito): son más sensibles que aprobar_match
-// y las descripciones exigen confirmación de cuál cita y qué cambio.
+// reservar_cita NO se expone aquí: el Agente 2 la llama como API REST en
+// Plática, con confirmación explícita. La oferta inicial / capa 1 sigue
+// siendo solo Aprobado. Si el asistente pide más opciones, el backend
+// puede devolver Sugerido o sponsors por tamaño; reservar_cita ya crea o
+// promueve la fila. No reexponer la reserva en MCP.
 
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = require('zod');
@@ -29,10 +28,16 @@ const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 const { modificarCita, cancelarCita } = require('../services/booking.service');
 
-const LIMITE_SUGERIDAS_PARA_OFRECER = 4;
 const LIMITE_HORARIOS_PARA_OFRECER = 3;
-const LIMITE_CITAS_PARA_OFRECER = 3;
-const LIMITE_CANCELADAS_PARA_OFRECER = 3;
+
+// Texto aprobado por el equipo para cerrar el recorrido de opciones. Viaja en
+// el payload porque el Agente 2 lo reconstruía de memoria y su propia regla de
+// "frases cortas" le recortaba la frase de en medio (15-sep, dos veces). Lo que
+// llega en la respuesta de la tool sí lo copia literal.
+const COPY_SIN_MAS_OPCIONES =
+  'De momento esas son las opciones que hacen match con tu empresa. ' +
+  'Con mucho gusto revisamos más de nuestro lado y te confirmamos. ' +
+  '¿Agendamos con alguno de los que ya vimos?';
 
 function respuestaJson(payload, isError = false) {
   const result = {
@@ -147,8 +152,12 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
     const resultado = await citasService.consultarSugeridasPorIdentificador({
       whatsapp,
       asistentePageId: whatsapp ? undefined : asistentePageId,
-      soloAprobado: true,
     });
+    const aviso =
+      'Ofrece máximo 4 por lote y recuerda cuáles ya dijiste en esta conversación; la oferta inicial también cuenta. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. Si la campaña ya mostró los Aprobado, “más opciones” empieza en adicionales. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. Al agotar la pasada, responde textualmente copy_sin_mas_opciones: es texto aprobado por el equipo, no lo edites, recortes ni parafrasees. Va pegado al último lote (en vez de la pregunta de más opciones) o solo, si vuelve a pedir más. Si después de eso insiste, inicia otra pasada con lo actualmente disponible. Presenta soluciones_en_comun como “expertos en”; otras_soluciones como “También ofrecen”. Si no hay comunes, usa otras_soluciones como “expertos en” sin decir que no coinciden. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
+    if (Array.isArray(resultado.sugeridas_para_ofrecer)) {
+      return respuestaJson({ ...resultado, copy_sin_mas_opciones: COPY_SIN_MAS_OPCIONES, aviso });
+    }
     const sugeridas = resultado.sugeridas || [];
     const citasConfirmadas = resultado.citasConfirmadas || [];
     const citasCanceladas = resultado.citasCanceladas || [];
@@ -160,14 +169,14 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
     return respuestaJson({
       ...resultado,
       sponsors_para_agendar: sponsorsParaAgendar,
-      sugeridas_para_ofrecer: sponsorsParaAgendar.slice(0, LIMITE_SUGERIDAS_PARA_OFRECER),
-      hay_mas_sugeridas: sponsorsParaAgendar.length > LIMITE_SUGERIDAS_PARA_OFRECER,
-      citas_para_ofrecer: citasConfirmadas.slice(0, LIMITE_CITAS_PARA_OFRECER),
-      hay_mas_citas: citasConfirmadas.length > LIMITE_CITAS_PARA_OFRECER,
-      canceladas_para_ofrecer: citasCanceladas.slice(0, LIMITE_CANCELADAS_PARA_OFRECER),
-      hay_mas_canceladas: citasCanceladas.length > LIMITE_CANCELADAS_PARA_OFRECER,
-      aviso:
-        'En el chat ofrece máximo 4 de sugeridas_para_ofrecer (Cancelada para_reagendar=true primero, luego Aprobado). Si hay_mas_sugeridas, las siguientes salen de sponsors_para_agendar. Máximo 3 confirmadas (citas_para_ofrecer) o 3 canceladas (canceladas_para_ofrecer). Una Cancelada se reagenda con citaId + reservar_cita; no es matchmaking nuevo. No leas IDs en voz alta.',
+      sugeridas_para_ofrecer: sponsorsParaAgendar.slice(0, citasService.LIMITE_SUGERIDAS_PARA_OFRECER),
+      hay_mas_sugeridas: sponsorsParaAgendar.length > citasService.LIMITE_SUGERIDAS_PARA_OFRECER,
+      citas_para_ofrecer: citasConfirmadas.slice(0, citasService.LIMITE_CITAS_PARA_OFRECER),
+      hay_mas_citas: citasConfirmadas.length > citasService.LIMITE_CITAS_PARA_OFRECER,
+      canceladas_para_ofrecer: citasCanceladas.slice(0, citasService.LIMITE_CANCELADAS_PARA_OFRECER),
+      hay_mas_canceladas: citasCanceladas.length > citasService.LIMITE_CANCELADAS_PARA_OFRECER,
+      copy_sin_mas_opciones: COPY_SIN_MAS_OPCIONES,
+      aviso,
     });
   } catch (err) {
     return respuestaJson({ error: err.message, code: err.code }, true);
@@ -504,7 +513,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 en `Aprobado`, las reales (citasConfirmadas) y las canceladas reagendables (citasCanceladas) de un asistente. sugeridas_para_ofrecer mezcla primero Cancelada (para_reagendar=true) y luego Aprobado, máximo 4; el resto está en sponsors_para_agendar. Una fila Sugerido no se ofrece. Un sponsor con cita Confirmada no se vuelve a ofrecer. Para reagendar una cancelada, copia citaId como cita_origen_cancelada_id y sponsor_notion_id; consulta disponibilidad y crea una cita nueva con reservar_cita tras confirmación explícita. El matchmaking no vuelve a sugerir un par Cancelada. No recalcula matchmaking ni escribe.',
+    'Lista las citas 1a1 en `Aprobado` (sugeridas / sugeridas_para_ofrecer), las reales (citasConfirmadas), las canceladas reagendables y opciones_adicionales. En conversación se recorren por pasadas: cancelada+Aprobado y luego adicionales; la campaña cuenta como Aprobado ya visto. Consultar de nuevo o reservar/modificar/cancelar no reinicia una pasada. Al agotar una pasada se responde textualmente `copy_sin_mas_opciones` (texto aprobado, no se edita ni recorta); una petición posterior puede iniciar otra pasada. opciones_adicionales: primero Sugerido, luego giro+tamaño (Grande/Consolidado a todos; PyME=Mediana+Pequeña; no Micro por Exa). soluciones_en_comun se dice como “expertos en” y otras_soluciones como “También ofrecen”; si no hay comunes, otras_soluciones pasa a “expertos en”. Un sponsor Confirmado no se ofrece. reservar_cita confirma también Sugerido o sin fila (estatus_origen=tamano, sin citaId). No recalcula matchmaking ni escribe.',
     {
       whatsapp: z
         .string()

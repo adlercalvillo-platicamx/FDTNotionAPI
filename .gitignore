@@ -1,5 +1,9 @@
 node_modules/
+frontend/dist/
+METSA/
 .env
+.env-coolify.txt
+.env-pruebas.txt
 *.log
 .DS_Store
 commit-message.txt

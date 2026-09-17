@@ -239,6 +239,57 @@ function esCandidatoPorTamanoNegocio(candidato, tamanosBuscadosSponsor) {
 }
 
 /**
+ * Pool extra del Agente 2 ("más opciones"): NO es Capa 1 de matchmaking.
+ * No salta área/solución aquí — esos filtros simplemente no aplican.
+ * VIP/Speaker tampoco saltan tamaño en este camino.
+ */
+function esGiroElegibleParaMasOpciones(asistente) {
+  const giros = notionContactos.GIROS_ELEGIBLES_MATCHMAKING || [];
+  return giros.includes(asistente?.giroIndustria);
+}
+
+function categoriasTamanoParaMasOpciones(asistente) {
+  const declarado = categoriaTamanoNegocio(asistente?.tamanoNegocio);
+  if (declarado === 'Grande') return { modo: 'cualquier_sponsor' };
+  if (declarado === 'Mediana' || declarado === 'Pequeña' || declarado === 'Micro') {
+    return { modo: 'exacto', categorias: new Set([declarado]) };
+  }
+  if (asistente?.madurezNegocioExa === 'Consolidado') return { modo: 'cualquier_sponsor' };
+  if (asistente?.madurezNegocioExa === 'PyME') {
+    return { modo: 'exacto', categorias: new Set(['Mediana', 'Pequeña']) };
+  }
+  return { modo: 'ninguno' };
+}
+
+function sponsorPideAlgunTamano(sponsor, categorias) {
+  const pedidos = tamanosBuscadosNormalizados(sponsor?.etapaClienteBuscada);
+  for (const categoria of categorias) {
+    if (pedidos.has(categoria)) return true;
+  }
+  return false;
+}
+
+function esSponsorElegibleParaMasOpciones(asistente, sponsor) {
+  if (!sponsor || sponsor.dadoDeBaja) return false;
+  if (sponsor.categoria && sponsor.categoria !== 'Sponsor') return false;
+  if (NIVELES_SIN_CITAS_1A1.includes(sponsor.nivelPatrocinio)) return false;
+  if (!esGiroElegibleParaMasOpciones(asistente)) return false;
+  const tamano = categoriasTamanoParaMasOpciones(asistente);
+  if (tamano.modo === 'ninguno') return false;
+  if (tamano.modo === 'cualquier_sponsor') return true;
+  return sponsorPideAlgunTamano(sponsor, tamano.categorias);
+}
+
+function solucionesEnComunYOtras(asistente, sponsor) {
+  const buscadas = new Set(solucionesReales(asistente?.solucionesBuscadas));
+  const ofertas = solucionesReales(sponsor?.solucion);
+  return {
+    soluciones_en_comun: ofertas.filter((solucion) => buscadas.has(solucion)),
+    otras_soluciones: ofertas.filter((solucion) => !buscadas.has(solucion)),
+  };
+}
+
+/**
  * Contactos de sistema (Comite/Team, el bloqueo de agenda, etc.) no son
  * asistentes. Notion ya filtra Categoria=Asistente; esto es la exclusión
  * explícita que Adler pidió, por si ese filtro se relaja o un mock se cuela.
@@ -1011,6 +1062,10 @@ module.exports = {
   // exportados para pruebas / depuración:
   calcularScore,
   esCandidatoPorTamanoNegocio,
+  esGiroElegibleParaMasOpciones,
+  categoriasTamanoParaMasOpciones,
+  esSponsorElegibleParaMasOpciones,
+  solucionesEnComunYOtras,
   esCandidatoPorArea,
   esCandidatoPorSolucion,
   esCandidatoAsistenteReal,

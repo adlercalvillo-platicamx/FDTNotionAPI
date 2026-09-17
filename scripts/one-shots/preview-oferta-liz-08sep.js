@@ -50,9 +50,9 @@ function cuerpoAprobadoOferta(cantidadSponsors) {
   return [
     '¡Hola, {{1}}! Qué gusto saludarte 😊',
     '',
-    'Te escribo de parte del equipo de Fashion Digital Talks 2026.',
+    'Te escribo de parte del equipo de **Fashion Digital Talks 2026.**',
     '',
-    '¡Estamos a tan solo unos días del evento! Y tu acceso incluye reuniones privadas de 20 minutos con expertos, pensadas para ayudarte a resolver retos actuales de tu empresa y conectar con soluciones relevantes para ti.',
+    '¡Estamos a tan solo unos días del evento! Y tu acceso incluye **reuniones privadas de 20 minutos con expertos,** pensadas para ayudarte a resolver retos actuales de tu empresa y conectar con soluciones relevantes para ti.',
     '',
     'Te comparto algunas opciones que encontramos de acuerdo a tu perfil:',
     '',

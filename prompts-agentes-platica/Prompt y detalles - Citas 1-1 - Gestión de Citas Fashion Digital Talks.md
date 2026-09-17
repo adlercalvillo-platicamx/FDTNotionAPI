@@ -24,6 +24,36 @@ Dos tandas distintas. Solo la segunda salió de esta sesión.
 - Lote con sponsors pendientes cierra con la pregunta de dos salidas; el último lote cierra con `copy_sin_mas_opciones` **copiado literal** — única excepción a TONO y ANTI-TELLS.
 - `reservar_cita`: si `estatus_origen=tamano`, no se manda `citaId`.
 
+### Detalle de las iteraciones de opciones adicionales
+
+## Qué cambió (15-sep 19:20 UTC vs `17k1QeuZKBOJ3FpJMbjm`)
+
+- El copy de cierre ya **no vive en el prompt**: viaja en `copy_sin_mas_opciones`, dentro de la respuesta de `consultar_sugeridas_para_asistente`. El prompt solo manda copiarlo literal. Reconstruirlo de memoria lo exponía a las reglas de TONO / ANTI-TELLS y el agente le quitaba la frase de en medio (pasó dos veces el 15-sep).
+- Se declara la única excepción a TONO y ANTI-TELLS: ese texto va completo aunque parezca relleno.
+- El **último lote ya no lleva** la pregunta de dos salidas — ofrecía buscar más cuando ya no había. Cierra con el copy, que trae su propia pregunta.
+- `NUNCA` prohíbe explícitamente parafrasearlo o sustituirlo.
+- El fallback de listas vacías apunta al mismo campo en vez de “el copy de revisar más del lado del equipo”.
+
+## Qué cambió (15-sep 16:47 UTC vs `3cCCdSLbJ7ZdSQn7d2Si`)
+
+- Los lotes intermedios cierran con la pregunta de **dos salidas** (elegir a alguien o pedir más), literal y obligatoria. Antes era una sugerencia entre paréntesis y chocaba con “una sola pregunta por turno”, así que el agente solo preguntaba con quién revisar horarios.
+- El copy de cierre se marca como **texto literal aprobado**: prohibido parafrasearlo o resumir a quién ya nombró (el 15-sep improvisó “todas las opciones que me salen para ti”).
+- Se cubren los dos momentos del cierre: pegado al último lote y como respuesta única si vuelve a pedir más.
+
+## Qué cambió (15-sep 16:40 UTC vs `p9beXAkx7MxaYFjjX8P0`)
+
+- El copy de cierre vuelve a depender de dos banderas verificables (`hay_mas_sugeridas` y `hay_mas_opciones` en false), no del juicio de “ya no queda nada”. Con la redacción anterior el agente leyó `hay_mas_sugeridas: false` como “no hay más opciones” y cerró con seis adicionales sin decir.
+- Se dice explícitamente que `hay_mas_sugeridas: false` solo agota los Aprobado y que las adicionales son listas aparte.
+- Prohibición directa de decir que no hay más mientras quede un sponsor sin decir.
+- El paso 2 del flujo Agendar usa la misma condición, para no repetir la instrucción suelta.
+
+## Qué cambió (15-sep 15:51 UTC vs `EyIaJyVzLQrmWgOVNYRP`)
+
+- Las opciones se recorren por pasadas; campaña, reservas, cambios y cancelaciones no borran el avance.
+- El último lote de la primera pasada avisa que de momento no hay más matches. Un pedido posterior inicia otra pasada con lo disponible.
+- Copy de extras: `soluciones_en_comun` como “expertos en”; `otras_soluciones` como “También ofrecen”.
+- Si no hay soluciones comunes, las otras se presentan directamente como especialidad, sin explicar el hueco.
+
 ## Identidad
 
 | Campo | Valor |
@@ -108,6 +138,17 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 | 14 sep 2026, 19:40–19:43 UTC | edit | Primeras ediciones de opciones adicionales (8) | `EyIaJyVzLQrmWgOVNYRP` |
 | 11 sep 2026, 20:45 UTC | edit | Reagenda de canceladas en `sugeridas_para_ofrecer` (snapshot anterior) | `pzj6kAa0zQxtsyE2loQh` |
 | 11 sep 2026, 18:03 UTC | edit | 2 h solo si el destino queda a más de 2 h | `IYNgn2CXcSc6HoKNsSK5` |
+| 15 sep 2026, 19:20 UTC | edit | Fallback de listas vacías apunta a `copy_sin_mas_opciones` | `8UbLHEVgk2r1A4R3jPqF` |
+| 15 sep 2026, 19:19 UTC | edit | Último lote sin pregunta de dos salidas | `vPygRjKZjZUJVkjKQNVf` |
+| 15 sep 2026, 19:18 UTC | edit | `NUNCA`: no parafrasear el copy de cierre | `4zSU2aLwMLD2x1stCtuQ` |
+| 15 sep 2026, 19:17 UTC | edit | Copy de cierre se copia del payload; excepción a ANTI-TELLS | `xl5Kglzhwhs5B9evpMip` |
+| 15 sep 2026, 16:47 UTC | edit | Flujo Agendar: pregunta de dos salidas + cierre literal | `17k1QeuZKBOJ3FpJMbjm` |
+| 15 sep 2026, 16:46 UTC | edit | Pregunta de dos salidas obligatoria; cierre como texto literal | `hGY5PqFpf4dOTmrOP2um` |
+| 15 sep 2026, 16:40 UTC | edit | Cierre condicionado a `hay_mas_opciones`; flujo Agendar alineado | `3cCCdSLbJ7ZdSQn7d2Si` |
+| 15 sep 2026, 16:39 UTC | edit | Guarda dura antes del copy de cierre | `SasevaynfmPoaf4xBTvs` |
+| 15 sep 2026, 15:51 UTC | edit | Pasadas de opciones + copy “expertos en” | `p9beXAkx7MxaYFjjX8P0` |
+| 14 sep 2026, 19:43 UTC | edit | Más opciones + copy de revisar | `EyIaJyVzLQrmWgOVNYRP` |
+| 11 sep 2026, 18:00 UTC | edit | 2 h solo si el destino queda a más de 2 h | `IYNgn2CXcSc6HoKNsSK5` |
 | 11 sep 2026, 16:36 UTC | edit | No-show: futuro + reinicio avisos/Meet | `S3ZamFYprZSPHwxlMzGg` |
 | 11 sep 2026, 16:13 UTC | edit | Meet virtual + Expo | `DVcJsqwxoivEayEgVmv3` |
 | 9 sep 2026, 19:02 UTC | write | Seguimiento por inactividad | `IOhCSyUTY2EaCqTj48Y8` |

@@ -342,14 +342,18 @@ function baseParams(overrides = {}) {
     assert.ok(mailAsistente, 'debe haber correo al asistente');
 
     // Sponsor: apertura por empresas; abajo datos de la persona asistente
+    assert.strictEqual(mailSponsor.asunto, h.booking.ASUNTO_CONFIRMACION_SPONSOR);
     assert.ok(mailSponsor.descripcion.includes('Empresa asistente-b agendó un espacio con Empresa sponsor-a'));
-    assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
-    assert.ok(mailSponsor.descripcion.includes('Nombre: Nombre asistente-b'));
-    assert.ok(mailSponsor.descripcion.includes('Horario: miércoles, 7 de octubre, 12:00 h.'));
+    assert.ok(mailSponsor.descripcion.includes('📅 Fecha: miércoles 7 de octubre'));
+    assert.ok(mailSponsor.descripcion.includes('🕐 Horario: 12:00 h'));
+    assert.ok(mailSponsor.descripcion.includes('📍 Mesa: 1'));
+    assert.ok(mailSponsor.descripcion.includes('Club France | Francia 75-Interior'));
     assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
-    assert.ok(mailSponsor.descripcion.includes('Club France, Francia 75-Interior'));
     assert.ok(mailSponsor.descripcion.includes('Agregar al calendario'));
+    assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
+    assert.ok(mailSponsor.descripcion.includes('Nombre: Nombre Asistente-B'));
     assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
+    assert.ok(!mailSponsor.descripcion.includes('+52 33 3236 1963'));
 
     // Asistente: encargada + empresa del sponsor, SIN datos de contacto
     assert.strictEqual(mailAsistente.asunto, h.booking.ASUNTO_CONFIRMACION_ASISTENTE);
@@ -383,7 +387,7 @@ function baseParams(overrides = {}) {
     const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
     const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
     assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
-    assert.ok(mailSponsor.descripcion.includes('Club France, Francia 75-Interior'));
+    assert.ok(mailSponsor.descripcion.includes('Club France'));
 
     assert.ok(mailAsistente.descripcion.includes('💻 Modalidad: Google Meet'));
     assert.ok(mailAsistente.descripcion.includes('Unos 15 minutos antes te llega por WhatsApp'));
@@ -405,9 +409,14 @@ function baseParams(overrides = {}) {
     const r = await h.booking.reservarCita(baseParams({ request_id: 'req-nombres-copy' }));
     assert.strictEqual(r.estado, 'Confirmada');
     const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
     assert.ok(mailAsistente.descripcion.includes('Laura Erre de la empresa Tiendanube'));
     assert.ok(!mailAsistente.descripcion.includes('LAURA ERRE'));
     assert.ok(!mailAsistente.descripcion.includes('Gonzalez'));
+    assert.ok(mailSponsor.descripcion.includes('Dinus agendó un espacio con Tiendanube'));
+    assert.ok(mailSponsor.descripcion.includes('Nombre: Ana Maria Perez Lopez'));
+    assert.ok(!mailSponsor.descripcion.includes('ANA MARIA'));
+    assert.ok(!mailSponsor.descripcion.includes('DINUS'));
   });
 
   console.log('\n=== Match Aprobado no queda huérfano al confirmar ===');
