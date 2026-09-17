@@ -163,21 +163,29 @@ export default function App() {
     );
   }, [query, sponsors]);
 
-  async function submitEmail(event) {
-    event.preventDefault();
+  async function cargarSponsors(correo) {
     setLoading(true);
     setError('');
     try {
-      const persona = await identificar(email);
+      const persona = await identificar(correo);
       const catalogo = await listarSponsors();
       setIdentidad(persona);
       setSponsors(catalogo.sponsors || []);
+      setSelectedSponsor(null);
+      setSelectedBlock(null);
+      setReservationRequestId('');
+      setResultado(null);
       setStep('sponsors');
     } catch (err) {
       setError(mensajeError(err));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function submitEmail(event) {
+    event.preventDefault();
+    await cargarSponsors(email);
   }
 
   async function cargarHorarios(sponsor, nuevaFecha = fecha) {
@@ -375,13 +383,13 @@ export default function App() {
               {selectedBlock && horaCorta(selectedBlock.inicio)}
               {identidad?.asistente?.ticketTipo === 'Virtual'
                 ? ', por Google Meet. '
-                : `, en ${resultado?.mesa || 'mesa por confirmar'}. `}
+                : `, en la ${resultado?.mesa || 'mesa por confirmar'}. `}
               {resultado?.notificacion_error
                 ? 'No pudimos enviar el correo con los detalles. '
                 : 'También recibirás los detalles por correo. '}
               {identidad?.asistente?.ticketTipo === 'Virtual' &&
                 'Recibirás la liga aproximadamente 15 minutos antes por WhatsApp y también una invitación de Google en tu correo. '}
-              Guarda esta pantalla. Para modificar, cancelar o preguntar por
+              Guarda estos datos. Para modificar, cancelar o preguntar por
               esta cita, escríbenos por WhatsApp al{' '}
               <a href={`https://wa.me/${String(resultado?.whatsappSoporte || '').replace(/\D/g, '')}`}>
                 {resultado?.whatsappSoporte}
@@ -396,6 +404,15 @@ export default function App() {
                   ? 'Google Meet'
                   : resultado?.mesa || 'Mesa por confirmar'}
               </em>
+            </div>
+            <div className="success-actions">
+              <button
+                className="button"
+                disabled={loading}
+                onClick={() => cargarSponsors(email)}
+              >
+                {loading ? 'Cargando…' : 'Agendar con otro sponsor'}
+              </button>
             </div>
           </section>
         )}

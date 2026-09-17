@@ -43,6 +43,13 @@ sea Expo, aunque haya dicho que no quería citas o su giro no sea de los tres.
   Virtual. Copy aprobado por Adler.
 - El merge de Luis no tocó `frontend/` ni `/reserva-publica`; sí hizo
   coherente el correo/ICS del asistente Virtual con esta presentación.
+- Ajustes de la primera reserva real (Adler, 17-sep): `/reserva-publica/reservar`
+  ahora devuelve `mesa` como etiqueta `Mesa N`. `reservarCita` entrega el
+  número crudo y la pantalla imprimía “en 1”. `identificar` ya usaba la
+  etiqueta de Notion, así que las dos rutas quedan con el mismo formato.
+- Copy de confirmación: “Guarda estos datos” en vez de “Guarda esta
+  pantalla”. Botón **Agendar con otro sponsor**: reidentifica con el mismo
+  correo (token nuevo) y recarga catálogo y citas confirmadas.
 
 ## Cloudflare y dominio
 
@@ -100,3 +107,8 @@ Orden de deploy: commit/push → backend con env y redeploy → frontend.
 - Tras merge de Luis: pruebas `reserva-publica`, correo y
   modificar/cancelar pasaron. El frontend con modalidad también compila
   (Vite, 30 módulos).
+- Primera reserva real desde la página (17-sep, prueba): Adler × Reevolution,
+  7-oct 16:30, `Mesa 1`, `Confirmada`, sin notas de fallo de correo.
+  Cita `3dd62dda-199a-8181-9515-fc2325f4bbbf`; promovió la fila `Sugerido`
+  existente en vez de crear otra. Correos a `adlerero666@gmail.com` y
+  `adler.calvillo@platica.mx`, ambos de Adler.

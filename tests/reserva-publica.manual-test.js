@@ -70,7 +70,7 @@ require.cache[bookingPath] = {
   exports: {
     async reservarCita(args) {
       reservaRecibida = args;
-      return { estado: 'Confirmada', notion_page_id: 'nueva-cita' };
+      return { estado: 'Confirmada', notion_page_id: 'nueva-cita', mesa: 3 };
     },
   },
 };
@@ -149,6 +149,8 @@ async function main() {
     requestId: '12345678-abcd',
   });
   assert.equal(reserva.estado, 'Confirmada');
+  // La reserva devuelve el número crudo; la página imprime la etiqueta.
+  assert.equal(reserva.mesa, 'Mesa 3');
   assert.equal(reserva.whatsappSoporte, '+52 33 3236 1963');
   assert.equal(reservaRecibida.cita_origen_cancelada_id, 'cancelada-1');
   assert.match(reservaRecibida.request_id, /^qr:aaaaaaaa-/);

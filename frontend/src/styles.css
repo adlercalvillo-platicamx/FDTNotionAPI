@@ -402,6 +402,7 @@ input:focus { border-color: var(--purple); box-shadow: 0 0 0 4px rgba(109,49,217
 .ticket strong { grid-row: span 2; align-self: center; color: var(--purple); font-size: 28px; }
 .ticket small { color: #716878; text-transform: capitalize; }
 .ticket em { grid-column: 1 / -1; margin-top: 9px; font-style: normal; font-weight: 800; }
+.success-actions { margin-top: 32px; }
 
 footer {
   width: min(1180px, calc(100% - 40px));
