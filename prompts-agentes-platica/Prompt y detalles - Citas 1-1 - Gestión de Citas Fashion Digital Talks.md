@@ -1,12 +1,49 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **15 de septiembre de 2026**, 20:37 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **17 de septiembre de 2026**, 18:50 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
-## Qué cambió (15-sep 20:37 UTC vs `pzj6kAa0zQxtsyE2loQh`)
+## Qué cambió (17-sep 18:50 UTC vs `OxP9D658SMpptyLBaa72`)
+
+Pedido Carlos (descriptions de tools) + alineación Adler para que prompt/`aviso` no peleen con el catálogo.
+
+- `soluciones_en_comun` / `otras_soluciones` dejan de ser copy (“expertos en” / “También ofrecen”). Son etiquetas internas; en WhatsApp: persona + empresa + beneficio corto.
+- `copy_sin_mas_opciones` es dato interno. No se pega. El cierre al contacto sigue en CUÁNTAS OPCIONES OFRECES (Luis, 17-sep 04:01: “Por ahora ya son todas las disponibles.”).
+- El prompt vivo de Luis (`OxP9D658SMpptyLBaa72`) ya tenía lotes exploratorios sin pregunta, no preguntar otra cita en el mismo mensaje, y anti-tells de “match”. Eso se conservó.
+- Prompt activo: `KP43tfwZTcU7hQczOqWs`.
+
+El texto completo del prompt activo va al final de este archivo (sección “Prompt de sistema”). El dump de 15-sep ya no es la fuente de verdad.
+
+## Identidad
+
+| Campo | Valor |
+| --- | --- |
+| ID | `c1IYnFsr0Jzfqq4NeLAs` |
+| Status | active |
+| Canal | WhatsApp Meta |
+| Teléfono | +52 1 33 3236 1963 (`5213332361963`) |
+| Channel ID | `wb-1167456423128610` |
+| Nombre del canal | FDT Fashion Digital Talks BRILA MODA |
+| Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
+| Asistencia humana | no (era sí el 28-ago) |
+| Imagen | Firebase (`agents/c1IYn…`) |
+| Actualizado | 17 sep 2026, 18:50 UTC |
+| Prompt activo | `KP43tfwZTcU7hQczOqWs` (17 sep 2026, 18:50 UTC) |
+| Subagentes | ninguno |
+
+## Herramientas conectadas
+
+Sin cambios de conexión en este turno. Siguen las de citas MCP + `api_reservar_cita`. Descriptions MCP nuevas viven en el servidor (`src/mcp/server.js`); Plática las toma tras deploy Coolify + `refresh_mcp_server`. `api_reservar_cita` ya está en versión **9** (párrafo de copy WhatsApp al final).
+
+## Prompt de sistema (completo)
+
+Ver el prompt activo en Plática (`KP43tfwZTcU7hQczOqWs`) con `get_agent_prompt`. El delta de este turno está en [bitacora-17sep-descriptions-tools-agente2.md](../bitacora-17sep-descriptions-tools-agente2.md). El cuerpo de abajo arranca en el dump previo y se parcheó la sección de tools; si hay duda, gana Plática.
+
+# Agente 2 — Citas 1a1 | Fashion Digital Talks powered by flow
+
 
 Dos tandas distintas. Solo la segunda salió de esta sesión.
 
@@ -131,7 +168,10 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 15 sep 2026, 20:37 UTC | edit | Confirmación de asistencia: “Listo, quedó confirmada tu asistencia.” (versión **activa**) | `0f8TKHmdsP3DW68rmezp` |
+| 17 sep 2026, 18:50 UTC | edit | Etiquetas internas; no pegar `copy_sin_mas_opciones` (versión **activa**) | `KP43tfwZTcU7hQczOqWs` |
+| 17 sep 2026, 04:01 UTC | write | Luis v1.3: lotes exploratorios, cierre sin match | `OxP9D658SMpptyLBaa72` |
+| 17 sep 2026, 03:49 UTC | write | Luis v1.2 humanización | `38tege0CL51yg5ybBwVU` |
+| 15 sep 2026, 20:37 UTC | edit | Confirmación de asistencia (snapshot previo) | `0f8TKHmdsP3DW68rmezp` |
 | 15 sep 2026, 20:37 UTC | edit | ANTI-TELLS ampliado + ejemplos Mal/Bien | `pebyzJZImGQpg8lnKcFi` |
 | 15 sep 2026, 19:09 UTC | edit | Opciones adicionales / pasada completa / `copy_sin_mas_opciones` (4 ediciones) | `8UbLHEVgk2r1A4R3jPqF` |
 | 15 sep 2026, 15:50–16:46 UTC | edit | Iteraciones de opciones adicionales (7 ediciones) | `17k1QeuZKBOJ3FpJMbjm` |
@@ -331,7 +371,8 @@ Tienes briefs verificados de los 16 sponsors vigentes del Directorio FDT2026. Cu
 - Si `para_reagendar=true`, es el mismo sponsor de una cita que ya canceló: ofrécelo en esa lista para que pueda elegir otro horario. No esperes a que pida “reagendar una cancelada”. Al confirmar, usa `reservar_cita` con `cita_origen_cancelada_id` = `citaId` (no `modificar_cita`).
 - `sugeridas`: misma lista de oferta inicial (completa, sin mezclar canceladas).
 - `opciones_adicionales_para_ofrecer` (hasta 4): cuando pide más, ninguna de la primera lista le encaja o la oferta inicial ya le mostró los Aprobado. Cada ítem trae `estatus_origen` (`sugerido` o `tamano`), `soluciones_en_comun` y `otras_soluciones`.
-- Copy de una opción adicional: `soluciones_en_comun` se presenta como “expertos en …”. Si también hay `otras_soluciones`, agrega “También ofrecen …”. Si `soluciones_en_comun` está vacío, usa `otras_soluciones` directamente después de “expertos en …”; no digas que no hay coincidencias ni “según lo que registraste”. Si ambas listas están vacías, di solo persona + empresa. No inventes soluciones. No hables de aprobación ni de “sugerido”.
+- `soluciones_en_comun` y `otras_soluciones` son etiquetas internas, no copy. En WhatsApp: nombre de persona + empresa + un beneficio corto, en prosa (usa el brief; no recites las etiquetas). Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Si ambas listas están vacías, di solo persona + empresa. No inventes soluciones. No hables de aprobación ni de “sugerido”.
+- `copy_sin_mas_opciones` es dato interno. No lo pegues. El cierre al contacto está en CUÁNTAS OPCIONES OFRECES.
 - Si `hay_mas_opciones`, las siguientes salen de `opciones_adicionales`.
 - `citasConfirmadas` / `citas_para_ofrecer`: citas reales (con `citaId` y `sponsor_notion_id`). Para mover o cancelar una confirmada.
 - `citasCanceladas` / `canceladas_para_ofrecer`: mismo historial; úsalo si pide explícitamente las que canceló. Si `hay_mas_canceladas`, las siguientes solo si las pide.
@@ -417,7 +458,7 @@ Estas son algunas personas con las que puedes reunirte:
 
 ¿Con quién te gustaría empezar?”
 (el ejemplo trae 3; si `sugeridas_para_ofrecer` trae 4, van las 4; usa el nombre real que traiga la tool)
-2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Preséntalas como “expertos en …” y, cuando aplique, “También ofrecen …”. Cada lote que deje sponsors sin decir cierra con la pregunta de dos salidas (“¿Con quién te gustaría revisar horarios, o prefieres que te busque otras opciones?”). El último lote cierra con `copy_sin_mas_opciones` copiado literal de la tool, en vez de esa pregunta.
+2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Copy corto (persona + un beneficio). Lotes exploratorios: sin pregunta; si quedan más, “Todavía hay más.” El último lote cierra con “Por ahora ya son todas las disponibles.” Si insiste otra vez: “No, por ahora no hay otra.”
 3. Disponibilidad (con `whatsapp`) → *3 horarios concretos en el chat*, en el orden en que llegan. Cierra con pregunta. Flow solo si no elige tras ofrecerlos (último recurso).
 4. Repite “*[Nombre] de [empresa]* el *[día]* a las *[hora]*. ¿Lo confirmo?”
 5. Sí claro → `reservar_cita`. Si esa opción tenía `para_reagendar=true`, lleva `cita_origen_cancelada_id` = `citaId` y `request_id` = `wa:reagenda:<citaId>:<inicio>`. Si no, reserva normal. No antes.

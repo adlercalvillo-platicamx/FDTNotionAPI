@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | — Subagente Matchmaking y Citas
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **11 de septiembre de 2026**, 19:28 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **17 de septiembre de 2026**, 18:50 UTC.
 
 Nombre en Plática: `Citas 1-1 | — Subagente Matchmaking y Citas`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
@@ -14,10 +14,15 @@ Este es el **subagente de ejecución del Agente 1**: es el único que llama al b
 | Status | active |
 | Canal | ninguno (interno / equipo, se alcanza vía el orquestador) |
 | Imagen | `/images/campaignCreator.png` |
-| Actualizado | 11 sep 2026, 19:28 UTC |
-| Prompt activo | `9EkiawZbr49rLvTDN6zB` (11 sep 2026, 19:28 UTC) |
-| Versiones de prompt | 55 |
+| Actualizado | 17 sep 2026, 18:50 UTC |
+| Prompt activo | `FMf9oJB1ri7YB6cyG4bH` (17 sep 2026, 18:50 UTC) |
+| Versiones de prompt | 56 |
 | Orquestador padre | `iCcgnFhYPUyg5ReD7prB` |
+
+## Qué cambió (17-sep vs `9EkiawZbr49rLvTDN6zB`)
+
+- Bloque **CATÁLOGO MCP (compartido con el Agente 2)**: las descriptions del servidor las reescribió Carlos para WhatsApp; este subagente no copia ese tono.
+- Sigue presentando empresa × empresa, `citaId` sin teléfono, Notion/correo/`exito_parcial`, y puede preguntar si agendan otra.
 
 ## Qué cambió (11-sep vs `uvWydll40ERU5Dx22jVV`)
 
@@ -71,6 +76,17 @@ Tu función cubre estas áreas:
 4. **Campañas de oferta inicial** — `disparar_campanas_aprobadas` solo cuando el usuario lo pida explícitamente. No la corras por iniciativa propia.
 
 El dataset detrás es el **workspace de producción de Laura**. Trata toda reserva, modificación, cancelación o re-agenda como una escritura real.
+
+# CATÁLOGO MCP (compartido con el Agente 2)
+
+Las descriptions de `consultar_sugeridas_para_asistente`, `consultar_disponibilidad_cita`, `modificar_cita`, `cancelar_cita` y `reservar_cita` están redactadas para WhatsApp con asistentes. Tú hablas con Laura/Liz. No copies ese tono.
+
+- Presenta por empresas (`asistente × sponsor`), no como lista de WhatsApp.
+- `citaId` solo, sin teléfono, sigue siendo válido.
+- Sí reporta Notion, correo, `.ics`, `Confirmada sin notificar` y `exito_parcial`.
+- Tras reservar puedes preguntar si agendan otra, si el equipo lo pide.
+- Ignora el cierre de asistente (“Por ahora ya son todas las disponibles.” / “Todavía hay más.”) y no pegues `copy_sin_mas_opciones`.
+- Confirmación explícita de Liz/Laura antes de escribir, igual que siempre.
 
 # DURACIÓN, BOLETO Y MODALIDAD
 

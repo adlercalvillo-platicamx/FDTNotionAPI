@@ -458,8 +458,9 @@ async function ok(nombre, fn) {
     assert.ok(!body.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === 'sponsor-platica'));
     assert.ok(body.aviso.includes('oferta inicial también cuenta'));
     assert.ok(body.aviso.includes('no reinicia la pasada'));
-    assert.ok(body.aviso.includes('inicia otra pasada'));
-    assert.ok(body.aviso.includes('“expertos en”'));
+    assert.ok(body.aviso.includes('dato interno'));
+    assert.ok(body.aviso.includes('etiquetas internas'));
+    assert.ok(!body.aviso.includes('inicia otra pasada'));
     assert.ok(!body.aviso.includes('Si pide más y ya no hay Aprobado'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
@@ -475,13 +476,11 @@ async function ok(nombre, fn) {
     const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
     assert.strictEqual(
       body.copy_sin_mas_opciones,
-      'De momento esas son las opciones que hacen match con tu empresa. ' +
-        'Con mucho gusto revisamos más de nuestro lado y te confirmamos. ' +
-        '¿Agendamos con alguno de los que ya vimos?',
-      'el texto es aprobado por el equipo: si cambia sin pedido explícito, es regresión'
+      'Por ahora ya son todas las disponibles.',
+      'cierre de pasada: si cambia sin pedido, es regresión'
     );
-    assert.ok(body.aviso.includes('textualmente copy_sin_mas_opciones'));
-    assert.ok(body.aviso.includes('no lo edites'));
+    assert.ok(body.aviso.includes('dato interno'));
+    assert.ok(body.aviso.includes('no lo pegues'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
@@ -493,7 +492,7 @@ async function ok(nombre, fn) {
       hay_mas_sugeridas: false,
     });
     const body = parse(await ejecutarConsultarSugeridasParaAsistente({ whatsapp: '5512345678' }));
-    assert.ok(body.copy_sin_mas_opciones.startsWith('De momento esas son las opciones'));
+    assert.ok(body.copy_sin_mas_opciones.startsWith('Por ahora ya son todas'));
     citasService.consultarSugeridasPorIdentificador = previa;
   });
 
@@ -506,11 +505,10 @@ async function ok(nombre, fn) {
     assert.ok(bloque[0].includes('citasConfirmadas'));
     assert.ok(bloque[0].includes('Aprobado'));
     assert.ok(bloque[0].includes('opciones_adicionales'));
-    assert.ok(bloque[0].includes('campaña cuenta como Aprobado ya visto'));
-    assert.ok(bloque[0].includes('iniciar otra pasada'));
-    assert.ok(bloque[0].includes('copy_sin_mas_opciones'));
-    assert.ok(bloque[0].includes('expertos en'));
-    assert.ok(bloque[0].includes('para_reagendar') === false || bloque[0].includes('Cancelada'));
+    assert.ok(bloque[0].includes('campaña cuenta como visto'));
+    assert.ok(bloque[0].includes('copy_sin_mas_opciones es dato interno'));
+    assert.ok(bloque[0].includes('etiquetas internas'));
+    assert.ok(!bloque[0].includes('iniciar otra pasada'));
     assert.ok(!bloque[0].includes('calendarioGoogleId'));
     assert.ok(!/Sugerido o Aprobado/.test(bloque[0]));
   });
@@ -535,7 +533,7 @@ async function ok(nombre, fn) {
       ],
       'casillas: Día 1 Mañana, Día 1 Tarde, Día 2'
     );
-    assert.ok(body.aviso.includes('SOLO estas 3'));
+    assert.ok(body.aviso.includes('opciones_para_ofrecer'));
   });
 
   await ok('sin Tarde Día 1 rellena la casilla con Día 2 y no repite', async () => {

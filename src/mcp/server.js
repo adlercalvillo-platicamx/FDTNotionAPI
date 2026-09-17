@@ -30,14 +30,10 @@ const { modificarCita, cancelarCita } = require('../services/booking.service');
 
 const LIMITE_HORARIOS_PARA_OFRECER = 3;
 
-// Texto aprobado por el equipo para cerrar el recorrido de opciones. Viaja en
-// el payload porque el Agente 2 lo reconstruía de memoria y su propia regla de
-// "frases cortas" le recortaba la frase de en medio (15-sep, dos veces). Lo que
-// llega en la respuesta de la tool sí lo copia literal.
-const COPY_SIN_MAS_OPCIONES =
-  'De momento esas son las opciones que hacen match con tu empresa. ' +
-  'Con mucho gusto revisamos más de nuestro lado y te confirmamos. ' +
-  '¿Agendamos con alguno de los que ya vimos?';
+// Cierre de pasada para el Agente 2. Viaja en el payload como dato interno
+// (copy_sin_mas_opciones): el modelo no debe pegarlo; el aviso y el prompt
+// dicen qué decirle al contacto. 17-sep: Carlos, sin “match”.
+const COPY_SIN_MAS_OPCIONES = 'Por ahora ya son todas las disponibles.';
 
 function respuestaJson(payload, isError = false) {
   const result = {
@@ -154,7 +150,7 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
       asistentePageId: whatsapp ? undefined : asistentePageId,
     });
     const aviso =
-      'Ofrece máximo 4 por lote y recuerda cuáles ya dijiste en esta conversación; la oferta inicial también cuenta. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. Si la campaña ya mostró los Aprobado, “más opciones” empieza en adicionales. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. Al agotar la pasada, responde textualmente copy_sin_mas_opciones: es texto aprobado por el equipo, no lo edites, recortes ni parafrasees. Va pegado al último lote (en vez de la pregunta de más opciones) o solo, si vuelve a pedir más. Si después de eso insiste, inicia otra pasada con lo actualmente disponible. Presenta soluciones_en_comun como “expertos en”; otras_soluciones como “También ofrecen”. Si no hay comunes, usa otras_soluciones como “expertos en” sin decir que no coinciden. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
+      'Ofrece máximo 4 por lote y recuerda cuáles ya dijiste; la oferta inicial también cuenta. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. Si la campaña ya mostró los Aprobado, “más opciones” empieza en adicionales. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. copy_sin_mas_opciones es dato interno: no lo pegues. Al agotar la pasada, al contacto: “Por ahora ya son todas las disponibles.” Si insiste: “No, por ahora no hay otra.” soluciones_en_comun y otras_soluciones son etiquetas internas, no copy; en WhatsApp usa persona + empresa + un beneficio corto. Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Lote exploratorio: solo el lote; si hay_mas_sugeridas o hay_mas_opciones puedes cerrar “Todavía hay más.” Sin pregunta. Pregunta de horarios solo cuando elija a alguien. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
     if (Array.isArray(resultado.sugeridas_para_ofrecer)) {
       return respuestaJson({ ...resultado, copy_sin_mas_opciones: COPY_SIN_MAS_OPCIONES, aviso });
     }
@@ -292,7 +288,7 @@ async function ejecutarConsultarDisponibilidadCita(
         ? pedidoLibre
           ? `El usuario pidió las ${horaPedida}. Esa hora SÍ está libre (horario_solicitado.disponible=true) y ya va en opciones_para_ofrecer. Dilo explícitamente; no la niegues porque no salía en las casillas. Ofrece como máximo estas 3.`
           : `El usuario pidió las ${horaPedida}. Esa hora NO está libre (mira horario_solicitado). Dilo así y ofrece SOLO las alternativas de opciones_para_ofrecer. No inventes otra hora.`
-        : 'Ofrece SOLO estas 3 opciones en el chat, en el mismo orden. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con hora=15:00 (y fecha si dijo el día). Si pide otras horas, excluirInicios = los inicio ya ofrecidos. Foto del momento: reservar_cita / modificar_cita revalidan el bloque (sponsor y asistente).',
+        : 'Ofrece SOLO estas opciones_para_ofrecer, en el mismo orden, y solo lo que encaje con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con hora=15:00 (y fecha si dijo el día). Si pide otras horas, excluirInicios = los inicio ya ofrecidos. Foto: reservar_cita / modificar_cita revalidan el bloque.',
     });
   } catch (err) {
     return respuestaJson(
@@ -513,7 +509,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las citas 1a1 en `Aprobado` (sugeridas / sugeridas_para_ofrecer), las reales (citasConfirmadas), las canceladas reagendables y opciones_adicionales. En conversación se recorren por pasadas: cancelada+Aprobado y luego adicionales; la campaña cuenta como Aprobado ya visto. Consultar de nuevo o reservar/modificar/cancelar no reinicia una pasada. Al agotar una pasada se responde textualmente `copy_sin_mas_opciones` (texto aprobado, no se edita ni recorta); una petición posterior puede iniciar otra pasada. opciones_adicionales: primero Sugerido, luego giro+tamaño (Grande/Consolidado a todos; PyME=Mediana+Pequeña; no Micro por Exa). soluciones_en_comun se dice como “expertos en” y otras_soluciones como “También ofrecen”; si no hay comunes, otras_soluciones pasa a “expertos en”. Un sponsor Confirmado no se ofrece. reservar_cita confirma también Sugerido o sin fila (estatus_origen=tamano, sin citaId). No recalcula matchmaking ni escribe.',
+    'Lista las 1a1 del asistente identificado por whatsapp: sugeridas_para_ofrecer (canceladas reagendables y luego Aprobado), citasConfirmadas, citasCanceladas y opciones_adicionales. Recorre por pasadas. Lo que ya salió en campaña cuenta como visto. Consultar de nuevo, reservar, modificar o cancelar no reinicia la pasada. Un sponsor Confirmado no se ofrece. No recalcula matchmaking ni escribe. soluciones_en_comun y otras_soluciones son etiquetas internas, no copy. En WhatsApp: nombre de persona + empresa + un beneficio corto, en prosa. Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Lote exploratorio (pidió más / otras / dos): solo el lote. Si hay_mas_sugeridas o hay_mas_opciones, puedes cerrar “Todavía hay más.” Sin pregunta. Pregunta de horarios solo cuando elija a alguien. copy_sin_mas_opciones es dato interno. No lo pegues. Al agotar una pasada, al contacto: “Por ahora ya son todas las disponibles.” Si insiste: “No, por ahora no hay otra.”',
     {
       whatsapp: z
         .string()
@@ -530,7 +526,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios REALES libres para un sponsor de cita 1a1, excluyendo bloques donde el asistente ya tiene cita confirmada y bloques que ya superaron CITAS_MARGEN_MODIFICACION_MINUTOS (5 min). Devuelve como máximo 3 opciones (opciones_para_ofrecer) en el mismo orden; nunca listes más ni reordenes. Sin fecha: casillas Día 1 Mañana / Día 1 Tarde / Día 2. Con fecha: solo ese día. Si el usuario pide una hora concreta (ej. las 15:00), PASA hora=15:00 y fecha si dijo el día — no niegues esa hora solo porque no salía en las 3 casillas; mira horario_solicitado. Si hay_mas=true y pide otras horas, excluirInicios. Pasa whatsapp (o asistentePageId). Nunca inventes una hora. Foto: reservar_cita / modificar_cita revalidan el mismo umbral. También al reagendar.',
+    'Consulta horarios reales libres de un sponsor. Excluye bloques donde el asistente ya tiene cita y bloques que ya no se pueden tomar. Devuelve máximo 3 en opciones_para_ofrecer, en ese orden: no inventes, no reordenes, no listes más. Pasa siempre whatsapp (o asistentePageId). Si acotó día, pasa fecha. Si pidió una hora (ej. 15:00), pasa hora y fecha; no la niegues solo porque no salía en las 3 — mira horario_solicitado. Si hay_mas y pide otras, excluirInicios. En el chat: menciona solo lo que encaja con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. reservar_cita / modificar_cita revalidan el bloque.',
     {
       sponsorPageId: z
         .string()
@@ -561,7 +557,7 @@ function crearServidorMcp() {
 
   server.tool(
     'modificar_cita',
-    'Cambia el horario de una cita 1a1 YA CONFIRMADA. Antes consulta consultar_disponibilidad_cita con el sponsor_notion_id de esa cita y ofrece SOLO las 3 opciones_para_ofrecer. Identifica la cita con citaId o telefono; si hay varias, VARIAS_CITAS_ACTIVAS — pregunta cuál (máximo 3 nombres) y vuelve con citaId o sponsorEmpresa. nuevaFechaHora = el inicio ISO de la opción elegida, nunca inventado. SOLO cuando confirmó explícitamente mover ESA cita a ESE horario. El .ics se envía por correo.',
+    'Cambia el horario de una cita 1a1 ya confirmada. Antes llama consultar_disponibilidad_cita con el sponsor_notion_id de esa cita y ofrece solo opciones_para_ofrecer. Identifica con citaId o whatsapp; si hay varias, pregunta cuál (máx. 3) y vuelve con citaId o sponsorEmpresa. nuevaFechaHora = el inicio ISO elegido, nunca inventado. Solo con sí explícito de mover ESA cita a ESA hora. No menciones Notion ni IDs al contacto.',
     {
       telefono: z
         .string()
@@ -571,7 +567,7 @@ function crearServidorMcp() {
       citaId: z
         .string()
         .optional()
-        .describe('page_id de la fila en Citas. Laura/Liz pueden usarlo solo, sin teléfono.'),
+        .describe('page_id de la fila en Citas. Basta para identificarla; el teléfono es opcional si ya tienes este id.'),
       sponsorEmpresa: z
         .string()
         .optional()
@@ -585,7 +581,7 @@ function crearServidorMcp() {
 
   server.tool(
     'cancelar_cita',
-    'Cancela una cita 1a1 YA CONFIRMADA. Identifica con citaId o telefono; si hay varias, VARIAS_CITAS_ACTIVAS — ofrece máximo 3 en el chat, pregunta cuál y vuelve con citaId o sponsorEmpresa. SOLO cuando confirmó explícitamente cancelar ESA cita. No inferirlo de "ya no va a poder" sin un sí claro. Envía el .ics de baja por correo y libera el horario.',
+    'Cancela una cita 1a1 ya confirmada. Identifica con citaId o whatsapp; si hay varias, ofrece máximo 3, pregunta cuál y vuelve con citaId o sponsorEmpresa. Solo con sí explícito de cancelar ESA cita. “Ya no va a poder” no basta. No menciones Notion ni IDs al contacto.',
     {
       telefono: z
         .string()
@@ -595,7 +591,7 @@ function crearServidorMcp() {
       citaId: z
         .string()
         .optional()
-        .describe('page_id de la fila en Citas. Laura/Liz pueden usarlo solo, sin teléfono.'),
+        .describe('page_id de la fila en Citas. Basta para identificarla; el teléfono es opcional si ya tienes este id.'),
       sponsorEmpresa: z
         .string()
         .optional()
