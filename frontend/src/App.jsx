@@ -84,6 +84,7 @@ function ExistingAppointments({ citas, virtual = false }) {
         <div className="existing-row" key={cita.citaId}>
           <strong>{cita.sponsorNombre}</strong>
           <span>
+            {cita.fechaHora && fechaLarga(cita.fechaHora.slice(0, 10))} ·{' '}
             {horaCorta(cita.fechaHora)} ·{' '}
             {virtual ? 'Google Meet' : cita.mesa || 'Mesa por asignar'}
           </span>

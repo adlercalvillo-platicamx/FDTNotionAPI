@@ -50,6 +50,8 @@ sea Expo, aunque haya dicho que no quería citas o su giro no sea de los tres.
 - Copy de confirmación: “Guarda estos datos” en vez de “Guarda esta
   pantalla”. Botón **Agendar con otro sponsor**: reidentifica con el mismo
   correo (token nuevo) y recarga catálogo y citas confirmadas.
+- Lista “Tus citas confirmadas”: además de hora y mesa, muestra el día
+  (`miércoles, 7 de octubre · 4:30 p.m. · Mesa 1`).
 
 ## Cloudflare y dominio
 
