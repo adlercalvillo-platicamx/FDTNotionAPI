@@ -111,4 +111,7 @@ Orden de deploy: commit/push → backend con env y redeploy → frontend.
   7-oct 16:30, `Mesa 1`, `Confirmada`, sin notas de fallo de correo.
   Cita `3dd62dda-199a-8181-9515-fc2325f4bbbf`; promovió la fila `Sugerido`
   existente en vez de crear otra. Correos a `adlerero666@gmail.com` y
-  `adler.calvillo@platica.mx`, ambos de Adler.
+  `adler.calvillo@platica.mx`, ambos de Adler. Adler reportó que el correo
+  del sponsor repetía el asunto en la primera línea; se quitó esa línea
+  del cuerpo. El asunto se queda. Modificación y cancelación no tenían
+  ese duplicado. El correo ya enviado no se reescribe.
