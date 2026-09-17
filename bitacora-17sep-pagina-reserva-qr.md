@@ -53,7 +53,9 @@ Orden de deploy: commit/push → backend con env y redeploy → frontend.
 ## Pendientes
 
 - Commit/push: `frontend/` y `/reserva-publica` **no están en GitHub todavía**.
-- En el recurso **frontend** Coolify: puerto 80, ARG/build
+- En el recurso **frontend** Coolify: Ports Exposes 80 y **Port Mappings
+  vacío** (un `80:80` al host da `port is already allocated`: ese puerto es
+  del proxy). ARG/build
   `VITE_API_BASE_URL=https://f8wwwgc0g88wccscww4cccco.appsplatica.site`.
 - En el recurso **backend** (después del push): las tres env de arriba +
   redeploy. No tocar el resto de env del API.

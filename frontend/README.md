@@ -19,7 +19,8 @@ Vite las publica dentro del JavaScript del navegador.
 1. Application nueva conectada al mismo repo/rama del backend.
 2. Base/Root Directory: `/frontend`.
 3. Build Pack: Dockerfile (`/Dockerfile`, relativo a esa carpeta).
-4. Puerto del contenedor: `80`.
+4. Puerto del contenedor: Ports Exposes `80`. **Port Mappings vacío**: mapear
+   `80:80` al host choca con el proxy de Coolify (`port is already allocated`).
 5. Build Variable: `VITE_API_BASE_URL` = URL pública de `fdt-notion-api`,
    sin slash final
    (`https://f8wwwgc0g88wccscww4cccco.appsplatica.site`).
