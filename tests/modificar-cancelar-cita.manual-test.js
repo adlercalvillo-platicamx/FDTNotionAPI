@@ -55,6 +55,7 @@ const CONTACTOS = {
     email: 'ana@dinus.test',
     whatsapp: `+52 ${TELEFONO_DINUS}`,
     rolPuesto: 'Directora',
+    ticketTipo: 'Presencial',
   },
   [ASISTENTE_AJENO]: {
     id: ASISTENTE_AJENO,
@@ -397,6 +398,37 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(textoAsistente.includes('aprovechar al máximo los 20 minutos'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));
+  });
+
+  await ok('Virtual: cambio de horario sin mesa/sede para asistente; sponsor conserva mesa', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-virtual',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+    });
+    CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Virtual';
+    try {
+      const r = await modificarCita({
+        citaId: 'cita-virtual',
+        nuevaFechaHora: '2026-10-07T12:00:00-06:00',
+        ahora: AHORA_ANTES_DEL_EVENTO,
+      });
+      assert.strictEqual(r.estado, 'Confirmada');
+      assert.strictEqual(correos.length, 2);
+
+      const textoSponsor = correos[0].text;
+      const textoAsistente = correos[1].text;
+      assert.ok(textoSponsor.includes('Tu cita será en la mesa 1.'));
+      assert.ok(textoSponsor.includes('Club France, Francia 75-Interior'));
+      assert.ok(textoAsistente.includes('💻 Modalidad: Google Meet'));
+      assert.ok(textoAsistente.includes('Unos 15 minutos antes te llega por WhatsApp'));
+      assert.ok(!textoAsistente.includes('Mesa:'));
+      assert.ok(!textoAsistente.includes('Sede:'));
+      assert.ok(!textoAsistente.includes('llegar unos minutos antes'));
+    } finally {
+      CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Presencial';
+    }
   });
 
   await ok('Notion en mayúsculas → Hola con primer nombre Title Case', async () => {

@@ -261,6 +261,7 @@ function crearHarness({
           rolPuesto: extra.rolPuesto || 'CEO',
           email: email === undefined ? 'sponsor@test.com' : email,
           whatsapp: extra.whatsapp || '555',
+          ticketTipo: extra.ticketTipo || null,
         };
       },
     },
@@ -367,6 +368,30 @@ function baseParams(overrides = {}) {
     assert.strictEqual(h.porId.get(r.notion_page_id).titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(r.titulo, 'Cita — Empresa asistente-b - Empresa sponsor-a');
     assert.strictEqual(h.porId.get(r.notion_page_id).estatus, 'Confirmada');
+  });
+
+  await ok('asistente Virtual: correo sin mesa/sede; sponsor conserva mesa', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'asistente-b': { ticketTipo: 'Virtual' },
+      },
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-virtual-copy' }));
+    assert.strictEqual(r.estado, 'Confirmada');
+
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
+    assert.ok(mailSponsor.descripcion.includes('Club France, Francia 75-Interior'));
+
+    assert.ok(mailAsistente.descripcion.includes('💻 Modalidad: Google Meet'));
+    assert.ok(mailAsistente.descripcion.includes('Unos 15 minutos antes te llega por WhatsApp'));
+    assert.ok(mailAsistente.descripcion.includes('una invitación de Google a este correo'));
+    assert.ok(!mailAsistente.descripcion.includes('Mesa:'));
+    assert.ok(!mailAsistente.descripcion.includes('Sede:'));
+    assert.ok(!mailAsistente.descripcion.includes('llegar unos minutos antes'));
+    assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
   });
 
   await ok('nombre en mayúsculas de Notion → representante Title Case, sin apellido materno', async () => {
