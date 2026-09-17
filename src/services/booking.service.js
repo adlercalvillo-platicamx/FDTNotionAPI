@@ -287,6 +287,7 @@ async function resolverNotificacionCita({
   const representanteSponsor =
     nombreRepresentanteParaOferta(sponsor.nombre) || empresaSponsor;
   const primerNombreAsistente = primerNombreParaSaludo(asistente.nombre) || 'Asistente';
+  const asistenteVirtual = String(asistente.ticketTipo || '').trim() === 'Virtual';
   const datosContactoAsistente = lineasDatosContactoAsistente(asistente);
   const partes = partesFechaHora(inicio);
 
@@ -305,6 +306,7 @@ async function resolverNotificacionCita({
     fecha: partes.fecha,
     hora: partes.hora,
     mesa,
+    virtual: asistenteVirtual,
   });
 
   return {
@@ -324,6 +326,7 @@ async function resolverNotificacionCita({
     empresaSponsor,
     representanteSponsor,
     primerNombreAsistente,
+    asistenteVirtual,
     datosContactoAsistente,
   };
 }
@@ -482,7 +485,14 @@ function cuerpoCancelacionSponsor({
   return lineas.join('\n');
 }
 
-function cuerpoConfirmacionAsistente({ representanteSponsor, empresaSponsor, fecha, hora, mesa }) {
+function cuerpoConfirmacionAsistente({
+  representanteSponsor,
+  empresaSponsor,
+  fecha,
+  hora,
+  mesa,
+  virtual = false,
+}) {
   const conQuien = fraseConEncargada({
     representanteSponsor,
     empresaSponsor,
@@ -495,18 +505,37 @@ function cuerpoConfirmacionAsistente({ representanteSponsor, empresaSponsor, fec
   ];
   if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
   if (hora) lineas.push(`🕐 Horario: ${hora} hrs`, '');
+  if (virtual) {
+    lineas.push(
+      '💻 Modalidad: Google Meet',
+      '',
+      'La reunión es por Google Meet. Unos 15 minutos antes te llega por WhatsApp y, al mismo tiempo, una invitación de Google a este correo.',
+      ''
+    );
+  } else {
+    lineas.push(
+      `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
+      '',
+      n ? `💼 Mesa: ${n}` : '💼 Mesa: te la confirmamos en los días previos al evento.',
+      '',
+      'En los días previos al evento te compartiremos más información para que puedas ubicar fácilmente tu mesa dentro del evento.',
+      ''
+    );
+  }
   lineas.push(
-    `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
-    '',
-    n ? `💼 Mesa: ${n}` : '💼 Mesa: te la confirmamos en los días previos al evento.',
-    '',
-    'En los días previos al evento te compartiremos más información para que puedas ubicar fácilmente tu mesa dentro del evento.',
-    '',
     'Para guardar esta reunión en tu agenda, selecciona “Agregar al calendario” en la invitación adjunta (.ics).',
-    '',
-    `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
-    '',
-    `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    ''
+  );
+  if (!virtual) {
+    lineas.push(
+      `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
+      ''
+    );
+  }
+  lineas.push(
+    virtual
+      ? `Si presentas algún inconveniente, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`
+      : `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
     '',
     '¡Nos vemos pronto!',
     '',
@@ -522,6 +551,7 @@ function cuerpoModificacionAsistente({
   fecha,
   hora,
   mesa,
+  virtual = false,
 }) {
   const conQuien = fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa: false });
   const n = numeroDeMesa(mesa);
@@ -531,13 +561,26 @@ function cuerpoModificacionAsistente({
   ];
   if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
   if (hora) lineas.push(`🕐 Nuevo horario: ${hora} h`, '');
-  if (n) lineas.push(`📍 Mesa: ${n}`, '');
+  if (virtual) {
+    lineas.push(
+      '💻 Modalidad: Google Meet',
+      '',
+      'La reunión es por Google Meet. Unos 15 minutos antes te llega por WhatsApp y, al mismo tiempo, una invitación de Google a este correo.',
+      ''
+    );
+  } else {
+    if (n) lineas.push(`📍 Mesa: ${n}`, '');
+    lineas.push(
+      `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
+      '',
+      `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
+      ''
+    );
+  }
   lineas.push(
-    `📍Sede: ${SEDE_CORREO_ASISTENTE}`,
-    '',
-    `Te recomendamos llegar unos minutos antes de tu cita para aprovechar al máximo los ${DURACION_REUNION_COPY_MINUTOS} minutos de la reunión.`,
-    '',
-    `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    virtual
+      ? `Si presentas algún inconveniente, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`
+      : `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
     '',
     '¡Nos vemos pronto!'
   );
@@ -1386,6 +1429,7 @@ function conTextosDeModificacion(notificacion, { horarioNuevo, mesa }) {
       fecha: partes.fecha,
       hora: partes.hora,
       mesa,
+      virtual: Boolean(notificacion.asistenteVirtual),
     }),
     asuntoSponsor: ASUNTO_MODIFICACION_SPONSOR,
     asuntoAsistente: ASUNTO_MODIFICACION_ASISTENTE,

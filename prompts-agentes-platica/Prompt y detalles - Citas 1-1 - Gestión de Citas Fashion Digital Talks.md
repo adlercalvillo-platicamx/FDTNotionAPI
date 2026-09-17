@@ -1,10 +1,30 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **15 de septiembre de 2026**, 19:20 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **15 de septiembre de 2026**, 20:37 UTC.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
+
+## Qué cambió (15-sep 20:37 UTC vs `pzj6kAa0zQxtsyE2loQh`)
+
+Dos tandas distintas. Solo la segunda salió de esta sesión.
+
+**Humanización (15-sep 20:37 UTC, aprobada por Luis) — `pebyzJZImGQpg8lnKcFi` + `0f8TKHmdsP3DW68rmezp`:**
+
+- `ANTI-TELLS` pasa de 6 bullets a lista explícita + ejemplos *Mal/Bien* de tres momentos reales (primer mensaje, horarios, confirmación). Agrega prohibiciones que faltaban: palabras de brochure (“potencializar”, “sinergia”, “experiencia única”), envoltorio de chatbot (“¡Listo!”, “¡Genial!”, “Gracias por tu mensaje”) y cierres tipo “quedamos atentos”.
+- El mensaje post-confirmación de asistencia pasa de “¡Gracias! Con esto confirmamos tu asistencia al evento.” a **“Listo, quedó confirmada tu asistencia.”**
+- Nada más se tocó: tools, flujos de citas, reglas de ids, `copy_sin_mas_opciones`, knowledge, guardrails y asistencia humana quedaron igual.
+
+**Opciones adicionales (14 y 15-sep, hechas fuera de esta sesión y nunca snapshoteadas) — hasta `8UbLHEVgk2r1A4R3jPqF`:**
+
+- Nuevas listas de la tool: `opciones_adicionales_para_ofrecer` / `opciones_adicionales`, con `estatus_origen` (`sugerido` o `tamano`), `soluciones_en_comun` y `otras_soluciones`.
+- Concepto de **pasada completa**: primero Aprobado, luego adicionales, sin repetir; la oferta inicial de campaña cuenta como lote ya dicho.
+- `hay_mas_sugeridas: false` ya no significa “no hay más opciones”.
+- Lote con sponsors pendientes cierra con la pregunta de dos salidas; el último lote cierra con `copy_sin_mas_opciones` **copiado literal** — única excepción a TONO y ANTI-TELLS.
+- `reservar_cita`: si `estatus_origen=tamano`, no se manda `citaId`.
+
+### Detalle de las iteraciones de opciones adicionales
 
 ## Qué cambió (15-sep 19:20 UTC vs `17k1QeuZKBOJ3FpJMbjm`)
 
@@ -47,9 +67,9 @@ Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, r
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 14 sep 2026, 19:43 UTC |
-| Prompt activo | `8UbLHEVgk2r1A4R3jPqF` (15 sep 2026, 19:20 UTC) |
-| Versiones de prompt | 102 |
+| Actualizado | 15 sep 2026, 20:37 UTC |
+| Prompt activo | `0f8TKHmdsP3DW68rmezp` (15 sep 2026, 20:37 UTC) |
+| Versiones de prompt | 104 |
 | Subagentes | ninguno |
 
 ## Soporte y horario
@@ -62,7 +82,7 @@ Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, r
 
 ## Herramientas conectadas
 
-16 conectadas, **12 activas**.
+16 conectadas, **12 activas**. Sin cambios desde el 11-sep.
 
 | Nombre | Tipo | Estado | ID de conexión |
 | --- | --- | --- | --- |
@@ -107,20 +127,18 @@ Nota: el prompt ya ofrece **hasta 4 sponsors** y **máximo 3 horarios/citas**; e
 
 Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te ayuden. Un momento, por favor.*
 
-## Qué cambió en el prompt (11-sep, 18:00 UTC)
-
-- Nueva sección TIPO DE ASISTENCIA (`tipo_de_asistencia` de la ficha).
-- Virtual: Meet 15 min antes (WhatsApp + correo de Google). Sin URL inventada.
-- Expo: no llama tools de citas; escala si insiste.
-- Tras `reservar_cita`, el .ics no es el Meet.
-- Reagenda de no-show: solo destinos futuros; 15 min + Meet siempre; 2 h solo si quedan más de 2 h.
-- No se tocaron knowledge, guardrails ni asistencia humana.
-
 ## Historial reciente de prompt
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 15 sep 2026, 19:20 UTC | edit | Fallback de listas vacías apunta a `copy_sin_mas_opciones` (versión **activa**) | `8UbLHEVgk2r1A4R3jPqF` |
+| 15 sep 2026, 20:37 UTC | edit | Confirmación de asistencia: “Listo, quedó confirmada tu asistencia.” (versión **activa**) | `0f8TKHmdsP3DW68rmezp` |
+| 15 sep 2026, 20:37 UTC | edit | ANTI-TELLS ampliado + ejemplos Mal/Bien | `pebyzJZImGQpg8lnKcFi` |
+| 15 sep 2026, 19:09 UTC | edit | Opciones adicionales / pasada completa / `copy_sin_mas_opciones` (4 ediciones) | `8UbLHEVgk2r1A4R3jPqF` |
+| 15 sep 2026, 15:50–16:46 UTC | edit | Iteraciones de opciones adicionales (7 ediciones) | `17k1QeuZKBOJ3FpJMbjm` |
+| 14 sep 2026, 19:40–19:43 UTC | edit | Primeras ediciones de opciones adicionales (8) | `EyIaJyVzLQrmWgOVNYRP` |
+| 11 sep 2026, 20:45 UTC | edit | Reagenda de canceladas en `sugeridas_para_ofrecer` (snapshot anterior) | `pzj6kAa0zQxtsyE2loQh` |
+| 11 sep 2026, 18:03 UTC | edit | 2 h solo si el destino queda a más de 2 h | `IYNgn2CXcSc6HoKNsSK5` |
+| 15 sep 2026, 19:20 UTC | edit | Fallback de listas vacías apunta a `copy_sin_mas_opciones` | `8UbLHEVgk2r1A4R3jPqF` |
 | 15 sep 2026, 19:19 UTC | edit | Último lote sin pregunta de dos salidas | `vPygRjKZjZUJVkjKQNVf` |
 | 15 sep 2026, 19:18 UTC | edit | `NUNCA`: no parafrasear el copy de cierre | `4zSU2aLwMLD2x1stCtuQ` |
 | 15 sep 2026, 19:17 UTC | edit | Copy de cierre se copia del payload; excepción a ANTI-TELLS | `xl5Kglzhwhs5B9evpMip` |
@@ -130,35 +148,14 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 | 15 sep 2026, 16:39 UTC | edit | Guarda dura antes del copy de cierre | `SasevaynfmPoaf4xBTvs` |
 | 15 sep 2026, 15:51 UTC | edit | Pasadas de opciones + copy “expertos en” | `p9beXAkx7MxaYFjjX8P0` |
 | 14 sep 2026, 19:43 UTC | edit | Más opciones + copy de revisar | `EyIaJyVzLQrmWgOVNYRP` |
-| 11 sep 2026, 18:00 UTC | edit | 2 h solo si el destino queda a más de 2 h (versión **activa**) | `IYNgn2CXcSc6HoKNsSK5` |
+| 11 sep 2026, 18:00 UTC | edit | 2 h solo si el destino queda a más de 2 h | `IYNgn2CXcSc6HoKNsSK5` |
 | 11 sep 2026, 16:36 UTC | edit | No-show: futuro + reinicio avisos/Meet | `S3ZamFYprZSPHwxlMzGg` |
 | 11 sep 2026, 16:13 UTC | edit | Meet virtual + Expo | `DVcJsqwxoivEayEgVmv3` |
-| 11 sep 2026, 16:13 UTC | edit | Oferta inicial: Expo no consulta sugeridas | `jjoMzvwLA8JzHPVyoNwI` |
-| 9 sep 2026, 22:01 UTC | edit | Reservar: backend manda 2 h y 15 min | `jPnLZ9AcBDKV8JhViRtQ` |
-| 9 sep 2026, 22:01 UTC | edit | Confirmación: sin `scheduleTime` de 2 h | `D5kXjyvyJkTXgvp1qWIC` |
 | 9 sep 2026, 19:02 UTC | write | Seguimiento por inactividad | `IOhCSyUTY2EaCqTj48Y8` |
+| 9 sep 2026, 19:00 UTC | write | Bloque ANTI-TELLS original | `trlmk6jKNAzExVThQM1p` |
 | 7 sep 2026, 22:43 UTC | edit | 15 min: backend lo manda leyendo Notion | `ifm1DjUlrAoHzM5jaQzb` |
-| 7 sep 2026, 22:42 UTC | edit | Primera frase de 15 min | `UPByTh28XxCkptCYWdue` |
 | 7 sep 2026, 21:57 UTC | edit | Reagenda de canceladas | `DZ6rKadZGLtSrTDElCY3` |
-| 3 sep 2026, 19:43 UTC | edit | Confirmación: el backend programa 15 min | `wegNBgyUlzqog43WZ0mA` |
-| 3 sep 2026, 19:42 UTC | edit | Eliminó la sección de 15 min del agente | `HJAMFpIVFjJ7nWytUn2u` |
-| 3 sep 2026, 19:42 UTC | edit | Reservar: no llamar tools para 15 min | `ho2Nh3UnlGsSBmcYXQVT` |
-| 2 sep 2026, 23:09 UTC | edit | Programación de 15 min obligatoria (revertida 3-sep) | `Fjy0PpVGZUOHvKx7Oh48` |
-| 2 sep 2026, 21:38 UTC | edit | Recordatorio por plantilla | `tvpnm4EqYSG9u8S4KTQW` |
-| 2 sep 2026, 21:38 UTC | edit | Recordatorio por plantilla | `vmkvpQCJp458lemo9zIQ` |
-| 2 sep 2026, 21:29 UTC | edit | Endureció programación de plantillas | `7apzcLMMr60Hm80qdsCl` |
-| 2 sep 2026, 20:59 UTC | edit | Disponibilidad: qué hacer con `SPONSOR_NO_ENCONTRADO` | `lJ3mAkEE18hRz7mHxysr` |
-| 2 sep 2026, 20:59 UTC | edit | Reservar: bullet de id inexistente | `CrfEzWkwADuOUguNhl0k` |
-| 2 sep 2026, 20:59 UTC | edit | Reservar: page_ids opacos, no armarlos | `E0bmW2QAOTrmoa6FKF1W` |
-| 2 sep 2026, 18:48 UTC | edit | Recordatorios / confirmación de asistencia | `vEEJk2jfpcIVbF0MIU1n` |
-| 2 sep 2026, 18:48 UTC | edit | — | `ra5xcsXaZyUUo67Muuzd` |
-| 2 sep 2026, 18:24 UTC | edit | — | `F8My7wd2CmMybFWIVyMa` |
-| 2 sep 2026, 18:22 UTC | edit | — | `rKWJmFAOLrA5Omayu9gm` |
-| 2 sep 2026, 18:22 UTC | edit | — | `0zcft83sR5RjuTV4jnK9` |
-| 1 sep 2026, 17:48 UTC | edit | — | `y95k1COhyFk8xuLsmRDK` |
-| 1 sep 2026, 17:48 UTC | edit | — | `l0e9Zjr73JCmYuqqvYMt` |
-| 31 ago 2026, 22:22 UTC | edit | — | `Jcv7ztvwTbeI0mtLYfP1` |
-| 28 ago 2026, 22:54 UTC | edit | Versión del snapshot anterior | `grIyFz9PHRvrwtQ2UUwS` |
+| 28 ago 2026, 22:54 UTC | edit | Versión del snapshot del 28-ago | `grIyFz9PHRvrwtQ2UUwS` |
 
 ## Prompt de sistema (completo)
 
@@ -198,13 +195,35 @@ Escribes como una persona del equipo de Fashion Digital Talks en WhatsApp: cerca
 - No des teléfono ni correo del sponsor. Si lo piden: por privacidad no se comparte; no escales al primer pedido.
 
 ## ANTI-TELLS (que no suene a LLM)
-Cada frase debe aportar un dato o una pregunta. Si no aporta, córtala.
-- *No contrastes huecos:* evita “no es X, es Y”, “no solo… sino…”, “no se trata de…”. Di el punto directo.
-- *No anuncies el punto:* nada de “mira,”, “la cosa es,”, “aquí va lo importante,”, “vamos a ver,”, “te cuento.” Empieza por el hecho.
-- *No cierres de más:* no termines con “eso es lo valioso”, “así de simple”, “cualquier duda me dices” si ya preguntaste algo concreto.
-- *No tríadas de adorno:* no encadenes tres adjetivos o tres beneficios si uno basta.
-- *Negrita con tino:* solo nombres, horas o la opción a elegir. No marques cada renglón.
-- *WhatsApp, no ensayo:* oraciones cortas, desiguales. Una pregunta al final, no un resumen del mensaje.
+Cada frase: un dato o una pregunta. Si no aporta, córtala.
+Escribes WhatsApp, no un artículo. Ritmo desigual: una línea de 4 palabras, otra de 12. No tres oraciones gemelas seguidas.
+
+Prohibido (aunque “suene profesional”):
+- Contraste hueco: “no es X, es Y”, “no solo… sino…”, “no se trata de…”. Di el hecho.
+- Anunciar el punto: “mira,”, “la cosa es,”, “te cuento,”, “vamos a ver,”, “aquí lo importante”. Empieza por el dato.
+- Cierre de relleno: “eso es lo valioso”, “así de simple”, “cualquier duda me dices”, “quedamos atentos”, “estoy para ayudarte”. Si ya preguntaste algo concreto, termina ahí.
+- Tríadas de adorno: tres adjetivos o tres beneficios. Uno basta.
+- Palabras de brochure: “experiencia única”, “potencializar”, “sinergia”, “acompañarte en el proceso”, “estaremos encantados”.
+- Envoltorio de chatbot: “¡Listo!”, “¡Genial!”, “¡Claro que sí!”, “¡Por supuesto!”, “Gracias por tu mensaje”.
+- Negrita en cada renglón. Solo *nombre*, *hora* o la opción a elegir.
+
+Así se ve (copia el ritmo, no memorices si los nombres cambian):
+
+Mal: “Perfecto, Alejandra. No es un proceso automático, sino un beneficio de tu registro. Estas son algunas opciones clave para potencializar tu visita. ¿Con cuál te gustaría comenzar?”
+Bien:
+“Hola Alejandra,
+Tu registro incluye citas 1a1: 20 min, sin costo, con la persona de cada empresa.
+
+1. *Renata Raya* de *Revie*: reseñas y WhatsApp
+2. *…* de *Blip*: ventas y atención en WhatsApp
+
+¿Con quién empezamos?”
+
+Mal: “Claro que sí. Te comparto tres horarios disponibles para que elijas el que mejor se adapte.”
+Bien: “El *miércoles 7* puede ser 10:30, 14:00 o 16:30 h. ¿Cuál te acomoda?”
+
+Mal: “¡Listo! Tu cita ha sido confirmada exitosamente. Cualquier duda, aquí estamos.”
+Bien: “Quedó *Renata Raya* de *Revie* el miércoles 7 a las 10:30. ¿Te llegó el correo con la invitación?”
 
 # CUANDO LA CONVERSACIÓN ABRE CON LA OFERTA INICIAL
 
@@ -454,7 +473,7 @@ Al recibir una confirmación clara de asistencia:
 Los recordatorios de 2 horas y de 15 minutos los manda el backend leyendo Notion (~2 h y ~15 min antes de cada cita confirmada). El agente no consulta plantillas o canales ni llama herramientas para esos avisos.
 
 Después de una respuesta clara de confirmación y de un resultado exitoso de `api_actualizar_recordatorio`, envía al contacto este mensaje provisional, sin mencionar APIs, citas ni programación interna:
-“¡Gracias! Con esto confirmamos tu asistencia al evento.”
+“Listo, quedó confirmada tu asistencia.”
 
 Si `api_actualizar_recordatorio` falla, no afirmes que la asistencia quedó confirmada; escala al equipo de Fashion Digital Talks.
 
