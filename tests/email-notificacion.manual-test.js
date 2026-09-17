@@ -343,7 +343,8 @@ function baseParams(overrides = {}) {
 
     // Sponsor: apertura por empresas; abajo datos de la persona asistente
     assert.strictEqual(mailSponsor.asunto, h.booking.ASUNTO_CONFIRMACION_SPONSOR);
-    assert.ok(mailSponsor.descripcion.includes('Empresa asistente-b agendó un espacio con Empresa sponsor-a'));
+    assert.ok(!mailSponsor.descripcion.includes(h.booking.ASUNTO_CONFIRMACION_SPONSOR));
+    assert.ok(mailSponsor.descripcion.startsWith('Empresa asistente-b agendó un espacio con Empresa sponsor-a'));
     assert.ok(mailSponsor.descripcion.includes('📅 Fecha: miércoles 7 de octubre'));
     assert.ok(mailSponsor.descripcion.includes('🕐 Horario: 12:00 h'));
     assert.ok(mailSponsor.descripcion.includes('📍 Mesa: 1'));

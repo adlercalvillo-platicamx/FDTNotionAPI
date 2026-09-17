@@ -431,8 +431,6 @@ function cuerpoConfirmacionSponsor({
   virtual = false,
 }) {
   return [
-    '¡Tu cita de negocios en Fashion Digital Talks 2026 está confirmada!',
-    '',
     `${empresaAsistente} agendó un espacio con ${empresaSponsor}.`,
     '',
     ...bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora: 'Horario', mesa, virtual }),

@@ -75,7 +75,7 @@ function Steps({ step }) {
   );
 }
 
-function ExistingAppointments({ citas }) {
+function ExistingAppointments({ citas, virtual = false }) {
   if (!citas?.length) return null;
   return (
     <aside className="existing">
@@ -83,9 +83,28 @@ function ExistingAppointments({ citas }) {
       {citas.map((cita) => (
         <div className="existing-row" key={cita.citaId}>
           <strong>{cita.sponsorNombre}</strong>
-          <span>{horaCorta(cita.fechaHora)} · {cita.mesa || 'Mesa por asignar'}</span>
+          <span>
+            {cita.fechaHora && fechaLarga(cita.fechaHora.slice(0, 10))} ·{' '}
+            {horaCorta(cita.fechaHora)} ·{' '}
+            {virtual ? 'Google Meet' : cita.mesa || 'Mesa por asignar'}
+          </span>
         </div>
       ))}
+    </aside>
+  );
+}
+
+function ModalityNotice({ ticketTipo, compact = false }) {
+  const virtual = ticketTipo === 'Virtual';
+  return (
+    <aside className={`modality-notice ${virtual ? 'virtual' : ''} ${compact ? 'compact' : ''}`}>
+      <strong>Modalidad: {ticketTipo || 'Por confirmar'}</strong>
+      {virtual && (
+        <span>
+          Tu cita será virtual por Google Meet. Recibirás la liga aproximadamente
+          15 minutos antes por WhatsApp y también una invitación de Google en tu correo.
+        </span>
+      )}
     </aside>
   );
 }
@@ -145,21 +164,29 @@ export default function App() {
     );
   }, [query, sponsors]);
 
-  async function submitEmail(event) {
-    event.preventDefault();
+  async function cargarSponsors(correo) {
     setLoading(true);
     setError('');
     try {
-      const persona = await identificar(email);
+      const persona = await identificar(correo);
       const catalogo = await listarSponsors();
       setIdentidad(persona);
       setSponsors(catalogo.sponsors || []);
+      setSelectedSponsor(null);
+      setSelectedBlock(null);
+      setReservationRequestId('');
+      setResultado(null);
       setStep('sponsors');
     } catch (err) {
       setError(mensajeError(err));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function submitEmail(event) {
+    event.preventDefault();
+    await cargarSponsors(email);
   }
 
   async function cargarHorarios(sponsor, nuevaFecha = fecha) {
@@ -280,7 +307,11 @@ export default function App() {
                 />
               </label>
             </div>
-            <ExistingAppointments citas={identidad?.citasConfirmadas} />
+            <ModalityNotice ticketTipo={identidad?.asistente?.ticketTipo} />
+            <ExistingAppointments
+              citas={identidad?.citasConfirmadas}
+              virtual={identidad?.asistente?.ticketTipo === 'Virtual'}
+            />
             <div className="sponsor-grid">
               {filtrados.map((sponsor) => (
                 <SponsorCard key={sponsor.id} sponsor={sponsor} onSelect={cargarHorarios} />
@@ -294,6 +325,10 @@ export default function App() {
             <button className="back" onClick={() => setStep('sponsors')}>← Sponsors</button>
             <span className="eyebrow">Cita con {selectedSponsor.empresa}</span>
             <h1>Elige el mejor momento para ti.</h1>
+            <ModalityNotice
+              ticketTipo={identidad?.asistente?.ticketTipo}
+              compact
+            />
             <div className="date-tabs" role="tablist">
               {FECHAS.map((item) => (
                 <button
@@ -346,12 +381,16 @@ export default function App() {
             <p>
               Tu cita con {selectedSponsor?.empresa} es el{' '}
               {selectedBlock && fechaLarga(selectedBlock.inicio.slice(0, 10))} a las{' '}
-              {selectedBlock && horaCorta(selectedBlock.inicio)}, en{' '}
-              {resultado?.mesa || 'mesa por confirmar'}.{' '}
+              {selectedBlock && horaCorta(selectedBlock.inicio)}
+              {identidad?.asistente?.ticketTipo === 'Virtual'
+                ? ', por Google Meet. '
+                : `, en la ${resultado?.mesa || 'mesa por confirmar'}. `}
               {resultado?.notificacion_error
                 ? 'No pudimos enviar el correo con los detalles. '
                 : 'También recibirás los detalles por correo. '}
-              Guarda esta pantalla. Para modificar, cancelar o preguntar por
+              {identidad?.asistente?.ticketTipo === 'Virtual' &&
+                'Recibirás la liga aproximadamente 15 minutos antes por WhatsApp y también una invitación de Google en tu correo. '}
+              Guarda estos datos. Para modificar, cancelar o preguntar por
               esta cita, escríbenos por WhatsApp al{' '}
               <a href={`https://wa.me/${String(resultado?.whatsappSoporte || '').replace(/\D/g, '')}`}>
                 {resultado?.whatsappSoporte}
@@ -361,7 +400,20 @@ export default function App() {
               <span>{selectedSponsor?.empresa}</span>
               <strong>{selectedBlock && horaCorta(selectedBlock.inicio)}</strong>
               <small>{selectedBlock && fechaLarga(selectedBlock.inicio.slice(0, 10))}</small>
-              <em>{resultado?.mesa || 'Mesa por confirmar'}</em>
+              <em>
+                {identidad?.asistente?.ticketTipo === 'Virtual'
+                  ? 'Google Meet'
+                  : resultado?.mesa || 'Mesa por confirmar'}
+              </em>
+            </div>
+            <div className="success-actions">
+              <button
+                className="button"
+                disabled={loading}
+                onClick={() => cargarSponsors(email)}
+              >
+                {loading ? 'Cargando…' : 'Agendar con otro sponsor'}
+              </button>
             </div>
           </section>
         )}

@@ -134,6 +134,12 @@ async function obtenerDisponibilidadPublica({ contactoId, sponsorPageId, fecha }
   });
 }
 
+function etiquetaMesa(mesa) {
+  if (mesa == null || mesa === '') return null;
+  const texto = String(mesa).trim();
+  return /^mesa\s/i.test(texto) ? texto : `Mesa ${texto}`;
+}
+
 function requestIdPublico(contactoId, requestId) {
   const valor = String(requestId || '').trim();
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(valor)) {
@@ -172,6 +178,9 @@ async function reservarPublicamente({
 
   return {
     ...resultado,
+    // `reservarCita` devuelve el número crudo; Notion y `identificar` usan
+    // la etiqueta "Mesa N". La página imprime este valor tal cual.
+    mesa: etiquetaMesa(resultado.mesa),
     whatsappSoporte: WHATSAPP_SOPORTE_CITAS,
   };
 }

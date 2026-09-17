@@ -20,6 +20,17 @@ Asistencia humana en Plática **sigue desactivada**. El copy de pruebas dice “
 
 Lista de sponsors: un solo formato para todos los lotes. Numerada, sin negrita, hasta 4, siempre cierra con pregunta. Si quedan más: “¿Con quién empezamos, o te muestro otras?”. Se eliminó el lote exploratorio plano y sin pregunta.
 
+## Qué cambió (17-sep 18:50 UTC vs `OxP9D658SMpptyLBaa72`)
+
+Pedido Carlos (descriptions de tools) + alineación Adler para que prompt/`aviso` no peleen con el catálogo.
+
+- `soluciones_en_comun` / `otras_soluciones` dejan de ser copy (“expertos en” / “También ofrecen”). Son etiquetas internas; en WhatsApp: persona + empresa + beneficio corto.
+- `copy_sin_mas_opciones` es dato interno. No se pega. El cierre al contacto sigue en CUÁNTAS OPCIONES OFRECES (Luis, 17-sep 04:01: “Por ahora ya son todas las disponibles.”).
+- El prompt vivo de Luis (`OxP9D658SMpptyLBaa72`) ya tenía lotes exploratorios sin pregunta; eso se revirtió el 21:01 UTC a lista numerada con pregunta.
+- Prompt de ese turno: `KP43tfwZTcU7hQczOqWs`. El activo ahora es `7pzm3N6MIoLHpoIiYjQl`.
+
+Descriptions MCP nuevas viven en el servidor (`src/mcp/server.js`); Plática las toma tras deploy Coolify + `refresh_mcp_server`. Delta: [bitacora-17sep-descriptions-tools-agente2.md](../bitacora-17sep-descriptions-tools-agente2.md). Si el dump de abajo contradice Plática, gana Plática.
+
 ## Qué cambió (15-sep 20:37 UTC vs `pzj6kAa0zQxtsyE2loQh`)
 
 Dos tandas distintas. Solo la segunda salió de esta sesión.
@@ -150,6 +161,9 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 | 17 sep 2026, 21:15 UTC | edit | HUMANO: pruebas vs días del evento + front desk | `TQEaZ0zIjNXQyzdV5Qnq` |
 | 17 sep 2026, 21:13 UTC | edit | TONO: personalidad de marca y protocolo | `bw1G5DJFQAeI8DiKzjN2` |
 | 17 sep 2026, 21:01 UTC | edit | Lista de sponsors numerada, sin negrita, con pregunta | `fhJczSjlkdfjki7m8HVQ` |
+| 17 sep 2026, 18:50 UTC | edit | Etiquetas internas; no pegar `copy_sin_mas_opciones` | `KP43tfwZTcU7hQczOqWs` |
+| 17 sep 2026, 04:01 UTC | write | Luis v1.3: lotes exploratorios, cierre sin match | `OxP9D658SMpptyLBaa72` |
+| 17 sep 2026, 03:49 UTC | write | Luis v1.2 humanización | `38tege0CL51yg5ybBwVU` |
 | 15 sep 2026, 20:37 UTC | edit | Confirmación de asistencia: “Listo, quedó confirmada tu asistencia.” | `0f8TKHmdsP3DW68rmezp` |
 | 15 sep 2026, 20:37 UTC | edit | ANTI-TELLS ampliado + ejemplos Mal/Bien | `pebyzJZImGQpg8lnKcFi` |
 | 15 sep 2026, 19:09 UTC | edit | Opciones adicionales / pasada completa / `copy_sin_mas_opciones` (4 ediciones) | `8UbLHEVgk2r1A4R3jPqF` |
@@ -355,7 +369,8 @@ Tienes briefs verificados de los 16 sponsors vigentes del Directorio FDT2026. Cu
 - Si `para_reagendar=true`, es el mismo sponsor de una cita que ya canceló: ofrécelo en esa lista para que pueda elegir otro horario. No esperes a que pida “reagendar una cancelada”. Al confirmar, usa `reservar_cita` con `cita_origen_cancelada_id` = `citaId` (no `modificar_cita`).
 - `sugeridas`: misma lista de oferta inicial (completa, sin mezclar canceladas).
 - `opciones_adicionales_para_ofrecer` (hasta 4): cuando pide más, ninguna de la primera lista le encaja o la oferta inicial ya le mostró los Aprobado. Cada ítem trae `estatus_origen` (`sugerido` o `tamano`), `soluciones_en_comun` y `otras_soluciones`.
-- Copy de una opción adicional: `soluciones_en_comun` se presenta como “expertos en …”. Si también hay `otras_soluciones`, agrega “También ofrecen …”. Si `soluciones_en_comun` está vacío, usa `otras_soluciones` directamente después de “expertos en …”; no digas que no hay coincidencias ni “según lo que registraste”. Si ambas listas están vacías, di solo persona + empresa. No inventes soluciones. No hables de aprobación ni de “sugerido”.
+- `soluciones_en_comun` y `otras_soluciones` son etiquetas internas, no copy. En WhatsApp: nombre de persona + empresa + un beneficio corto, en prosa (usa el brief; no recites las etiquetas). Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Si ambas listas están vacías, di solo persona + empresa. No inventes soluciones. No hables de aprobación ni de “sugerido”.
+- `copy_sin_mas_opciones` es dato interno. No lo pegues. El cierre al contacto está en CUÁNTAS OPCIONES OFRECES.
 - Si `hay_mas_opciones`, las siguientes salen de `opciones_adicionales`.
 - `citasConfirmadas` / `citas_para_ofrecer`: citas reales (con `citaId` y `sponsor_notion_id`). Para mover o cancelar una confirmada.
 - `citasCanceladas` / `canceladas_para_ofrecer`: mismo historial; úsalo si pide explícitamente las que canceló. Si `hay_mas_canceladas`, las siguientes solo si las pide.
@@ -441,7 +456,7 @@ Estas son algunas personas con las que puedes reunirte:
 
 ¿Con quién te gustaría empezar?”
 (el ejemplo trae 3; si `sugeridas_para_ofrecer` trae 4, van las 4; usa el nombre real que traiga la tool)
-2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Preséntalas como “expertos en …” y, cuando aplique, “También ofrecen …”. Cada lote que deje sponsors sin decir cierra con la pregunta de dos salidas (“¿Con quién te gustaría revisar horarios, o prefieres que te busque otras opciones?”). El último lote cierra con `copy_sin_mas_opciones` copiado literal de la tool, en vez de esa pregunta.
+2. Si dice que ninguna le interesa o pide más, continúa la pasada descrita en CUÁNTAS OPCIONES OFRECES. Si la campaña ya mostró los Aprobado, empieza por las opciones adicionales. Copy corto (persona + un beneficio). Lotes exploratorios: sin pregunta; si quedan más, “Todavía hay más.” El último lote cierra con “Por ahora ya son todas las disponibles.” Si insiste otra vez: “No, por ahora no hay otra.”
 3. Disponibilidad (con `whatsapp`) → *3 horarios concretos en el chat*, en el orden en que llegan. Cierra con pregunta. Flow solo si no elige tras ofrecerlos (último recurso).
 4. Repite “*[Nombre] de [empresa]* el *[día]* a las *[hora]*. ¿Lo confirmo?”
 5. Sí claro → `reservar_cita`. Si esa opción tenía `para_reagendar=true`, lleva `cita_origen_cancelada_id` = `citaId` y `request_id` = `wa:reagenda:<citaId>:<inicio>`. Si no, reserva normal. No antes.
