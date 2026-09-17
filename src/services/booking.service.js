@@ -71,6 +71,10 @@ const NOTA_CALENDARIO_CANCELAR =
 const NOTA_CALENDARIO = NOTA_CALENDARIO_ACTUALIZAR;
 const NOTA_ICS_GUARDAR =
   'Para guardar la cita, selecciona "Agregar al calendario" en la invitación adjunta (.ics).';
+// El sponsor sí está en piso aunque el asistente sea Virtual: conserva mesa y sede
+// y toma la reunión por Meet desde ahí. El Apps Script lo invita al evento.
+const NOTA_MEET_SPONSOR =
+  'Esta cita es en línea: el asistente se conecta por Google Meet y tú la tomas desde tu mesa. Unos 15 minutos antes de la hora te llega a este correo la invitación de Google con el link.';
 // Copys de asistente (11-sep) y sponsor (15-sep, Adler / cliente).
 const ASUNTO_CONFIRMACION_ASISTENTE =
   '¡Tu cita en Fashion Digital Talks 2026 está confirmada!';
@@ -298,6 +302,7 @@ async function resolverNotificacionCita({
     hora: partes.hora,
     mesa,
     datosContactoAsistente,
+    virtual: asistenteVirtual,
   });
 
   const descripcionAsistente = cuerpoConfirmacionAsistente({
@@ -391,14 +396,16 @@ function fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa }
   return empresa || nombre || 'el sponsor';
 }
 
-function bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora, mesa }) {
+function bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora, mesa, virtual = false }) {
   const n = numeroDeMesa(mesa);
   const lineas = [];
   if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
   if (hora) lineas.push(`🕐 ${etiquetaHora}: ${hora} h`, '');
+  if (virtual) lineas.push('💻 Modalidad: Google Meet (el asistente se conecta en línea)', '');
   if (n) lineas.push(`📍 Mesa: ${n}`, '');
   lineas.push(`📍Sede: ${SEDE_CORREO_ASISTENTE}`, '');
   lineas.push(lineaMesaEnPiso(mesa), '');
+  if (virtual) lineas.push(NOTA_MEET_SPONSOR, '');
   return lineas;
 }
 
@@ -421,11 +428,12 @@ function cuerpoConfirmacionSponsor({
   hora,
   mesa,
   datosContactoAsistente,
+  virtual = false,
 }) {
   return [
     `${empresaAsistente} agendó un espacio con ${empresaSponsor}.`,
     '',
-    ...bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora: 'Horario', mesa }),
+    ...bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora: 'Horario', mesa, virtual }),
     NOTA_ICS_GUARDAR,
     '',
     ...cierreContactoYFirmaSponsor(
@@ -442,13 +450,14 @@ function cuerpoModificacionSponsor({
   hora,
   mesa,
   datosContactoAsistente,
+  virtual = false,
 }) {
   return [
     `${empresaAsistente} modificó el horario de su cita con ${empresaSponsor}.`,
     '',
     'Te confirmamos los nuevos detalles:',
     '',
-    ...bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora: 'Nuevo horario', mesa }),
+    ...bloqueDetallesCitaSponsor({ fecha, hora, etiquetaHora: 'Nuevo horario', mesa, virtual }),
     NOTA_CALENDARIO_ACTUALIZAR,
     '',
     ...cierreContactoYFirmaSponsor(
@@ -1419,6 +1428,7 @@ function conTextosDeModificacion(notificacion, { horarioNuevo, mesa }) {
       hora: partes.hora,
       mesa,
       datosContactoAsistente: notificacion.datosContactoAsistente || [],
+      virtual: Boolean(notificacion.asistenteVirtual),
     }),
     descripcionAsistente: cuerpoModificacionAsistente({
       primerNombreAsistente: notificacion.primerNombreAsistente || 'Asistente',

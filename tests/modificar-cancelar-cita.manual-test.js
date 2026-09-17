@@ -423,6 +423,8 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
       const textoAsistente = correos[1].text;
       assert.ok(textoSponsor.includes('Tu cita será en la mesa 1.'));
       assert.ok(textoSponsor.includes('Club France'));
+      assert.ok(textoSponsor.includes('💻 Modalidad: Google Meet'));
+      assert.ok(textoSponsor.includes('tú la tomas desde tu mesa'));
       assert.ok(textoAsistente.includes('💻 Modalidad: Google Meet'));
       assert.ok(textoAsistente.includes('Unos 15 minutos antes te llega por WhatsApp'));
       assert.ok(!textoAsistente.includes('Mesa:'));

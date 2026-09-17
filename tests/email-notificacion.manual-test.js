@@ -355,6 +355,7 @@ function baseParams(overrides = {}) {
     assert.ok(mailSponsor.descripcion.includes('Nombre: Nombre Asistente-B'));
     assert.ok(mailSponsor.descripcion.includes('¡Te esperamos en Fashion Digital Talks 2026!'));
     assert.ok(!mailSponsor.descripcion.includes('+52 33 3236 1963'));
+    assert.ok(!mailSponsor.descripcion.includes('Google Meet'));
 
     // Asistente: encargada + empresa del sponsor, SIN datos de contacto
     assert.strictEqual(mailAsistente.asunto, h.booking.ASUNTO_CONFIRMACION_ASISTENTE);
@@ -389,6 +390,8 @@ function baseParams(overrides = {}) {
     const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
     assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
     assert.ok(mailSponsor.descripcion.includes('Club France'));
+    assert.ok(mailSponsor.descripcion.includes('💻 Modalidad: Google Meet'));
+    assert.ok(mailSponsor.descripcion.includes('tú la tomas desde tu mesa'));
 
     assert.ok(mailAsistente.descripcion.includes('💻 Modalidad: Google Meet'));
     assert.ok(mailAsistente.descripcion.includes('Unos 15 minutos antes te llega por WhatsApp'));
