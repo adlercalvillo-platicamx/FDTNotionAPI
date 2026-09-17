@@ -24,6 +24,17 @@ En `src/services/booking.service.js`, reserva y modificación ahora leen
 - Presencial, Presencial VIP, Speaker o vacío: conserva el copy físico aprobado.
 - Sponsor: conserva mesa, sede y datos del asistente.
 - La mesa sigue asignada en Notion para capacidad. Cancelación no cambió.
+
+Segunda pasada del mismo día, pedida por Luis: el correo del **sponsor** de una
+cita Virtual necesitaba decir las dos cosas a la vez. El sponsor sí está en
+piso: toma la reunión por Meet desde su mesa. Ahora `bloqueDetallesCitaSponsor`
+recibe `virtual` y, cuando aplica, inserta `💻 Modalidad: Google Meet (el
+asistente se conecta en línea)` entre el horario y la mesa, y cierra el bloque
+con la nota de que la invitación de Google con el link llega a ese correo ~15
+min antes (el Apps Script invita los dos correos, no solo al asistente). Mesa,
+sede y la línea de ubicación en piso se conservan intactas. Aplica a
+confirmación y a modificación; la cancelación del sponsor no lleva mesa ni sede
+y no cambió.
 - `LOCATION` del `.ics` sigue en Club France por la regla vigente; solo el
   `DESCRIPTION` del asistente Virtual omite la referencia física.
 
@@ -49,6 +60,31 @@ El prompt vivo del Agente 2 estaba en `OxP9D658SMpptyLBaa72` (17-sep 04:01 UTC)
 y ya incorporaba respuesta proporcional, menos negritas y cero preguntas en
 lotes exploratorios. No se editó Plática en este trabajo: otra edición sería
 redundante y el copy requiere aprobación previa.
+
+Más tarde (versión `KP43tfwZTcU7hQczOqWs`, 18:50 UTC) Luis revisó la
+conversación con 4776628968 y rechazó el formato de la lista de sponsors. Causa:
+la persona escribió “Quiero otra cita” y el agente leyó el “otra” como lote
+exploratorio, así que aplicó la regla de `FORMATO WHATSAPP` — líneas planas, sin
+numerar, sin negrita y sin pregunta. El contacto tuvo que responder “¿Quiénes?”.
+Decisión de Luis: eliminar el formato exploratorio aparte. Todos los lotes van
+numerados, **sin negrita**, hasta 4, y siempre cierran con pregunta; si quedan
+sponsors sin mostrar, una sola pregunta cubre ambas cosas (“¿Con quién
+empezamos, o te muestro otras?”). Aplicado en Plática (`fhJczSjlkdfjki7m8HVQ`,
+17-sep 21:01 UTC).
+
+## Protocolo de marca (17-sep 21:15 UTC)
+
+Prompt activo `7pzm3N6MIoLHpoIiYjQl`. Laura, reunión 17-sep. Luis aprobó el
+delta. Tres cambios en Plática:
+
+- `TONO`: personalidad interna (empresaria de moda / RP) y *protocolo*.
+- `HUMANO`: antes del 7-oct escala en 1er–2º intento si no resuelve; el 7 y 8
+  de octubre intenta agendar y, si falla en 2–3, manda al front desk de
+  matchmaking.
+- `NUNCA`: no interpretarse como Laura.
+
+Asistencia humana en Plática sigue **desactivada**. El copy de pruebas no
+transfiere de verdad hasta reactivarla.
 
 ## Vistas y repos externos
 
