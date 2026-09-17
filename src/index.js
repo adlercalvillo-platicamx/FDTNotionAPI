@@ -6,12 +6,26 @@ const citasRoutes = require('./routes/citas.routes');
 const matchmakingRoutes = require('./routes/matchmaking.routes');
 const checklistRoutes = require('./routes/checklist.routes');
 const contactosRoutes = require('./routes/contactos.routes');
+const reservaPublicaRoutes = require('./routes/reserva-publica.routes');
 const { montarMcp } = require('./mcp/mount');
 const flowsRoutes = require('./routes/flows.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1);
+
+// Página QR pública: parser acotado antes del parser global de 10 MB que
+// necesitan los webhooks. Evita aceptar cuerpos grandes en identificación.
+app.use('/reserva-publica', express.json({ limit: '16kb' }), reservaPublicaRoutes);
+app.use('/reserva-publica', (err, _req, res, next) => {
+  if (err?.status === 413) {
+    return res.status(413).json({
+      error: 'PAYLOAD_DEMASIADO_GRANDE',
+      message: 'La solicitud excede el tamaño permitido.',
+    });
+  }
+  return next(err);
+});
 
 app.use(
   express.json({

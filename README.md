@@ -8,6 +8,8 @@ Repo independiente de `platica-google-docs-api`. La fuente de verdad de citas es
 - Node.js + Express
 - Deploy: Coolify — **YA DESPLEGADO** (6 de agosto 2026), tipo de recurso "Application" (no Docker Compose/Swarm) — este tipo no tiene opción de configurar réplicas, corre 1 sola instancia por diseño, que es justo lo que requiere el mutex de `booking.service.js` (ver advertencia ahí)
 - Fuente de verdad: Notion (API REST directa para las rutas REST; también expuesto como servidor MCP — ver sección "MCP" abajo)
+- Frontend QR: React/Vite en `frontend/`, desplegado como una Application
+  Coolify separada. El navegador usa token temporal; nunca `API_SECRET_KEY`.
 
 ## Estructura
 ```
@@ -57,6 +59,11 @@ tests/
 ├── mas-opciones.manual-test.js        # Capa 2: Grande/Revie, PyME, giro
 └── mocks/
 
+frontend/                              # SPA de reserva QR (recurso Coolify aparte)
+├── src/                               # correo → sponsors → horario → confirmación
+├── Dockerfile                         # build Vite + nginx
+└── README.md                          # operación y variables de build
+
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
 ├── cargar-29-asistentes-faltantes.js
 ├── verificar-casos-quiere-citas-giro.js
@@ -66,11 +73,17 @@ scripts/one-shots/                    # Ya ejecutados — no volver a correr sin
 
 ## Endpoints
 
-Todos requieren header `X-API-Key`, excepto `/health` y los endpoints `/webhooks/*`, que usan su autenticación propia. Body en JSON. Los GET con query params son de solo lectura: `/checklist/consultar`, `/contactos/buscar` y `/citas/disponibilidad`.
+Todos requieren header `X-API-Key`, excepto `/health`, `/webhooks/*` y
+`/reserva-publica/*`. La página QR usa CORS restringido, rate limit y un token
+HMAC temporal emitido al identificar el correo.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/health` | Sin auth. Para monitoreo de Coolify. |
+| POST | `/reserva-publica/identificar` | Público con rate limit. `{ email }`; busca coincidencia exacta en Contactos, exige un solo Asistente activo y boleto `Presencial`, `Presencial VIP`, `Virtual` o `Speaker`. Expo → 403. Devuelve token temporal, perfil mínimo y citas confirmadas. `Quiere Citas 1a1=No` no bloquea el flujo de piso. |
+| GET | `/reserva-publica/sponsors` | Bearer temporal. Catálogo de sponsors activos no Bronce, sin filtros de giro/tamaño/área/soluciones del matchmaking. |
+| GET | `/reserva-publica/disponibilidad?sponsor=...&fecha=YYYY-MM-DD` | Bearer temporal. Reusa la disponibilidad real incluyendo ocupación del asistente identificado. |
+| POST | `/reserva-publica/reservar` | Bearer temporal. `{ sponsor, inicio, fin, request_id }`; llama `reservarCita` dentro del mismo proceso/mutex. Conserva `Rechazado` como historial; Sugerido/Aprobado se promueven; sin match crea fila; una Cancelada reagendable se enlaza como origen. |
 | POST | `/citas/enviar-recordatorios-15min` | **Nueva (7 sep), reemplaza el programado.** Cron cada 5 min los días del evento. Busca en Notion las citas `Confirmada` / `Confirmada sin notificar` que empiezan en los próximos 15 min y manda `notificacion_cita_15min_antes` al asistente (`{{1}}` primer nombre, `{{2}}` empresa del sponsor), sin `scheduleTime`. Con `MEET_VIRTUAL_HABILITADO=true` y boleto `Virtual`, primero crea el Meet (Apps Script, `rp@fashiondigitaltalks.com`) e invita ambos correos; WhatsApp usa `PLATICA_TEMPLATE_CITA_15MIN_VIRTUAL`. Si Meet falla, no manda esa plantilla (reintento hasta 3, luego `Omitido`). Flag en false = plantilla presencial para todos. `X-API-Key`. Idempotente por fila: `Estado Recordatorio 15min` (`En curso` → `Enviado` / `Falló` / `Omitido`) + fecha y notas. Una cancelada no entra; una reprogramada entra con su horario nuevo. Body opcional solo para pruebas: `ahora` (ISO) y `minutos` (1–120). Responde 200 con `{ revisadas, enviados, omitidos, fallidos, detalle }`; 502 si truena la corrida completa. |
 | POST | `/citas/enviar-recordatorios-2h` | **Nueva (9 sep).** Mismo patrón que el de 15 min, ventana de 2 horas. Cada cita `Confirmada` / `Confirmada sin notificar` (no solo la primera del día). Plantilla `notificacion_cita_2horas_antes`: `{{1}}` primer nombre, `{{2}}` hora (`3:00 pm`), `{{3}}` `Marco Trujillo, de Plática.mx`. Estado propio: `Estado Recordatorio 2h`. Body opcional `ahora` / `minutos` (1–180). |
 | POST | `/citas/programar-recordatorio-15min` | **Retirada el 7 sep → 410.** Programaba el aviso en Plática con `scheduleTime` al reservar. Plática no expone cancelar un programado, así que una cita cancelada seguía avisando a su hora vieja y una reprogramada nunca avisaba a la nueva. Lo sustituye el cron de arriba. |
@@ -143,6 +156,12 @@ Las herramientas MCP no reimplementan lógica: llaman a los mismos `services/` q
 ## Variables de entorno
 Ver `.env.example`. Resumen:
 - `API_SECRET_KEY` — clave para llamar a ESTE servicio.
+- **Página QR pública:** `PAGINA_RESERVA_ORIGEN` (origen exacto del recurso
+  frontend; lista separada por comas durante cambio de dominio),
+  `PAGINA_RESERVA_TOKEN_SECRET` (HMAC, mínimo 32 caracteres) y
+  `PAGINA_RESERVA_TOKEN_TTL_SECONDS` (default 28800 = 8 h; máximo 24 h).
+  El frontend solo recibe `VITE_API_BASE_URL`; ninguna variable `VITE_*`
+  puede contener secretos.
 - `NOTION_API_KEY`, `NOTION_CONTACTOS_DATA_SOURCE_ID`, `NOTION_CITAS_DATA_SOURCE_ID`.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):

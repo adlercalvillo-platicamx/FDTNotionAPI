@@ -402,6 +402,26 @@ async function buscarDadoDeBajaPorEmailOTelefono({ email, telefono }) {
   return data.results[0] ? parsearContacto(data.results[0]) : null;
 }
 
+/**
+ * Busca coincidencias exactas de email para la identificación de la página
+ * pública de reservas. No decide elegibilidad: devuelve también bajas y otras
+ * categorías para que la capa pública distinga "no existe" de "no elegible".
+ */
+async function buscarContactosPorEmail(emailEntrada) {
+  requireDataSourceId();
+  const valor = String(emailEntrada || '').trim().toLowerCase();
+  if (!valor) return [];
+
+  const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filter: { property: 'Email', email: { equals: valor } },
+      page_size: 10,
+    }),
+  });
+  return (data.results || []).map(parsearContacto);
+}
+
 const CATEGORIAS_BUSQUEDA = new Set(['Asistente', 'Sponsor']);
 
 function errorValidacionContacto(mensaje) {
@@ -790,6 +810,7 @@ module.exports = {
   buscarAsistentesCandidatos,
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
+  buscarContactosPorEmail,
   buscarContactoPorNombre,
   buscarContacto,
   buscarAsistentePorWhatsApp,

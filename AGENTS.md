@@ -18,6 +18,9 @@ Pruebas: scripts a mano (`node tests/….js`), no Jest. Ver [`.cursor/rules/test
 Health sin auth: `GET /health`. `POST /webhooks/whatsapp-flows` usa HMAC (`FLOW_WEBHOOK_SECRET`) y `POST /webhooks/platica/mensajes` usa HMAC (`PLATICA_WEBHOOK_SECRET`); ninguno usa `X-API-Key`. El resto exige `X-API-Key` = `API_SECRET_KEY`.
 
 Contrato activo de reserva: [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md). El contrato y JSON del WhatsApp Flow quedan solo como rollback legado; el Agente 2 no debe mandar botones ni Flows.
+Página QR: [`contexto-pagina-reserva-qr.md`](contexto-pagina-reserva-qr.md).
+Frontend en `frontend/`, Application Coolify separada. Sus rutas públicas
+usan token temporal; nunca exponer `API_SECRET_KEY` en variables `VITE_*`.
 
 ## Layout
 
@@ -29,6 +32,7 @@ src/services/                # Única lógica de negocio
 src/mcp/                     # Capa delgada: tools llaman services/, no reimplementan
 src/utils/notion-client.js   # REST Notion (nunca MCP hacia Notion)
 src/jobs/                    # Reintento a demanda de correos, no cron
+frontend/                    # React/Vite QR; Dockerfile/nginx; recurso aparte
 tests/                       # Manuales; mocks vía require.cache
 scripts/one-shots/           # Ya corridos — no reejecutar sin revisar
 ```
@@ -40,6 +44,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Capacidad | REST | MCP (`POST /mcp`, Streamable HTTP, stateless) |
 |---|---|---|
 | Buscar contacto (Liz/Laura) | GET `/contactos/buscar` | REST en Plática (`buscar_contacto`); **no** MCP — mismo criterio que `reservar_cita` |
+| Página QR (asistente en piso) | `/reserva-publica/identificar`, `/sponsors`, `/disponibilidad`, `/reservar`. Email primero; CORS + rate limit + Bearer HMAC temporal. Catálogo sin matchmaking; boleto Expo fuera; `Quiere Citas=No` no bloquea; Bronce fuera. `Rechazado` se conserva y la reserva directa crea otra fila. | — |
 | Hidratar perfil Plática | POST `/contactos/hidratar-perfil-platica` | —. Notion → nombre/correo/empresa/custom fields. Automático antes de plantillas, en **cualquier** incoming y después de reservar/modificar/cancelar. Un incoming **sin** `Última Campaña Enviada` además aplica la etiqueta `Citas 1a1 - Escribió sin campaña` (Plática combina tags; no hay API para quitarlas). La simulación de campañas **no** hidrata: `enviarPlantilla` solo corre en envío real. |
 | Checklist consultar / barrido | GET `/checklist/consultar`, POST `/checklist/revisar-pendientes` | `consultar_checklist`, `revisar_checklists_pendientes` |
 | Matchmaking 1 sponsor / global | POST `/matchmaking/…` | `sugerir_matches_para_sponsor`, `sugerir_matches_global` (dry-run: `escribirEnNotion` default **false**; REST pasa `true` explícito) |
@@ -180,6 +185,10 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Horario: `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`. En Coolify, Names con **underscores** en la fecha (`CITAS_HORA_INICIO_2026_10_07`). Guiones en el Name no se inyectan. El query `fecha` del API sigue con guiones.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID`: contacto ficticio de bloqueo de conferencias. Default = el de pruebas. Si los data sources son de producción (prefijo `3b162dda`) y la variable falta, está vacía o trae ese default → el servicio **no arranca** (503 en `requireContactoBloqueoAgenda`).
 - `API_SECRET_KEY` es de **este** servicio. No hay `GOOGLE_API_*` en el flujo de citas (retirado 27-ago). Meet virtual usa `MEET_VIRTUAL_*` + Apps Script, no googleapis.
+- Página QR: backend `PAGINA_RESERVA_ORIGEN`,
+  `PAGINA_RESERVA_TOKEN_SECRET` (32+ caracteres) y
+  `PAGINA_RESERVA_TOKEN_TTL_SECONDS`; frontend solo
+  `VITE_API_BASE_URL` / `VITE_EVENT_DATES`. Todo `VITE_*` es público.
 
 ## Qué no hacer
 

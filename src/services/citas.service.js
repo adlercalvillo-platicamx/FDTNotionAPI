@@ -846,6 +846,23 @@ async function buscarReagendaActivaDeCancelada(citaOrigenCanceladaId) {
   return filas[0] || null;
 }
 
+/**
+ * Devuelve la cancelación más reciente del par que todavía puede originar una
+ * reagenda. La fila cancelada nunca revive; reservarCita crea una hija nueva.
+ */
+async function buscarCanceladaReagendableDelPar({ sponsorPageId, asistentePageId }) {
+  const canceladas = await listarCitasCanceladasPorAsistente(asistentePageId);
+  const delPar = canceladas
+    .filter((cita) => esMismaPagina(cita.sponsorPageId, sponsorPageId))
+    .sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || '')));
+
+  for (const cancelada of delPar) {
+    const hija = await buscarReagendaActivaDeCancelada(cancelada.id);
+    if (!hija) return cancelada;
+  }
+  return null;
+}
+
 async function buscarCitaRealActivaDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
   requireDataSourceId();
   const filas = await queryCitasPaginado({
@@ -2365,6 +2382,7 @@ module.exports = {
   tieneCancelacionPendienteDeAviso,
   listarCitasRealesPorAsistente,
   listarCitasCanceladasPorAsistente,
+  buscarCanceladaReagendableDelPar,
   buscarReagendaActivaDeCancelada,
   buscarCitaRealActivaDelPar,
   MARCA_CANCELACION_PENDIENTE,
