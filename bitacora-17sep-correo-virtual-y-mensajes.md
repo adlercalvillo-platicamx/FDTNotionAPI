@@ -124,6 +124,30 @@ La negrita en listas estaba prohibida por ANTI-TELLS desde el 15-sep; ahora hay
 una excepción única y explícita para el nombre de la empresa. Sin nombre de
 persona en la tool, el renglón termina en el beneficio, sin “con”.
 
+## Regla de negrita por momento (18-sep 16:55 UTC)
+
+Prompt activo `0ZVr75zwp4SZsZzf8KgW`. Luis preguntó si la negrita debía quedar
+solo en la empresa. Se decidió que no: la negrita marca lo que hay que elegir o
+verificar, y eso cambia según el turno.
+
+| Momento | Negrita |
+|---|---|
+| Lista de sponsors | La empresa |
+| Horarios ofrecidos | Nada |
+| Recap antes de confirmar | Día + hora juntos |
+| Confirmación de la cita | Día + hora juntos |
+| Lista de citas ya agendadas | La hora de cada renglón |
+
+El nombre de la persona nunca va en negrita. Antes el recap traía tres negritas
+en un renglón y la confirmación resaltaba el nombre en lugar de la hora, que es
+el dato cuyo error cuesta una cita perdida. ANTI-TELLS ya pedía “reserva
+negrita para la hora elegida”, pero sus propios ejemplos hacían lo contrario;
+esa contradicción quedó cerrada.
+
+`*Expo*` se conserva; `*Citas 1a1*` pierde la negrita porque acompaña a la
+lista de citas, donde ahora la llevan las horas. La tabla vive en
+`FORMATO WHATSAPP`; ANTI-TELLS solo la resume.
+
 ## Vistas y repos externos
 
 - `script_actualizar_recordatorio/actualizar_recordatorio.py` no usa URLs:
