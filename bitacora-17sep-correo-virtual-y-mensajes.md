@@ -86,6 +86,44 @@ delta. Tres cambios en Plática:
 Asistencia humana en Plática sigue **desactivada**. El copy de pruebas no
 transfiere de verdad hasta reactivarla.
 
+## CALIDEZ (17-sep 23:48 UTC)
+
+Prompt activo `sK1cE5IXXCMeJNxFK8Br`. Luis aprobó el texto recortado (sin
+“Listo”, sin “quedo al pendiente”, Expo sin upgrade, rechazo sin “perfil”).
+
+## Cierre y tono de plantillas Laura (18-sep 16:09 UTC)
+
+Prompt activo `42ahbxfzDET8UNKlzVYA`. Pedido Luis: la última conversación con
+5214776628968 (`1yKehVeyRGhlKVCn2dA9`) cerró en “Perfecto.” después de que
+confirmó el correo. Causa: `RESPUESTA PROPORCIONAL` mandaba terminar si el
+turno ya resolvió, y el agente no trató el sí del correo como el “turno
+siguiente” de `reservar_cita`.
+
+Fuente de voz: textos amarillos/aprobados del PDF de corrección de mensajes
+(segunda versión de cada sección). No se copian las plantillas de campaña;
+sí el registro: amable, concreta, de negocios, una pregunta o un siguiente
+paso, sin “Va” / “Uf”.
+
+En Plática:
+- Tras el sí del correo: acuse + otra cita si quedan sponsors, o despedida
+  rotada si no.
+- “Nos vemos en Fashion Digital Talks” solo Presencial/VIP/Speaker.
+- “quedamos al pendiente” sigue prohibido (relleno).
+- Snapshot del Agente 2 actualizado en el mismo turno.
+
+## Renglón de sponsor invertido (18-sep 16:26 UTC)
+
+Prompt activo `zOv6QhtcWfNN8FRcdl6Z`. Luis no quería leer primero el nombre de
+la persona. El renglón pasa de `1. Alexandro Huerta de Reevolution: analítica…`
+a `1. *Reevolution*: analítica… con Alexandro Huerta.`
+
+La numeración se conserva a propósito: en el hilo del 17-sep el contacto eligió
+diciendo “la 2”. Con viñetas se pierde esa salida corta.
+
+La negrita en listas estaba prohibida por ANTI-TELLS desde el 15-sep; ahora hay
+una excepción única y explícita para el nombre de la empresa. Sin nombre de
+persona en la tool, el renglón termina en el beneficio, sin “con”.
+
 ## Vistas y repos externos
 
 - `script_actualizar_recordatorio/actualizar_recordatorio.py` no usa URLs:
