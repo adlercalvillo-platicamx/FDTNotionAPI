@@ -12,6 +12,14 @@ al agente.
 
 ## QRs de piso
 
+Corrección de Adler, 21-sep: los QR **ya existían** y Laura ya los entregó.
+Los oficiales están en Canva:
+https://www.canva.com/design/DAHVPivbDus/J0pbQm5invchw98EEaPq1g/edit
+
+Ya abren la conversación con el Agente 2 y traen el mensaje aprobado. El
+archivo generado abajo queda como auditoría técnica, no como entregable para
+el proveedor de pantallas.
+
 `scripts/one-shots/generar-qrs-wa-sponsors-21sep.js` lee Contactos de Laura y
 escribe [`qrs-piso-wa-sponsors.md`](qrs-piso-wa-sponsors.md): un `wa.me` por
 **empresa** sponsor con el texto prellenado que definió Laura el 17-sep. Solo
@@ -30,6 +38,11 @@ Pendiente de Laura.
 
 El QR no depende de que el texto coincida con Notion: el backend resuelve el
 nombre aproximado (`resolverSponsorPorEmpresa`).
+
+Regla definitiva Adler, 21-sep: **solo** los sponsors activos en Notion
+participan en citas 1a1. Una empresa que aparezca en el programa puede tener
+presentación, pero eso no le da citas. Solo cambia si Adler la agrega a Notion
+y lo avisa.
 
 ## Prueba adversarial del Agente 2
 
@@ -97,14 +110,28 @@ Verificado después: Mercado Libre 8-oct 13:00–13:30, Reversso 8-oct
 ## Pendientes
 
 - Laura: `Nivel de Patrocinio` de Mercado Libre y Pikstudio.
-- **Marketing sigue dando el programa viejo a prospectos.** Su knowledge
-  `Evento FDT 2026 — Fuente de verdad del evento`
-  (`6TSizqkFOPBKnYnErdAi`) necesita el programa del 20-sep. No se tocó: es de
-  otro hilo y no hubo instrucción.
 - Prueba de “no reservar sin confirmación”: hace falta un sponsor de prueba
   para no mandar `.ics` a un sponsor real.
-- Abrir el QR desde un teléfono real (Adler o Laura); lo probado aquí fue el
-  backend y la conversación por API.
 - Brand Lift expone el 8-oct 15:00 y no tiene bloqueo, pero tampoco existe
   como `Categoria=Sponsor`: hoy no puede recibir citas. Solo actuar si se da
   de alta.
+
+Cerrado por evidencia de Laura: los QR oficiales de Canva ya abren el Agente 2
+con el mensaje prellenado aprobado.
+
+## Cierre Marketing (21-sep, 07:02 UTC)
+
+Adler pidió actualizar Marketing con el programa actual.
+
+- Knowledge activa nueva: `Programa FDT2026 vigente`
+  (`uRpsngiGfSNKo4gktEcN`). Es la fuente exclusiva para horarios, sesiones y
+  ponentes; la fuente general del evento ya no arbitra la parrilla.
+- Prompt activo `jvH0GUiacj23W9hk2EG7`: separa explícitamente programa de
+  citas 1a1. Aparecer en programa/directorio no implica tener citas; solo
+  sponsors activos en Notion, y las solicitudes concretas van al Agente 2.
+- La prueba inicial confirmó esa separación. La knowledge recién creada aún
+  no devolvió los horarios antes de cerrar el horario de servicio (17:00);
+  los reintentos posteriores recibieron el mensaje de fuera de servicio.
+  Pendiente: una comprobación conversacional de Mercado Libre y Reversso
+  durante el horario de Marketing.
+- Clientes sintéticos `5215500002113` y `5215500002114`: eliminados.

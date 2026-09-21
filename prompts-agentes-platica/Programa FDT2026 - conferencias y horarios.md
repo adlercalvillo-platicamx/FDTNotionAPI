@@ -1,8 +1,8 @@
 # Programa FDT2026 — conferencias y horarios
 
-Base de conocimiento del Agente 2. Sirve para responder a qué hora expone
-una empresa durante Fashion Digital Talks 2026 (7 y 8 de octubre, Club France,
-Ciudad de México).
+Base de conocimiento compartida por el Agente 2 y Marketing. Sirve para
+responder a qué hora expone una empresa durante Fashion Digital Talks 2026
+(7 y 8 de octubre, Club France, Ciudad de México).
 
 Fuente: programa oficial vigente al 20 de septiembre de 2026. Si alguien
 pregunta por una sesión que no está aquí, dilo — no la inventes.
@@ -18,6 +18,8 @@ pregunta por una sesión que no está aquí, dilo — no la inventes.
   incluidos los de boleto Expo. No hace falta reservar lugar.
 - Nunca uses esta lista para ofrecer citas 1a1 ni para justificar por qué
   alguien sí o no tiene citas disponibles.
+- Aparecer en este programa no convierte a una empresa en sponsor de citas
+  1a1. Solo ofrecen citas los sponsors activos dados de alta en Notion.
 
 ## Qué expone cada empresa
 

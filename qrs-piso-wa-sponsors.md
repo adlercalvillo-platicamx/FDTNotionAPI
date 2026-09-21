@@ -1,5 +1,13 @@
 # QR de piso — un enlace de WhatsApp por sponsor
 
+**Referencia técnica; no es el entregable de pantallas.** Laura ya entregó
+los QR oficiales en Canva:
+https://www.canva.com/design/DAHVPivbDus/J0pbQm5invchw98EEaPq1g/edit
+
+Los QR de Canva ya abren una conversación con el Agente 2 y traen el mensaje
+prellenado aprobado. Esta lista sirve solo para comprobar el número, el texto
+y qué empresas sponsor están activas en Notion.
+
 Generado por `scripts/one-shots/generar-qrs-wa-sponsors-21sep.js` desde
 Contactos de Notion (Laura). Si cambian los sponsors, volver a correrlo.
 
@@ -8,6 +16,9 @@ Número del Agente 2: `5213332361963` (no el de Marketing).
 El nombre de la empresa viaja en el texto prellenado. El agente lo resuelve
 aunque el usuario lo edite o venga aproximado, así que el QR no depende de
 que el texto coincida carácter por carácter con Notion.
+
+Solo aparecen sponsors activos en Notion. Una empresa que figure en el
+programa de conferencias no entra aquí ni ofrece citas 1a1 por ese hecho.
 
 ## Sponsors con citas 1a1 (13)
 
