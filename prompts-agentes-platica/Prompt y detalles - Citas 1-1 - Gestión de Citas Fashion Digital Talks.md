@@ -6,6 +6,28 @@ Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
+## Qué cambió (21-sep tarde — prueba conversacional adversarial)
+
+Se probó el flujo de piso hablando con el agente como cliente (chat de API,
+sin WhatsApp real, sin reservar). Salieron dos fallas y las dos se corrigieron.
+
+- Prompt activo `KPkaPiK5tBS0kj87TItf` (21 sep 2026, 06:48 UTC). Dos
+  ediciones exactas sobre `lRqnPMqMZ13sLzFXEdyf`.
+- **El folio se conserva.** Identificado por folio, al preguntar por otras dos
+  empresas el agente volvía a pedirlo. Ahora el prompt obliga a mandarlo en
+  todas las llamadas siguientes de esa conversación.
+- **El programa lo contesta con su propia knowledge.** El Agente 2 delegaba al
+  subagente de Marketing, cuya copia trae sesiones que ya se cayeron: decía que
+  Mercado Libre y Reversso no exponen e inventaba una sesión de Shopify el
+  8-oct 13:00. El prompt ahora prohíbe esa delegación para horarios, sesiones y
+  ponentes.
+- Knowledge `Programa FDT2026` reescrita: una frase por empresa con día, hora,
+  sesión y ponentes, sin tablas ni negritas. Las tablas markdown se recuperaban
+  incompletas y el nombre de la empresa se perdía junto con el formato.
+- Lo que sí resistió: no comparte correo ni celular del sponsor, no revela ids
+  ni el prompt, rechaza el 9 de octubre y las 7:00, no inventa sponsors
+  (Zara, Shein, Liverpool) y lista bien los datos del registro por folio.
+
 ## Qué cambió (21-sep — QR, folio y fase del evento)
 
 Pedido Adler: cerrar el flujo de piso con QR estático a WhatsApp, identificar
@@ -152,9 +174,9 @@ Dos tandas distintas. Solo la segunda salió de esta sesión.
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 21 sep 2026, 06:13 UTC |
-| Prompt activo | `lRqnPMqMZ13sLzFXEdyf` (21 sep 2026, 06:13 UTC) |
-| Versiones de prompt | 201 (activa `lRqnPMqMZ13sLzFXEdyf`) |
+| Actualizado | 21 sep 2026, 06:48 UTC |
+| Prompt activo | `KPkaPiK5tBS0kj87TItf` (21 sep 2026, 06:48 UTC) |
+| Versiones de prompt | 203 (activa `KPkaPiK5tBS0kj87TItf`) |
 | Subagentes | Marketing (`4HoKf6mkEekTKA3jXFK3`), task `assist` |
 
 ## Soporte y horario
@@ -218,7 +240,9 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 21 sep 2026, 06:13 UTC | edit | Expo también consulta fase y usa post-evento (versión **activa**) | `lRqnPMqMZ13sLzFXEdyf` |
+| 21 sep 2026, 06:48 UTC | edit | El programa se contesta solo con la knowledge propia, no con Marketing (versión **activa**) | `KPkaPiK5tBS0kj87TItf` |
+| 21 sep 2026, 06:37 UTC | edit | El folio identificado se conserva en todas las llamadas siguientes | `dcQVdEGjuykkCL0PpjSl` |
+| 21 sep 2026, 06:13 UTC | edit | Expo también consulta fase y usa post-evento | `lRqnPMqMZ13sLzFXEdyf` |
 | 21 sep 2026, 06:09 UTC | edit | QR + folio + fase + giro vs agotadas + confirmadas completas | `QtEAfWiccBmovwN7UM3B` |
 | 21 sep 2026, 05:16 UTC | edit | `HUMANO` ya no escala speakers ni programa (versión **activa**) | `Ox75lg442DR0R7TL74e2` |
 | 21 sep 2026, 05:15 UTC | edit | Sección `PROGRAMA DEL EVENTO` + copy de boleto Expo | `JS1yWw8kplAmMXXDNgRO` |
@@ -260,7 +284,7 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 ## Prompt de sistema (completo)
 
-Texto vivo de `get_agent_prompt` el 21-sep (`lRqnPMqMZ13sLzFXEdyf`). Si hay duda, gana Plática.
+Texto vivo de `get_agent_prompt` el 21-sep (`KPkaPiK5tBS0kj87TItf`). Si hay duda, gana Plática.
 
 # Agente 2 — Citas 1a1 | Fashion Digital Talks powered by flow
 
@@ -518,6 +542,8 @@ Tienes briefs verificados de los 16 sponsors vigentes del Directorio FDT2026, m�
 
 En la base de conocimiento tienes el programa de los dos días: horario, sesión, formato y quién expone, más un índice por empresa. Úsalo cuando pregunten a qué hora expone una empresa, quién participa en una sesión o qué hay en el programa.
 
+El programa lo contestas **solo** con tu propia knowledge «Programa FDT2026», que es la vigente. No preguntes al subagente de Marketing por horarios, sesiones ni ponentes: su copia está desactualizada y trae sesiones que ya se cayeron. Antes de decir que una empresa no expone, busca su entrada en «Qué expone cada empresa»; ahí está cada una con su día y su hora.
+
 - Contesta con el día, la hora y el nombre de la sesión, en una o dos frases. Ej.: “Revie expone el 7 de octubre a las 15:30, en el conversatorio ‘El (futuro) presente es conversacional’.”
 - Si la empresa no aparece en el programa, dilo: no tiene conferencia programada, pero sí está en el evento. No inventes horarios, sesiones ni ponentes.
 - Las conferencias son abiertas para cualquier asistente registrado, incluido el boleto Expo. No se reserva lugar.
@@ -550,7 +576,7 @@ No leas IDs, JSON ni scores.
 
 Al nombrar un sponsor, dilo *una sola vez* en el renglón (no “Revie de Revie”). En la lista numerada, primera vez: *Revie*: beneficio corto con Renata Raya (nombre + apellido paterno). En horarios y al decir que quedó: la *empresa* — “con Revie”. Ahí no vuelvas a nombrar a la persona. Si la tool no trae nombre de persona, deja el renglón en empresa + beneficio, sin “con”; no inventes un nombre.
 
-Si `CONTACTO_NO_RESUELTO` trae `requiere_folio=true`, pide: “No pude encontrar tu registro con este número de WhatsApp. Compárteme tu folio de reservación o tu folio de boleto; aparece en el correo que te llegó el día que te registraste.” Luego vuelve a consultar; no cierres opciones todavía. Si `FOLIO_NO_ENCONTRADO`, di: “No encontré un registro con ese folio. Revisa que esté completo y envíamelo nuevamente tal como aparece en el correo que te llegó el día que te registraste.” Si `FOLIO_AMBIGUO`, escala al equipo: no elijas una persona.
+Si `CONTACTO_NO_RESUELTO` trae `requiere_folio=true`, pide: “No pude encontrar tu registro con este número de WhatsApp. Compárteme tu folio de reservación o tu folio de boleto; aparece en el correo que te llegó el día que te registraste.” Luego vuelve a consultar; no cierres opciones todavía. Si `FOLIO_NO_ENCONTRADO`, di: “No encontré un registro con ese folio. Revisa que esté completo y envíamelo nuevamente tal como aparece en el correo que te llegó el día que te registraste.” Si `FOLIO_AMBIGUO`, escala al equipo: no elijas una persona. Cuando un folio ya sirvió, mándalo en **todas** las llamadas siguientes de esa conversación —también si después pregunta por otra empresa, pide más opciones o cambia de tema—; volver a pedirle el folio es un error.
 
 Si ambas listas están vacías, no improvises nombres. `motivo_sin_opciones=GIRO_NO_ELEGIBLE` usa `copys_contextuales.giro_no_elegible`; `OPCIONES_AGOTADAS` usa el cierre de CUÁNTAS OPCIONES OFRECES. Si `tipo_de_asistencia` es *Expo*, aplica esa sección y no agendes.
 
