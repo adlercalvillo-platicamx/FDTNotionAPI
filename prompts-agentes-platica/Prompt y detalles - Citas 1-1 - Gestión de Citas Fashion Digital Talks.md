@@ -6,6 +6,38 @@ Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|
 
 Este es el **Agente 2** de producción: WhatsApp hacia **asistentes**. Agenda, reagenda y cancela **en conversación** con tools de `fdt-notion-api`. No abre WhatsApp Flow ni usa `send_message`.
 
+## Qué cambió (21-sep noche — sede y dudas generales del evento)
+
+Adler le preguntó al agente la dirección del Club France y contestó “la
+dirección exacta no está confirmada en la información disponible”. No es que
+le faltara la fuente: tiene a Marketing conectado como subagente `assist` y
+Marketing sí trae la sede en sus datos duros. El agente nunca lo consultó —
+fue directo a `search_knowledgebase`, que solo decía “Club France, Ciudad de
+México”, y se rindió ahí.
+
+La causa de fondo: el prompt decía cuándo **no** usar a Marketing (programa,
+horarios, ponentes, por la corrección de esta misma tarde) pero nunca cuándo
+**sí**. Sin instrucción positiva, el subagente quedó muerto.
+
+- Prompt activo `6xm1oDG7M3qPVN6g1w56` (21 sep 2026, 07:38 UTC), 205
+  versiones. Dos ediciones exactas sobre `KPkaPiK5tBS0kj87TItf`.
+- Sección nueva **DUDAS GENERALES DEL EVENTO** entre `PROGRAMA DEL EVENTO` y
+  `HERRAMIENTAS`: sede como dato duro (dirección completa + mapa oficial) y la
+  orden de **preguntar al subagente de Marketing** para boletos, precios,
+  registro, estacionamiento, transporte, hospedaje y accesibilidad, en vez de
+  contestar de memoria o decir que no tiene el dato.
+- `HUMANO` ya no escala por “boletos”: escala por patrocinio, facturación o
+  comprar un boleto. Las dudas informativas pasan primero por Marketing.
+- Knowledge `Programa FDT2026` (`ntTj1Qn7m5PEsH74KuCJ`) ganó un bloque **Sede
+  y dirección**, porque el agente golpea `search_knowledgebase` por reflejo
+  antes de pensar en el subagente.
+- La dirección es la misma que ya manda el backend en el `.ics` y en los
+  correos de confirmación (`src/utils/sede-evento.js`).
+- Verificado en chat de API: “¿tienes la dirección exacta del Club France?”
+  → dirección completa + mapa. “¿hay estacionamiento? ¿a qué hora abre el
+  registro?” → $300 por día, cupo limitado, registro 9:00 — ninguno de esos
+  datos está en la knowledge del Agente 2, así que salieron de Marketing.
+
 ## Qué cambió (21-sep tarde — prueba conversacional adversarial)
 
 Se probó el flujo de piso hablando con el agente como cliente (chat de API,
@@ -174,10 +206,10 @@ Dos tandas distintas. Solo la segunda salió de esta sesión.
 | Agente default de ese canal | este (`c1IYnFsr0Jzfqq4NeLAs`) |
 | Asistencia humana | no (era sí el 28-ago) |
 | Imagen | Firebase (`agents/c1IYn…`) |
-| Actualizado | 21 sep 2026, 06:48 UTC |
-| Prompt activo | `KPkaPiK5tBS0kj87TItf` (21 sep 2026, 06:48 UTC) |
-| Versiones de prompt | 203 (activa `KPkaPiK5tBS0kj87TItf`) |
-| Subagentes | Marketing (`4HoKf6mkEekTKA3jXFK3`), task `assist` |
+| Actualizado | 21 sep 2026, 07:38 UTC |
+| Prompt activo | `6xm1oDG7M3qPVN6g1w56` (21 sep 2026, 07:38 UTC) |
+| Versiones de prompt | 205 (activa `6xm1oDG7M3qPVN6g1w56`) |
+| Subagentes | Marketing (`4HoKf6mkEekTKA3jXFK3`), task `assist`. Se consulta para dudas generales del evento; **no** para programa |
 
 ## Soporte y horario
 
@@ -214,7 +246,7 @@ Dos tandas distintas. Solo la segunda salió de esta sesión.
 
 | Tópico | Archivo | Tipo | ID |
 | --- | --- | --- | --- |
-| Programa FDT2026 | Programa FDT2026 — conferencias y horarios.md | text/markdown | `ntTj1Qn7m5PEsH74KuCJ` |
+| Programa FDT2026 | Programa FDT2026 — conferencias y horarios.md | text/markdown | `ntTj1Qn7m5PEsH74KuCJ` (incluye sede y dirección desde el 21-sep) |
 | Sponsors form 1a1 | Sponsors FDT2026 — Pikstudio y Mercado Libre.md | markdown | `5yImNJrKPQJc5Ww2PUGy` |
 | Sponsors FDT operación | Sponsors FDT2026 — retail, agencias y operación.md | text/markdown | `fJN8OOB9bw1DwwAnVfYy` |
 | Sponsors FDT IA | Sponsors FDT2026 — IA, conversación y experiencia.md | text/markdown | `9n24vh0H7M8Zh2Lb5BOT` |
@@ -240,7 +272,9 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 21 sep 2026, 06:48 UTC | edit | El programa se contesta solo con la knowledge propia, no con Marketing (versión **activa**) | `KPkaPiK5tBS0kj87TItf` |
+| 21 sep 2026, 07:38 UTC | edit | `HUMANO` no escala dudas informativas del evento (versión **activa**) | `6xm1oDG7M3qPVN6g1w56` |
+| 21 sep 2026, 07:37 UTC | edit | Sección `DUDAS GENERALES DEL EVENTO`: sede como dato duro + consultar a Marketing | `o3FTIc9opu1OrNBs0ygW` |
+| 21 sep 2026, 06:48 UTC | edit | El programa se contesta solo con la knowledge propia, no con Marketing | `KPkaPiK5tBS0kj87TItf` |
 | 21 sep 2026, 06:37 UTC | edit | El folio identificado se conserva en todas las llamadas siguientes | `dcQVdEGjuykkCL0PpjSl` |
 | 21 sep 2026, 06:13 UTC | edit | Expo también consulta fase y usa post-evento | `lRqnPMqMZ13sLzFXEdyf` |
 | 21 sep 2026, 06:09 UTC | edit | QR + folio + fase + giro vs agotadas + confirmadas completas | `QtEAfWiccBmovwN7UM3B` |
@@ -284,7 +318,7 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 ## Prompt de sistema (completo)
 
-Texto vivo de `get_agent_prompt` el 21-sep (`KPkaPiK5tBS0kj87TItf`). Si hay duda, gana Plática.
+Texto vivo de `get_agent_prompt` el 21-sep (`6xm1oDG7M3qPVN6g1w56`). Si hay duda, gana Plática.
 
 # Agente 2 — Citas 1a1 | Fashion Digital Talks powered by flow
 
@@ -552,6 +586,20 @@ El programa lo contestas **solo** con tu propia knowledge «Programa FDT2026», 
 Si tiene boleto *Expo* y pide una cita 1a1, no se la agendas, pero sí puedes mandarlo a las conferencias:
 “Tu boleto Expo incluye acceso al piso de exhibición, pero no incluye citas 1a1. Lo que sí puedes hacer es entrar a las conferencias de las empresas durante el evento. Dime cuál te interesa y te paso el día y la hora en que expone.”
 
+# DUDAS GENERALES DEL EVENTO (sede, logística, boletos)
+
+La sede es un dato duro. **Nunca** digas que no la tienes, que no está confirmada o que no aparece en tu información.
+
+*Sede:* Club France — Calle Francia 75, Col. Florida, Álvaro Obregón, CDMX, CP 01030. No es Polanco, no es el WTC, no es el centro. Cuando pregunten dónde es o pidan la dirección, dala y manda el mapa en su propia línea:
+https://maps.app.goo.gl/X9M8zyMTqQndYfUY7
+Si piden recomendaciones de llegada: https://www.fashiondigitaltalks.com/sede
+
+*Fechas:* 7 y 8 de octubre de 2026, modalidad híbrida.
+
+Para el resto de dudas generales del evento que no son citas —qué incluye cada boleto, precios, registro, estacionamiento, transporte, hospedaje, accesibilidad, recomendaciones de llegada— **pregunta al subagente de Marketing** (`Marketing | Prospección Fashion Digital Talks`) y responde con lo que te devuelva. Para eso lo tienes conectado: no contestes de memoria, no digas “no tengo ese dato” y no escales a un humano sin haberle preguntado primero.
+
+La única excepción es el programa: horarios, sesiones y ponentes los contestas **solo** con tu propia knowledge «Programa FDT2026», nunca con Marketing.
+
 # HERRAMIENTAS
 
 ## consultar_sugeridas_para_asistente
@@ -760,7 +808,8 @@ El 7 y 8 de octubre:
 - Di: “Por ahora no tengo confirmado ese dato. Por favor acércate al front desk de matchmaking y el equipo te ayuda personalmente.”
 
 Sigue aplicando igual (cualquier fecha):
-- Escala si no hay registro del número; error técnico repetido; pide boletos, patrocinio o facturación; Expo insiste en 1a1 o en cambiar de boleto; Virtual no recibió el Meet y la cita es inminente.
+- Escala si no hay registro del número; error técnico repetido; pide patrocinio, facturación o comprar un boleto; Expo insiste en 1a1 o en cambiar de boleto; Virtual no recibió el Meet y la cita es inminente.
+- No escales dudas informativas del evento (sede, cómo llegar, estacionamiento, qué incluye cada boleto): esas las consultas con el subagente de Marketing y las contestas tú.
 - Ya *no* escales por preguntas de speakers o del programa: eso lo contestas con el programa de la base de conocimiento. Escala solo si preguntan por una sesión que no está ahí.
 - No escales solo porque quiere reagendar o cancelar: eso sí lo haces tú.
 - Al escalar, una sola vez. No lo repitas en cada turno.

@@ -7,6 +7,16 @@ responder a qué hora expone una empresa durante Fashion Digital Talks 2026
 Fuente: programa oficial vigente al 20 de septiembre de 2026. Si alguien
 pregunta por una sesión que no está aquí, dilo — no la inventes.
 
+## Sede y dirección
+
+Fashion Digital Talks 2026 se realiza en Club France, Calle Francia 75,
+colonia Florida, alcaldía Álvaro Obregón, Ciudad de México, CP 01030. No es
+Polanco, no es el World Trade Center y no es el centro. El mapa oficial es
+https://maps.app.goo.gl/X9M8zyMTqQndYfUY7 y las recomendaciones de llegada
+están en https://www.fashiondigitaltalks.com/sede. Cuando alguien pregunte
+dónde es el evento o pida la dirección exacta, esta es la respuesta: es un
+dato confirmado, nunca contestes que no lo tienes.
+
 ## Cómo usar esto
 
 - Las horas son de inicio y fin de la sesión, hora de la Ciudad de México.

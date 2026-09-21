@@ -2,6 +2,17 @@
 
 Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **21 de septiembre de 2026**. Respaldo previo en `prompts-agentes-20-09/`.
 
+## Qué cambió (21-sep noche — correo de soporte)
+
+- `supportEmail` pasó de `juan.perez@example.com` (placeholder de Plática, se
+  colaba en el mensaje de fuera de horario) a **`rp@fashiondigitaltalks.com`**.
+  Decisión de Adler. El prompt no se tocó; horarios y `outOfServiceBehavior`
+  (`limited`) siguen igual.
+- El Agente 2 ahora sí lo consulta para dudas generales del evento (sede,
+  boletos, logística). Antes lo tenía conectado como `assist` pero nunca lo
+  llamaba. Ver
+  [`Prompt y detalles - Citas 1-1 - Gestión de Citas Fashion Digital Talks.md`](Prompt%20y%20detalles%20-%20Citas%201-1%20-%20Gesti%C3%B3n%20de%20Citas%20Fashion%20Digital%20Talks.md).
+
 ## Qué cambió (21-sep — programa vigente y límite de citas 1a1)
 
 - Knowledge nueva **`Programa FDT2026 vigente`** (`uRpsngiGfSNKo4gktEcN`,
@@ -56,7 +67,7 @@ Este es el **Agente 3 / prospección** en WhatsApp de producción.
 
 | Campo | Valor |
 | --- | --- |
-| Email de soporte | juan.perez@example.com |
+| Email de soporte | rp@fashiondigitaltalks.com (era `juan.perez@example.com`, placeholder; cambiado 21-sep por Adler) |
 | Fuera de servicio | limited |
 | Lunes–viernes | 9:00–17:00 |
 | Sábado y domingo | cerrado |

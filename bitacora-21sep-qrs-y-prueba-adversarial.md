@@ -135,3 +135,45 @@ Adler pidió actualizar Marketing con el programa actual.
   Pendiente: una comprobación conversacional de Mercado Libre y Reversso
   durante el horario de Marketing.
 - Clientes sintéticos `5215500002113` y `5215500002114`: eliminados.
+
+## Sede y dudas generales del evento (21-sep, 07:38 UTC)
+
+Adler le preguntó al Agente 2 la dirección del Club France y contestó “la
+dirección exacta no está confirmada en la información disponible”. Mal dato:
+el backend la manda en cada `.ics` y en cada correo de confirmación
+(`src/utils/sede-evento.js`), y Marketing la trae en sus datos duros.
+
+Causa: el agente fue directo a `search_knowledgebase`, que solo decía “Club
+France, Ciudad de México”, y se rindió ahí. Nunca consultó al subagente de
+Marketing, que tiene conectado como `assist` desde el 20-sep. El prompt le
+decía cuándo **no** usarlo (programa, horarios, ponentes — corrección de esa
+misma tarde) pero nunca cuándo **sí**. Sin instrucción positiva el subagente
+estaba muerto.
+
+Tres arreglos:
+
+1. Prompt `o3FTIc9opu1OrNBs0ygW` → sección **DUDAS GENERALES DEL EVENTO**
+   entre `PROGRAMA DEL EVENTO` y `HERRAMIENTAS`. Sede como dato duro
+   (dirección completa + mapa oficial `https://maps.app.goo.gl/X9M8zyMTqQndYfUY7`)
+   y orden explícita de preguntar a Marketing por boletos, precios, registro,
+   estacionamiento, transporte, hospedaje y accesibilidad. El programa
+   mantiene su excepción: knowledge propia, nunca Marketing.
+2. Prompt `6xm1oDG7M3qPVN6g1w56` (activo) → `HUMANO` ya no escala por
+   “boletos”. Escala por patrocinio, facturación o comprar un boleto; las
+   dudas informativas pasan primero por Marketing.
+3. Knowledge `ntTj1Qn7m5PEsH74KuCJ` ganó un bloque **Sede y dirección**,
+   porque el agente golpea `search_knowledgebase` por reflejo.
+
+Verificado en chat de API (`chat_edce8e1f`): “¿tienes la dirección exacta del
+Club France?” devolvió dirección completa + mapa. “¿hay estacionamiento? ¿a
+qué hora abre el registro?” devolvió $300 por día con cupo limitado y registro
+a las 9:00 — ninguno de esos datos vive en la knowledge del Agente 2, así que
+la delegación a Marketing funcionó.
+
+## Correo de soporte de Marketing (21-sep)
+
+`supportEmail` de Marketing (`4HoKf6mkEekTKA3jXFK3`) pasó de
+`juan.perez@example.com` —placeholder de Plática que se colaba en el mensaje
+de fuera de horario— a **`rp@fashiondigitaltalks.com`**, por decisión de
+Adler. Horarios (L–V 9:00–17:00) y `outOfServiceBehavior=limited` sin cambio.
+El prompt no se tocó.
