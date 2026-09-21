@@ -471,7 +471,7 @@ function crearServidorMcp() {
   // ═══════════════════════════════════════════════════════════════
   server.tool(
     'reintentar_notificaciones_pendientes',
-    'Reenvía el correo de confirmación (.ics) de las citas 1a1 de Fashion Digital Talks 2026 que quedaron en estatus "Confirmada sin notificar". Omite las filas de bloqueo de conferencia del programa (no son citas reales). Usar cuando ya se corrigió un dato (email en Contactos, credenciales SMTP, etc.) o cuando el usuario pide explícitamente reenviar los avisos pendientes. No crea ni cancela citas — solo reenvía notificaciones. Sin tope de llamadas. Si alguna falla, el resultado incluye el motivo (categoria y mensaje) por cita.',
+    'Reenvía el correo (.ics) pendiente de las citas 1a1. En filas nuevas manda solo al lado marcado en Notas Envio Email (sponsor, asistente o ambos), para no duplicar el correo que ya salió; filas legacy sin marcador reintentan ambos. Incluye "Confirmada sin notificar" y cancelaciones con aviso pendiente. Omite bloqueos de conferencia. Usar cuando ya se corrigió email/SMTP o se pidió explícitamente. No crea ni cancela citas. Sin tope; cada fallo incluye categoria y mensaje.',
     {},
     async () => {
       try {

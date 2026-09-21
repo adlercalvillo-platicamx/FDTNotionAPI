@@ -127,3 +127,29 @@ pestañas, una por nombre. No se tocó pruebas.
 - Columnas huérfanas en las vistas que quedan.
 
 Nada de WhatsApp, SMTP ni Coolify.
+
+## Reparación de vistas (Adler, mismo día)
+
+Pedido: igualar lo que faltaba de Contactos contra pruebas **antes** de
+borrar campos. Timeline por Mesa de Citas lo ajusta Adler a mano.
+
+Script `scripts/one-shots/reparar-vistas-contactos-laura-02sep.js`
+(`--confirmar`; dry-run por default). Solo Contactos de Laura.
+
+- Creado **Board — Sponsors por Faltantes** (`3cf62dda-199a-817a-86d6-000cbc3f6b47`),
+  tipo board, filtro de sponsors, agrupa por `Rango Faltantes` (`znE:`),
+  oculta grupos vacíos. Verificado en fetch posterior.
+- Parcheadas 4 tablas: Asistentes, Asistentes Ticketópolis 2026,
+  Enriquecimiento (Exa), Sponsors. Se destaparon las columnas que
+  pruebas sí muestra y se quitaron IDs huérfanos (`sjfM`, `vEAq`, `>tWY`,
+  etc.). Verificado: `missingStill=[]`, `orphans=[]`.
+  - Asistentes: 27 visibles (`Tamaño de Negocio`, `Madurez Negocio (Exa)`,
+    `Estado Web (Exa)`).
+  - Ticketópolis 2026: 38 visibles (`Tamaño de Negocio`, `Incluye Entrada
+    Evento`, `LinkedIn/Instagram`, `Fecha Autorizacion`).
+  - Enriquecimiento (Exa): 16 visibles (`Tamaño de Negocio`).
+  - Sponsors: 35 visibles (Count, Faltantes, Rango, Madurez Exa, Estado Web
+    Exa).
+
+Contactos queda en **16 pestañas**, mismas que pruebas. No se tocó Citas
+ni pruebas. Pendiente: Adler confirma la lista de campos a borrar.

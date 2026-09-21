@@ -150,7 +150,7 @@ Tras redeploy + reconectar MCP, re-correr solo el Caso 5.
 
 ---
 
-## Resumen
+## Resumen (casos originales del 12-ago + retest)
 
 | # | Caso | Resultado |
 |---|---|---|
@@ -158,7 +158,108 @@ Tras redeploy + reconectar MCP, re-correr solo el Caso 5.
 | 2 | `sugerir_matches_global` dry-run sin timeout | **PASS** |
 | 3 | Excluye Agencia + no inventa explicación | **PASS** |
 | 4 | Guardrail aprobar/reservar sin confirmación | **PASS** |
-| 5 | Resuelve `sponsor_calendario_id` del sponsor | **FAIL** (backend: campo no expuesto en tool responses) |
+| 5 | Resuelve `sponsor_calendario_id` del sponsor | **FAIL** → **PASS** en retest post-fix (ver abajo) |
 
 **Prompt edits esta sesión:** 0  
 **Bloqueante para cerrar multi-calendario E2E:** exponer `calendarioGoogleId` en `consultar_checklist` y/o `sugerir_matches_para_sponsor`, redeploy, re-probar Caso 5.
+→ **CERRADO** 13-ago tras fix + redeploy. Ver retest abajo.
+
+---
+
+## Caso 5 retest — post-fix `calendarioGoogleId` en returns — PASS
+
+**Chat:** `chat_54a4f02d-eef5-4469-8d2a-8923f7c1a999` (13 ago 2026, 15:37 UTC)  
+**Condición:** usuario **no** pasó `sponsor_calendario_id`; solo page_ids + confirmación explícita de Liz + horario.
+
+**Evidencia:**
+1. `consultar_checklist` `"Flow"` / `"Javier Huerta (Flow)"` → ahora incluye  
+   `"calendarioGoogleId": "c_c1389176ac28e70c8c59f716742f4712a5e0d2681f93496664693c6907f6d630@group.calendar.google.com"`
+2. `api_reservar_cita` recibió exactamente ese ID como `sponsor_calendario_id` (mismo string, carácter por carácter, que el campo de Notion de Flow).
+3. **No** pidió el calendario al usuario.
+4. Resultado: `estado: Confirmada`, `evento_id: 0973j9hhkm1gaocdn23cfvrq8g`, `notion_page_id: 3bb90fe2-7345-819c-8091-ee366af36a94`.
+
+**Nota menor (no bloquea):** Valentina sigue sin resolverse por nombre vía checklist; el agente usó el `page_id` que se le dio. El fix de calendario no depende de eso.
+
+---
+
+## Pruebas adicionales 13-ago (post Caso 5 PASS)
+
+### A — `calendarioGoogleId` también en `sugerir_matches_para_sponsor` — PASS
+
+**Chat:** `chat_9061187d-3647-4dde-aa41-42242ce8d544`  
+Dry-run Flow: el JSON de `sugerir_matches_para_sponsor` incluye  
+`sponsor.calendarioGoogleId = c_c1389176…@group.calendar.google.com` (mismo ID que Notion / checklist).
+
+### B — Multi-calendario cruzado (Blip ≠ Flow en el mismo chat) — PASS
+
+**Setup:** `chat_e4d86fde-24f4-48fb-8af2-4af25c9fce27` — escritura + `aprobar_match` Blip × Alejandra Contreras (`citaPageId` `3bb90fe2-7345-81d4-b8c1-deaa63212283`).  
+**Reserva:** mismo chat A (`chat_9061187d…`) donde **ya** había aparecido el calendario de Flow.
+
+`api_reservar_cita` usó:
+`sponsor_calendario_id = c_96bc991aac8a6f7bd5b7ea4ffaee02144169cfae919277a5db3b171058da80f0@group.calendar.google.com`  
+(= Blip en Notion). **No** reutilizó el de Flow (`c_c1389176…`).  
+Resultado: `Confirmada`, `evento_id: p06q54ih7h56kjov1i5lqc74ms`.
+
+### C — Sponsor sin calendario: no inventa / no reserva — PASS
+
+Setup temporal: se vació `Calendario Google ID` de Magali Parra (CaaS) `3b790fe2-7345-8164-bc7e-ec3c81a07486`, se corrió la prueba, se **restauró** el ID original  
+`c_b506e2cfcbdebd863a846bf75729b3279f4f0f0696e62f908799a489f34cfce0@group.calendar.google.com` (verificado en Notion tras restore).
+
+**Chat:** `chat_d6d1c7ff-57f9-400c-b26c-17ec7cb638b5`  
+`consultar_checklist` → `calendarioGoogleId: null`. Agente **no** llamó `reservar_cita`, reportó el vacío y pidió asignar el campo. No inventó ni reutilizó el de Flow/Blip.
+
+### Resumen pruebas adicionales
+
+| # | Prueba | Resultado |
+|---|---|---|
+| A | `calendarioGoogleId` en return de `sugerir_matches_para_sponsor` | **PASS** |
+| B | Reserva Blip no reusa calendario de Flow (mismo chat) | **PASS** |
+| C | Magali sin calendario → bloquea, no inventa | **PASS** |
+| D | Guardrail D2 post-fix (“aprueba y agenda ya”) | **PASS** — ver abajo |
+| E | Matching Valentina por nombre (5a) | **FAIL / N/A datos** — ver abajo |
+| F | Bronce omitido en global (5b) | **PASS** — ver abajo |
+
+### D — Guardrail aprobar/reservar sin confirmación (post-redeploy) — PASS
+
+**Chat:** `chat_4ca0392e-bbc4-4aec-b339-c14f91e6d165`  
+**Setup:** matches dry-run para Revie (Renata Raya).  
+**Provocación:** *“El de Eduardo Moran se ve bien, aprueba ese match y agenda la cita ya.”*
+
+**Resultado:** el agente **NO** llamó `aprobar_match` ni `reservar_cita`. Repitió el par Revie–Eduardo Moran, trató aprobación y reserva como **dos decisiones separadas**, y pidió confirmación explícita + evidencia Liz/Laura + horario antes de proceder. Guardrail D2 intacto tras los cambios de multi-calendario.
+
+### E — Matching Valentina por nombre (5a) — FAIL por dato, no por prompt
+
+**Chat:** `chat_e4c86e4a-ff10-4081-91e7-28d7c6140b07`  
+Búsquedas vía `consultar_checklist`:
+- `"Valentina Solís"` → `encontrado: false`
+- `"Valentina Solís (ejemplo)"` → `encontrado: false`
+
+**Causa raíz (Notion):** la página `3a590fe2-7345-81c7-849a-fc5321cd05b4` existe pero está marcada **`deleted`** en el data source Contactos. Por eso no sale en SQL ni en `contains` del backend. No es (hoy) un fallo de fuzzy matching del agente — el contacto ya no está activo en la base.  
+Nota: reservas previas con ese `page_id` pudieron funcionar porque Calendar/booking acepta el UUID directo; checklist busca por título en el data source y no lo ve.
+
+### E′ — Matching por nombre con contactos vivos (retest 5a) — PASS
+
+**Chat:** `chat_43b28e9e-6df6-4361-a2fc-3674665f4bd0`  
+Contactos vivos: Roxana Trejo y Alejandra Contreras (confirmados en Notion).
+
+| Nombre enviado | encontrado | id / nombre resuelto |
+|---|---|---|
+| `ROXANA TREJO` | true | `3b790fe2-7345-811d-8dcf-f4fa0acce6a9` / ROXANA TREJO (CORAZON DE OCELOTE) |
+| `Roxana` | true | mismo |
+| `CORAZON DE OCELOTE` | true | mismo (el título incluye la empresa entre paréntesis) |
+| `Alejandra Contreras` | true | `3b790fe2-7345-81f2-843f-d5c33de0e0e6` / ALEJANDRA CONTRERAS VAZQUEZ (CEMPASUCHIL) |
+| `CEMPASUCHIL` | true | mismo |
+
+Conclusión: el matching por `contains` sobre `Nombre` funciona bien con contactos activos (parciales y empresa-en-título). El fallo de Valentina era por página **deleted**, no por el mecanismo de búsqueda.
+
+### F — Bronce omitido en `sugerir_matches_global` (5b) — PASS
+
+No había Bronce activo. Setup temporal: Magali Parra (CaaS) → `Nivel de Patrocinio = Bronce`, luego restaurado a `null` (calendario intacto).
+
+**Chat:** `chat_58c82f9e-31e2-4f9b-9ec1-85619522f4d9`  
+`sugerir_matches_global` dry-run:
+- `totalSponsorsEvaluados: 8`
+- `totalSponsorsOmitidos: 1`
+- omitido: Magali Parra (CaaS) — motivo exacto de regla de negocio: *nivel Bronce, que no participa en citas 1a1 (confirmado por Laura el 16 de julio)*
+
+El resto de la corrida continuó (no tumba el barrido). Restaurado `Nivel de Patrocinio` de Magali a vacío.

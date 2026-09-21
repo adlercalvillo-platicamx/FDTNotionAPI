@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **11 de septiembre de 2026**, 19:27 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **20 de septiembre de 2026** (verificado; prompt sin cambio desde el 11-sep). Respaldo previo en `prompts-agentes-20-09/`.
 
 Nombre en Plática: `Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)`. El `|` se sustituyó por `-` en el nombre de este archivo.
 

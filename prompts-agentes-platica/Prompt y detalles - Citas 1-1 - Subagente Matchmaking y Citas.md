@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | — Subagente Matchmaking y Citas
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **17 de septiembre de 2026**, 18:50 UTC.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **20 de septiembre de 2026** (verificado; prompt sin cambio desde el 17-sep). Respaldo previo en `prompts-agentes-20-09/`.
 
 Nombre en Plática: `Citas 1-1 | — Subagente Matchmaking y Citas`. El `|` se sustituyó por `-` en el nombre de este archivo.
 

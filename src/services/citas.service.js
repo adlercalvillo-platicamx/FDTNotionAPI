@@ -482,7 +482,35 @@ async function confirmarCita({ notionPageId }) {
  * se usa para fallas de booking / match). No hay contador de intentos:
  * el reenvío es a demanda vía endpoint/MCP (Adler, 18-ago).
  */
-async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria, motivoDetalle }) {
+const LADOS_EMAIL_VALIDOS = new Set(['sponsor', 'asistente']);
+const MARCA_EMAIL_PENDIENTES = 'EMAIL_PENDIENTES';
+
+function normalizarLadosEmailPendientes(lados) {
+  return [...new Set((Array.isArray(lados) ? lados : []).filter((lado) => LADOS_EMAIL_VALIDOS.has(lado)))];
+}
+
+function prefijoLadosEmailPendientes(lados) {
+  const normalizados = normalizarLadosEmailPendientes(lados);
+  return normalizados.length > 0 ? `[${MARCA_EMAIL_PENDIENTES}:${normalizados.join(',')}] ` : '';
+}
+
+/**
+ * Lee el marcador persistido en "Notas Envio Email".
+ * null = fila legacy sin granularidad: por seguridad se reintentan ambos lados.
+ */
+function extraerLadosEmailPendientes(notas) {
+  const match = String(notas || '').match(/\[EMAIL_PENDIENTES:([^\]]+)\]/);
+  if (!match) return null;
+  return normalizarLadosEmailPendientes(match[1].split(',').map((lado) => lado.trim()));
+}
+
+async function marcarCitaConfirmadaSinNotificar({
+  notionPageId,
+  motivoCategoria,
+  motivoDetalle,
+  ladosPendientes,
+}) {
+  const prefijo = prefijoLadosEmailPendientes(ladosPendientes);
   return notionFetch(`/pages/${notionPageId}`, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -492,7 +520,7 @@ async function marcarCitaConfirmadaSinNotificar({ notionPageId, motivoCategoria,
           rich_text: [
             {
               text: {
-                content: `[${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
+                content: `${prefijo}[${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
               },
             },
           ],
@@ -709,7 +737,13 @@ async function marcarCitaCancelada({ notionPageId }) {
 }
 
 /** Cancelada en Notion, pero el .ics de baja nunca llegó — queda para reintento. */
-async function marcarCancelacionSinNotificar({ notionPageId, motivoCategoria, motivoDetalle }) {
+async function marcarCancelacionSinNotificar({
+  notionPageId,
+  motivoCategoria,
+  motivoDetalle,
+  ladosPendientes,
+}) {
+  const prefijo = prefijoLadosEmailPendientes(ladosPendientes);
   requireDataSourceId();
   return notionFetch(`/pages/${notionPageId}`, {
     method: 'PATCH',
@@ -720,7 +754,7 @@ async function marcarCancelacionSinNotificar({ notionPageId, motivoCategoria, mo
           rich_text: [
             {
               text: {
-                content: `${MARCA_CANCELACION_PENDIENTE} [${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
+                content: `${MARCA_CANCELACION_PENDIENTE} ${prefijo}[${motivoCategoria}] ${motivoDetalle}`.slice(0, 1900),
               },
             },
           ],
@@ -2370,6 +2404,7 @@ module.exports = {
   confirmarCita,
   marcarCitaFallida,
   marcarCitaConfirmadaSinNotificar,
+  extraerLadosEmailPendientes,
   confirmarNotificacionEnviada,
   buscarCitasSinNotificarParaReintentar,
   obtenerCitaPorId,

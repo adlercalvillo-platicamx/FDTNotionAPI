@@ -127,6 +127,32 @@ async function main() {
     fallos += 1;
   }
 
+  // --- Día del evento: nunca presentar horarios que ya vencieron ---
+  try {
+    const ahora = new Date('2026-10-07T12:06:00-06:00');
+    const vencido = citas.armarBloqueDisponibilidad({
+      inicio: '2026-10-07T12:00:00-06:00',
+      sponsorOcupado: false,
+      asistenteOcupado: false,
+      citasEnBloque: 0,
+      ahora,
+    });
+    const futuro = citas.armarBloqueDisponibilidad({
+      inicio: '2026-10-07T12:30:00-06:00',
+      sponsorOcupado: false,
+      asistenteOcupado: false,
+      citasEnBloque: 0,
+      ahora,
+    });
+    assert(vencido.disponible === false, '12:00 debe quedar fuera a las 12:06');
+    assert(vencido.motivo === 'HORARIO_EN_PASADO', `motivo=${vencido.motivo}`);
+    assert(futuro.disponible === true, '12:30 debe seguir ofrecible');
+    console.log('✅ Día del evento — bloque vencido fuera; solo horarios futuros');
+  } catch (e) {
+    console.log('❌ Día del evento / horarios vencidos:', e.message);
+    fallos += 1;
+  }
+
   if (fallos > 0) {
     console.error(`\n${fallos} fallo(s)`);
     process.exit(1);

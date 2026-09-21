@@ -241,7 +241,8 @@ function esCandidatoPorTamanoNegocio(candidato, tamanosBuscadosSponsor) {
 /**
  * Pool extra del Agente 2 ("más opciones"): NO es Capa 1 de matchmaking.
  * No salta área/solución aquí — esos filtros simplemente no aplican.
- * VIP/Speaker tampoco saltan tamaño en este camino.
+ * Presencial VIP y Speaker saltan tamaño también en este camino (Adler,
+ * 20-sep-2026). Giro sigue siendo obligatorio y Bronce sigue fuera.
  */
 function esGiroElegibleParaMasOpciones(asistente) {
   const giros = notionContactos.GIROS_ELEGIBLES_MATCHMAKING || [];
@@ -274,6 +275,9 @@ function esSponsorElegibleParaMasOpciones(asistente, sponsor) {
   if (sponsor.categoria && sponsor.categoria !== 'Sponsor') return false;
   if (NIVELES_SIN_CITAS_1A1.includes(sponsor.nivelPatrocinio)) return false;
   if (!esGiroElegibleParaMasOpciones(asistente)) return false;
+  if (asistente?.ticketTipo === 'Presencial VIP' || asistente?.ticketTipo === 'Speaker') {
+    return true;
+  }
   const tamano = categoriasTamanoParaMasOpciones(asistente);
   if (tamano.modo === 'ninguno') return false;
   if (tamano.modo === 'cualquier_sponsor') return true;

@@ -1,6 +1,6 @@
 # Bitácora 03sep — Multiplicador VIP/Speaker en ranking
 Handoff. Código gana si esto contradice algo.
-3 de septiembre de 2026. Sin commit todavía. Continúa [bitacora-01sep-tamano-speaker-carga-laura.md].
+3–4 de septiembre de 2026. Commit `a075cf9` en `main`. Continúa [bitacora-01sep-tamano-speaker-carga-laura.md].
 
 ## Pedido
 
@@ -18,9 +18,9 @@ El boleto amplifica match real; no compra score. Oro molido (+1000) se suma al f
 
 ## Cómo operarlo
 
-Antes del push, Adler borró manualmente del workspace de Laura todas las sugerencias creadas con el ranking anterior. En Coolify dejó `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true` y `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`, y ejecutó redeploy. Estas banderas protegen el envío de campañas, pero el cron de `sugerir-todos` sí puede volver a crear filas `Sugerido`.
+Antes del push, Adler borró las sugerencias viejas en Laura. Coolify: `CAMPANAS_MATCHMAKING_MODO_SIMULACION=true`, `CAMPANAS_MATCHMAKING_ENVIO_REAL_HABILITADO=false`. El primer auto-deploy no tomó el commit; Adler hizo **redeploy manual** (4-sep). El cron de `sugerir-todos` **sí escribe** `Sugerido` si corre.
 
-`.env` local sigue en data source `3b162dda` (Laura). Dry-run de esta bitácora usó `.env-pruebas.txt` (prefijo `9f335308`), `escribirEnNotion: false`.
+El workspace de Laura **no** está en Notion MCP: lectura/escritura va por REST + `NOTION_API_KEY`. Coolify y el `.env` local apuntan a Contactos `3b162dda`. Dry-run de ranking: `POST /matchmaking/sponsors/:id/sugerir-matches` con `escribirEnNotion: false` (si omites el flag, REST escribe). No llamar `sugerir-todos` ni el webhook de campañas.
 
 ## Evidencia
 
@@ -48,8 +48,24 @@ Dry-run pruebas: `sugerirMatchesParaSponsor` Blip/Infracommerce/Reversso/CaaS �
 
 Miranda Ayala / Eduardo Moran no están en el pool Capa 1 de pruebas hoy (giro/tamaño), así que un VIP vacío no aparece en el top. El caso estructural queda cubierto por el mock A.
 
+### Coolify Laura (4-sep, post-redeploy manual)
+
+Host `https://f8wwwgc0g88wccscww4cccco.appsplatica.site`. `GET /health` 200. Tres dry-run, **sin escribir Notion**, 13 evaluados / 13 válidos cada uno. Fingerprint del código nuevo: línea `canal: … ×1.4` / `×1.15`. Antes del redeploy Blip daba Samantha **840** (500+340) y no traía esa línea.
+
+| Sponsor | 1º | Notas |
+|---|---|---|
+| Blip | Sam VIP **476** (antes 840) | Ximena Presencial **460** (5 soluciones) queda 2ª, por encima de Laura/Carlos/Adler VIP **392**. Luis Presencial **391**. |
+| **CaaS** | Laura/Carlos/Adler VIP **476** | **Adler 476 > Luis 460** — misma calibración ×1.4. |
+| Infracommerce | Sam VIP **560** | Luis y Ximena Presencial **460** le ganan a Adler VIP **308** (match más claro). |
+
+Luiz Damasceno (VIP + ICP No), que en el código viejo salía 5º de Blip con 640, ya no entra al top 8.
+
+### Cron `sugerir-todos` en Laura (Adler, 4-sep ~06:17 UTC)
+
+Adler lo disparó a mano tras el redeploy. Query REST a Citas (solo lectura, token Laura): **64** filas `Sugerido`, todas creadas en ese minuto. 11 sponsors (Blip 6, CaaS 6, Infracommerce 6, Flow 8, …). Scores de Blip/CaaS/Infracommerce coinciden con el dry-run (Sam×Infracommerce 560, Adler×Infracommerce 308, etc.). **0** notas con el texto viejo “tiene prioridad”; **40** con “perfil similar” (VIP/Speaker). No se tocó el webhook de campañas.
+
 ## Pendientes
 
-- Confirmar que el deploy de Coolify tomó el commit del multiplicador y probar el ranking sin disparar campañas.
 - Validar con Laura/Liz el ×1.4 en demo; no marcarlo confirmado.
-- El `.env` de esta máquina es Laura: no correr matchmaking con escritura desde aquí salvo pedido explícito.
+- El cron de 6h puede volver a llenar `Sugerido` en Laura con este ranking. Campañas siguen en simulación.
+- No escribir sugerencias ni disparar webhook hasta que Adler lo pida.

@@ -653,11 +653,13 @@ async function enviarCorreosDeCita({
   fin,
   secuencia,
   cancelacion,
+  ladosPendientes,
 }) {
   const envios = [];
 
   if (notificacion.emailSponsor) {
     envios.push({
+      lado: 'sponsor',
       destinatarios: [notificacion.emailSponsor],
       descripcion: notificacion.descripcionSponsor,
       asunto: notificacion.asuntoSponsor || asunto,
@@ -671,27 +673,68 @@ async function enviarCorreosDeCita({
   const destinatariosAsistenteUnicos = [...new Set(destinatariosAsistente)];
   if (destinatariosAsistenteUnicos.length > 0) {
     envios.push({
+      lado: 'asistente',
       destinatarios: destinatariosAsistenteUnicos,
       descripcion: notificacion.descripcionAsistente,
       asunto: notificacion.asuntoAsistente || asunto,
     });
   }
 
-  for (const envio of envios) {
-    await enviarUnCorreoConReintentosInmediatos({
-      notionPageId,
-      destinatarios: envio.destinatarios,
-      titulo,
-      asunto: envio.asunto,
-      descripcion: envio.descripcion,
-      inicio,
-      fin,
-      secuencia,
-      cancelacion,
-    });
+  const filtroLados = Array.isArray(ladosPendientes)
+    ? new Set(ladosPendientes.filter((lado) => lado === 'sponsor' || lado === 'asistente'))
+    : null;
+  const enviosObjetivo = filtroLados
+    ? envios.filter((envio) => filtroLados.has(envio.lado))
+    : envios;
+  const ladosSinDestinatario = filtroLados
+    ? [...filtroLados].filter((lado) => !enviosObjetivo.some((envio) => envio.lado === lado))
+    : [];
+  const enviados = [];
+  const errores = ladosSinDestinatario.map((lado) => ({
+    lado,
+    categoria: 'CORREO_INVALIDO',
+    mensaje: `El ${lado} no tiene un correo disponible en Contactos.`,
+  }));
+
+  // Los dos lados son independientes: aunque falle el sponsor, todavía se
+  // intenta al asistente. Así Notas Envio Email conserva solo los pendientes.
+  for (const envio of enviosObjetivo) {
+    try {
+      await enviarUnCorreoConReintentosInmediatos({
+        notionPageId,
+        destinatarios: envio.destinatarios,
+        titulo,
+        asunto: envio.asunto,
+        descripcion: envio.descripcion,
+        inicio,
+        fin,
+        secuencia,
+        cancelacion,
+      });
+      enviados.push(envio.lado);
+    } catch (error) {
+      errores.push({
+        lado: envio.lado,
+        categoria: error.categoria || 'DESCONOCIDO',
+        mensaje: error.message || 'Error desconocido al enviar el correo',
+      });
+    }
   }
 
-  return envios.length;
+  if (errores.length > 0) {
+    const primero = errores[0];
+    const error = new Error(
+      errores.map((item) => `${item.lado}: ${item.mensaje}`).join(' | ')
+    );
+    error.name = 'EmailDestinatariosError';
+    error.categoria = primero.categoria;
+    error.ladosFallidos = errores.map((item) => item.lado);
+    error.ladosEnviados = enviados;
+    error.errores = errores;
+    throw error;
+  }
+
+  return { cantidad: enviosObjetivo.length, ladosEnviados: enviados };
 }
 
 /**
@@ -1058,10 +1101,13 @@ async function reservarCita({
               fin,
             });
           } catch (emailError) {
+            const { categoria, mensaje, ladosPendientes, ladosEnviados } =
+              detalleErrorEmail(emailError);
             await citasService.marcarCitaConfirmadaSinNotificar({
               notionPageId: citaPendiente.id,
-              motivoCategoria: emailError.categoria || 'DESCONOCIDO',
-              motivoDetalle: emailError.message,
+              motivoCategoria: categoria,
+              motivoDetalle: mensaje,
+              ladosPendientes,
             });
             return {
               ya_existia: false,
@@ -1073,8 +1119,10 @@ async function reservarCita({
                 ? { cita_origen_cancelada_id }
                 : {}),
               notificacion_error: {
-                categoria: emailError.categoria || 'DESCONOCIDO',
-                mensaje: emailError.message,
+                categoria,
+                mensaje,
+                lados_pendientes: ladosPendientes,
+                lados_enviados: ladosEnviados,
               },
             };
           }
@@ -1152,6 +1200,7 @@ async function reintentarNotificacion(notionPageId) {
     inicio: datos.inicio,
     mesa: datos.mesa,
   });
+  const ladosPendientes = citasService.extraerLadosEmailPendientes(datos.notasEnvioEmail);
 
   if (!tieneDestinatarios(notificacion)) {
     throw new BookingError(
@@ -1176,15 +1225,21 @@ async function reintentarNotificacion(notionPageId) {
         fin: datos.fin,
         secuencia,
         cancelacion: true,
+        ladosPendientes: ladosPendientes || undefined,
       });
       await citasService.marcarCancelacionNotificada(notionPageId);
       return { notion_page_id: notionPageId, estado: 'Cancelada', tipo: 'cancelacion' };
     } catch (emailError) {
-      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      const {
+        categoria,
+        mensaje,
+        ladosPendientes: ladosQueSiguenPendientes,
+      } = detalleErrorEmail(emailError);
       await citasService.marcarCancelacionSinNotificar({
         notionPageId,
         motivoCategoria: categoria,
         motivoDetalle: mensaje,
+        ladosPendientes: ladosQueSiguenPendientes,
       });
       throw new BookingError(
         'NOTIFICACION_FALLO',
@@ -1211,15 +1266,21 @@ async function reintentarNotificacion(notionPageId) {
       inicio: datos.inicio,
       fin: datos.fin,
       secuencia,
+      ladosPendientes: ladosPendientes || undefined,
     });
     await citasService.confirmarNotificacionEnviada(notionPageId);
     return { notion_page_id: notionPageId, estado: 'Confirmada', tipo: 'confirmacion' };
   } catch (emailError) {
-    const { categoria, mensaje } = detalleErrorEmail(emailError);
+    const {
+      categoria,
+      mensaje,
+      ladosPendientes: ladosQueSiguenPendientes,
+    } = detalleErrorEmail(emailError);
     await citasService.marcarCitaConfirmadaSinNotificar({
       notionPageId,
       motivoCategoria: categoria,
       motivoDetalle: mensaje,
+      ladosPendientes: ladosQueSiguenPendientes,
     });
     throw new BookingError(
       'NOTIFICACION_FALLO',
@@ -1265,6 +1326,12 @@ function detalleErrorEmail(emailError) {
   return {
     categoria: emailError.categoria || 'DESCONOCIDO',
     mensaje: emailError.message || 'Error desconocido al enviar el correo',
+    ladosPendientes: Array.isArray(emailError.ladosFallidos)
+      ? emailError.ladosFallidos
+      : undefined,
+    ladosEnviados: Array.isArray(emailError.ladosEnviados)
+      ? emailError.ladosEnviados
+      : undefined,
   };
 }
 
@@ -1596,16 +1663,27 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
       // El cambio de horario ya es real y NO se revierte. Se degrada el
       // estatus para que el reenvío a demanda lo levante — y como el
       // reenvío lee "Fecha y Hora" de Notion, va a mandar el horario nuevo.
-      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      const {
+        categoria,
+        mensaje,
+        ladosPendientes,
+        ladosEnviados,
+      } = detalleErrorEmail(emailError);
       await citasService.marcarCitaConfirmadaSinNotificar({
         notionPageId: cita.id,
         motivoCategoria: categoria,
         motivoDetalle: `Modificación de horario sin avisar: ${mensaje}`,
+        ladosPendientes,
       });
       return {
         ...respuesta,
         estado: 'Confirmada sin notificar',
-        notificacion_error: { categoria, mensaje },
+        notificacion_error: {
+          categoria,
+          mensaje,
+          lados_pendientes: ladosPendientes,
+          lados_enviados: ladosEnviados,
+        },
       };
     }
   });
@@ -1666,16 +1744,27 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
       });
       return respuesta;
     } catch (emailError) {
-      const { categoria, mensaje } = detalleErrorEmail(emailError);
+      const {
+        categoria,
+        mensaje,
+        ladosPendientes,
+        ladosEnviados,
+      } = detalleErrorEmail(emailError);
       await citasService.marcarCancelacionSinNotificar({
         notionPageId: cita.id,
         motivoCategoria: categoria,
         motivoDetalle: mensaje,
+        ladosPendientes,
       });
       return {
         ...respuesta,
         aviso_pendiente: true,
-        notificacion_error: { categoria, mensaje },
+        notificacion_error: {
+          categoria,
+          mensaje,
+          lados_pendientes: ladosPendientes,
+          lados_enviados: ladosEnviados,
+        },
       };
     }
   });

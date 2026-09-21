@@ -131,6 +131,37 @@ async function main() {
     assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(vacio, revie), false);
   });
 
+  ok('Presencial VIP y Speaker saltan tamaño también en opciones del Agente 2', () => {
+    for (const ticketTipo of ['Presencial VIP', 'Speaker']) {
+      const sinTamano = asistente({
+        ticketTipo,
+        tamanoNegocio: null,
+        madurezNegocioExa: null,
+      });
+      const microNoPedido = asistente({
+        ticketTipo,
+        tamanoNegocio: TAMANO_MICRO,
+      });
+      assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(sinTamano, revie), true);
+      assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(microNoPedido, revie), true);
+      assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(sinTamano, bronce), false);
+    }
+  });
+
+  ok('VIP/Speaker no saltan el filtro de giro en opciones del Agente 2', () => {
+    for (const ticketTipo of ['Presencial VIP', 'Speaker']) {
+      const giroNoElegible = asistente({
+        ticketTipo,
+        tamanoNegocio: null,
+        giroIndustria: 'Agencia de marketing / publicidad',
+      });
+      assert.strictEqual(
+        matchmaking.esSponsorElegibleParaMasOpciones(giroNoElegible, revie),
+        false
+      );
+    }
+  });
+
   ok('Giro fuera de los 3: sin capa 2', () => {
     const a = asistente({
       tamanoNegocio: TAMANO_GRANDE,

@@ -57,7 +57,7 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
 | Disponibilidad (foto) | GET `/citas/disponibilidad` (opcional `asistente_notion_id`) | `consultar_disponibilidad_cita` (máx. 3; `hora=HH:MM` si pidió una hora concreta; exige `whatsapp` o `asistentePageId`; `hay_mas` + `excluirInicios`) |
 | Data WhatsApp Flow (legado) | POST `/webhooks/whatsapp-flows` (HMAC) | — |
-| Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron). El barrido y el reenvío por id omiten / rechazan filas de bloqueo de conferencia. |
+| Reenviar .ics | POST `/citas/:id/reenviar-notificacion`, POST `/citas/reintentar-notificaciones-pendientes` | `reintentar_notificaciones_pendientes` (a demanda, sin tope, no cron). Reenvía solo sponsor/asistente marcados como pendientes; omite / rechaza bloqueos de conferencia. |
 | Disparar oferta inicial aprobada | POST `/webhooks/notion/enviar-campanas-aprobadas` (secret propio; simulación por default) | `disparar_campanas_aprobadas` (hasta 4 sponsors en 1 renglón; sin horarios; detalle nominal con nombre, empresa y `sugerenciasInformadas`) |
 | Respuesta / follow-up 72h | Webhook `POST /webhooks/platica/mensajes`; cron `POST /matchmaking/enviar-followups-72h` (`X-API-Key`) | — |
 | Last call (sin cita activa) | cron `POST /matchmaking/enviar-lastcall` (`X-API-Key`; cada 15 min; no reutilizar el del follow-up) | — |
@@ -79,7 +79,7 @@ Los custom fields operativos de Plática son manuales (`automatic=false`) y se h
 
 `Sugerido` → `Aprobado` → `Pendiente Calendar` → `Confirmada` → (`Cancelada`)
 
-Si SMTP falla tras Notion OK: **`Confirmada sin notificar`** (no revertir la cita). Motivo en `Notas Envio Email`. Si lo que falló fue el aviso de una **cancelación**, la fila se queda en `Cancelada` con `[CANCELACION_PENDIENTE]` en ese mismo campo.
+Si SMTP falla tras Notion OK: **`Confirmada sin notificar`** (no revertir la cita). Sponsor y asistente se intentan independientemente; `Notas Envio Email` guarda `[EMAIL_PENDIENTES:sponsor]`, `[EMAIL_PENDIENTES:asistente]` o ambos y el endpoint reintenta solo esos lados. Filas legacy sin marcador reintentan ambos. Si falló una **cancelación**, queda `Cancelada` con `[CANCELACION_PENDIENTE]` y el mismo marcador granular.
 
 **`Match Sugerido` / checkbox `Match Aprobado` están en desuso.** Escrituras nuevas van a filas en `Citas` por par sponsor–asistente. No revivir esos campos.
 
