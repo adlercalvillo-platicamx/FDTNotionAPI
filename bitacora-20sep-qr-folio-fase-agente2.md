@@ -127,13 +127,30 @@ Pruebas locales:
 
 Todas pasan. Sin SMTP real, WhatsApp ni reservas.
 
-## Operación pendiente en este hilo
+## Cierre post-deploy (21-sep 00:09 CDMX)
 
-1. Push/deploy del backend.
-2. Refrescar el MCP `fdt-notion-api` en Plática para sincronizar el schema de
-   `folio` y `sponsorEmpresa`.
-3. Crear otro cliente sintético y probar la tool con el folio de arriba, sin llamar
-   `reservar_cita`.
-4. Borrar ese cliente sintético de Plática.
-5. Actualizar prompt vivo y snapshot completo con las reglas QR/folio/fase,
-   saludo solo en primer mensaje y confirmadas completas.
+- Adler hizo redeploy en Coolify y refresh del Backend MCP.
+- `get_workspace_tool` confirmó que
+  `consultar_sugeridas_para_asistente` expone `folio` y `sponsorEmpresa`, y
+  describe `fase_evento`, `sponsor_solicitado`, `motivo_sin_opciones` y
+  confirmadas completas.
+- Prueba desplegada con cliente sintético `5215500002100` y folio real
+  `1123E9`: `identificado_por=folio`, hidratación al mismo número `true`,
+  `fase_evento=antes`, Mercado Libre resolvió por nombre y devolvió
+  `no_elegible / GIRO_NO_ELEGIBLE` para el perfil real de agencia. Leyó 0
+  citas y creó **0 reservas**.
+- `get_client` confirmó que el perfil sintético recibió nombre, empresa,
+  correo, boleto, giro, tamaño y campos operativos desde Notion.
+- El cliente temporal `Um9bxWalaiQ3kxBUSS8V` se eliminó; verificación
+  posterior: 404.
+- QR/wa.me probado sin enviar: redirigió al canal
+  `FDT Fashion Digital Talks BRILA MODA` (`5213332361963`) y conservó completo
+  el mensaje prellenado con `Mercado Libre`.
+- Prompt vivo actualizado con 12 reemplazos exactos. Activo:
+  `lRqnPMqMZ13sLzFXEdyf`, 201 versiones. Expo también consulta
+  `fase_evento`: después usa el copy posterior en vez de invitar a
+  conferencias como si siguieran.
+- Snapshot local sincronizado con el texto completo de `get_agent_prompt`.
+
+Pendientes de este hilo: ninguno. Si cambia el contrato MCP o el prompt,
+volver a sincronizar el snapshot en el mismo turno.
