@@ -177,3 +177,30 @@ la delegación a Marketing funcionó.
 de fuera de horario— a **`rp@fashiondigitaltalks.com`**, por decisión de
 Adler. Horarios (L–V 9:00–17:00) y `outOfServiceBehavior=limited` sin cambio.
 El prompt no se tocó.
+
+## Fases, QR y reenvío granular (21-sep noche)
+
+Coolify: `CITAS_FASE_EVENTO_SIMULADA` se recorrió `durante` → `despues` y
+volvió a **vacía**. Confirmado por GET: `fase_evento=antes`.
+
+| Fase | Evidencia |
+|---|---|
+| `antes` | Giro no elegible: no manda a frontdesk. |
+| `durante` | Adler con opciones: no manda a frontdesk. Folio `1123E9`: sí manda al frontdesk de Citas de Negocios. |
+| `despues` | Adler pidió agendar: copy posterior, sin horarios. |
+
+QR de piso (texto de Laura): Adler + “conectar con Mercado Libre” → horarios
+solo de Mercado Libre, sin listar otros. Backend: `sponsor_solicitado.elegible`
+vía VIP (`bypass_tamano_boleto`). Mismo QR + folio de agencia: `GIRO_NO_ELEGIBLE`
+sin ofrecer otros sponsors.
+
+Filtros de solicitud directa (QR/empresa nombrada): **no** bloquean
+`Quiere Citas=No`, área ni soluciones. **Sí** bloquean boleto Expo, giro y
+tamaño (VIP/Speaker saltan tamaño). Cubierto en `tests/mas-opciones.manual-test.js`.
+
+Reenvío de correo: filas nuevas mandan **solo** el lado en
+`[EMAIL_PENDIENTES:…]`. Sin marcador (legacy) reintenta ambos.
+
+Prompt `KUoxYPuo0dFniH8GLKVa`: al asistente, `Confirmada sin notificar` solo
+habla de *su* correo pendiente; si solo falló el sponsor, le confirma la cita
+sin contar el fallo interno.
