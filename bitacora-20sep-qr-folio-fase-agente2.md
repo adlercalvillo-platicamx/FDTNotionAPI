@@ -107,8 +107,9 @@ No reejecutar sin revisar.
 - Teléfono sintético de Plática: `5215500002099`, cliente temporal
   `iyvIHraZPPidxYUnb3bg`.
 - La prueba leyó 0 citas y creó **0 reservas**.
-- La hidratación real se valida post-deploy con la tool MCP; después se borra
-  el cliente temporal.
+- La credencial local no trae `PLATICA_API_KEY`, así que la hidratación real
+  queda para post-deploy. El cliente temporal ya se borró y `get_client`
+  respondió 404; hay que crear otro sintético para esa validación.
 
 Pruebas locales:
 
@@ -128,8 +129,8 @@ Todas pasan. Sin SMTP real, WhatsApp ni reservas.
 1. Push/deploy del backend.
 2. Refrescar el MCP `fdt-notion-api` en Plática para sincronizar el schema de
    `folio` y `sponsorEmpresa`.
-3. Probar la tool con el cliente/folio sintético de arriba, sin llamar
+3. Crear otro cliente sintético y probar la tool con el folio de arriba, sin llamar
    `reservar_cita`.
-4. Borrar el cliente sintético de Plática.
+4. Borrar ese cliente sintético de Plática.
 5. Actualizar prompt vivo y snapshot completo con las reglas QR/folio/fase,
    saludo solo en primer mensaje y confirmadas completas.
