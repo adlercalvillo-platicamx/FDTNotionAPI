@@ -170,6 +170,50 @@ async function main() {
     assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(a, revie), false);
   });
 
+  ok('solicitud directa: Quiere Citas=No no bloquea; giro y tamaño sí', () => {
+    const grandeConNo = asistente({
+      categoria: 'Asistente',
+      ticketTipo: 'Presencial',
+      quiereCitas1a1: 'No',
+      tamanoNegocio: TAMANO_GRANDE,
+    });
+    assert.deepStrictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(grandeConNo, revie),
+      { elegible: true, motivo: null, via: 'tamano_grande_o_consolidado' }
+    );
+
+    const giroNo = { ...grandeConNo, giroIndustria: 'Agencia de marketing / publicidad' };
+    assert.strictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(giroNo, revie).motivo,
+      'GIRO_NO_ELEGIBLE'
+    );
+
+    const micro = { ...grandeConNo, tamanoNegocio: TAMANO_MICRO };
+    assert.strictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(micro, revie).motivo,
+      'TAMANO_NO_COMPATIBLE'
+    );
+  });
+
+  ok('solicitud directa: Expo se rechaza y VIP salta tamaño', () => {
+    const expo = asistente({
+      categoria: 'Asistente',
+      ticketTipo: 'Expo',
+      tamanoNegocio: TAMANO_GRANDE,
+    });
+    assert.strictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(expo, revie).motivo,
+      'BOLETO_EXPO_NO_PERMITE_CITAS'
+    );
+
+    const vip = asistente({
+      categoria: 'Asistente',
+      ticketTipo: 'Presencial VIP',
+      tamanoNegocio: TAMANO_MICRO,
+    });
+    assert.strictEqual(matchmaking.evaluarSolicitudDirectaSponsor(vip, revie).elegible, true);
+  });
+
   ok('Capa 1 de tamaño no cambia: Grande no entra a Revie en matchmaking', () => {
     assert.strictEqual(
       matchmaking.esCandidatoPorTamanoNegocio(

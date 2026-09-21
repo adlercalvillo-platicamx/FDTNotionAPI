@@ -138,6 +138,20 @@ async function main() {
   assert.strictEqual(escritura.customFields.soluciones_buscadas, undefined);
   assert.strictEqual(escritura.customFields.bio_antecedentes, undefined);
 
+  let escrituraFolio;
+  await hidratarPerfilPlatica({
+    asistentePageId: contacto.id,
+    telefonoDestino: '5215599999999',
+    obtenerClienteFn: async (telefono) => {
+      assert.strictEqual(telefono, '5215599999999');
+      return null;
+    },
+    actualizarClienteFn: async (payload) => {
+      escrituraFolio = payload;
+    },
+  });
+  assert.strictEqual(escrituraFolio.phone, '5215599999999');
+
   // Si la lectura truena, se prefiere no escribir soluciones antes que apilar.
   let escrituraSinLectura;
   const sinLectura = await hidratarPerfilPlatica({
@@ -167,6 +181,7 @@ async function main() {
   console.log('✅ Nombre Ticketópolis se parte en Title Case, primer+segundo nombre y apellido.');
   console.log('✅ Citas confirmadas van en un campo de texto que se reemplaza, con viñetas.');
   console.log('✅ soluciones_buscadas solo se escribe si el perfil viene vacío.');
+  console.log('✅ identificación por folio hidrata el número de la conversación actual.');
   console.log('✅ Quiere Citas 1a1 no viaja al perfil de Plática.');
 }
 

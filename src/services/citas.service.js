@@ -1032,9 +1032,53 @@ async function buscarSugerenciasPendientesPorSponsor(sponsorPageId) {
 
 const RANGO_SUGERIDA = { Aprobado: 2, Sugerido: 1 };
 const LIMITE_SUGERIDAS_PARA_OFRECER = 4;
+// DEPRECADO 20-sep: las citas confirmadas se muestran completas, no por
+// páginas de 3. Se conserva exportado para no romper consumidores viejos.
 const LIMITE_CITAS_PARA_OFRECER = 3;
 const LIMITE_CANCELADAS_PARA_OFRECER = 3;
 const LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER = 4;
+
+const FASES_EVENTO = new Set(['antes', 'durante', 'despues']);
+
+function fechaLocalMexico(ahora = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(ahora);
+  const valor = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+  return `${valor.year}-${valor.month}-${valor.day}`;
+}
+
+function obtenerFaseEvento({ ahora = new Date(), simulada = process.env.CITAS_FASE_EVENTO_SIMULADA } = {}) {
+  const override = String(simulada || '').trim().toLowerCase();
+  if (override && FASES_EVENTO.has(override)) return override;
+  const fechas = obtenerFechasEvento().slice().sort();
+  const hoy = fechaLocalMexico(ahora);
+  if (hoy < fechas[0]) return 'antes';
+  if (hoy > fechas[fechas.length - 1]) return 'despues';
+  return fechas.includes(hoy) ? 'durante' : 'antes';
+}
+
+function copysContextuales(faseEvento) {
+  return {
+    giro_no_elegible:
+      faseEvento === 'durante'
+        ? 'Por el perfil registrado de tu empresa, no tengo una cita 1a1 disponible para ti. Puedes acercarte al frontdesk de Citas de Negocios para que el equipo revise contigo otras opciones. Mientras tanto, si te interesa alguna empresa en particular, te digo a qué hora expone hoy.'
+        : 'Por el perfil registrado de tu empresa, en este momento no tenemos citas 1a1 disponibles para ofrecerte. De cualquier forma, tu registro al evento sigue en pie: durante Fashion Digital Talks vas a poder entrar a las conferencias de las empresas participantes. Si quieres, te digo a qué hora expone alguna en particular.',
+    boleto_expo:
+      'Tu boleto Expo incluye acceso al piso de exhibición, pero no incluye citas 1a1. Lo que sí puedes hacer es entrar a las conferencias de las empresas durante el evento. Dime cuál te interesa y te paso el día y la hora en que expone.',
+    tamano_no_compatible:
+      'En este momento no tengo una cita disponible para ti con [Empresa], porque está buscando otro tipo de perfil. Sí puedo mostrarte otras empresas con las que podrías reunirte.',
+    despues_evento:
+      'Gracias por tu interés en las citas 1a1 de Fashion Digital Talks. La edición de este año ya terminó. Esperamos verte en la próxima edición.',
+    pedir_folio:
+      'No pude encontrar tu registro con este número de WhatsApp. Compárteme tu folio de reservación o tu folio de boleto; aparece en el correo que te llegó el día que te registraste.',
+    folio_no_encontrado:
+      'No encontré un registro con ese folio. Revisa que esté completo y envíamelo nuevamente tal como aparece en el correo que te llegó el día que te registraste.',
+  };
+}
 
 /**
  * Filas del asistente (Contacto Principal) hidratadas con empresa y nombre
@@ -1110,35 +1154,77 @@ async function listarSugeridasPorAsistente(asistentePageId, { soloAprobado = fal
 }
 
 /**
- * Consulta sugeridas por WhatsApp (identificador del agente) o page_id.
- * Si hay teléfono, Notion se resuelve aquí; el cliente no necesita el UUID.
+ * Consulta sugeridas por WhatsApp (identificador del agente), folio o page_id.
+ * Si hay teléfono/folio, Notion se resuelve aquí; el cliente no necesita UUID.
  * `sugeridas` es solo Aprobado. Las filas Sugerido y los sponsors no
  * sugeridos que pasan giro+tamaño van en opciones_adicionales.
  */
 async function consultarSugeridasPorIdentificador({
   whatsapp,
   asistentePageId,
+  folio,
+  sponsorEmpresa,
+  ahora,
+  hidratarPerfilFn,
   soloAprobado = false,
 } = {}) {
   void soloAprobado;
   const phone = String(whatsapp || '').trim();
+  const folioEntrada = String(folio || '').trim();
   let id = String(asistentePageId || '').trim();
   let asistente = null;
+  let identificadoPor = id ? 'page_id' : null;
   const contactos = require('./contactos.service');
 
   if (phone) {
     asistente = await contactos.buscarAsistentePorWhatsApp(phone);
-    if (!asistente) {
+    if (asistente) {
+      identificadoPor = 'whatsapp';
+      id = asistente.id;
+    }
+  }
+
+  if (!asistente && folioEntrada) {
+    const porFolio = await contactos.buscarAsistentesPorFolio(folioEntrada);
+    if (porFolio.length > 1) {
+      const err = new Error('Hay más de un asistente activo con ese folio; requiere revisión del equipo.');
+      err.code = 'FOLIO_AMBIGUO';
+      err.status = 409;
+      err.detalle = {
+        coincidencias: porFolio.map((contacto) => ({
+          asistente_notion_id: contacto.id,
+          nombre: contacto.nombre,
+          empresa: contacto.empresa,
+          ticketTipo: contacto.ticketTipo,
+        })),
+      };
+      throw err;
+    }
+    asistente = porFolio[0] || null;
+    if (asistente) {
+      identificadoPor = 'folio';
+      id = asistente.id;
+    }
+  }
+
+  if (!asistente && !id) {
+    if (phone && !folioEntrada) {
       const err = new Error('No hay un asistente activo con ese número de WhatsApp.');
       err.code = 'CONTACTO_NO_RESUELTO';
       err.status = 404;
+      err.detalle = { requiere_folio: true };
       throw err;
     }
-    id = asistente.id;
+    if (folioEntrada) {
+      const err = new Error('No se encontró un asistente activo con ese folio.');
+      err.code = 'FOLIO_NO_ENCONTRADO';
+      err.status = 404;
+      throw err;
+    }
   }
 
   if (!id) {
-    const err = new Error('Se requiere whatsapp (teléfono) o asistente_notion_id.');
+    const err = new Error('Se requiere whatsapp, folio o asistente_notion_id.');
     err.code = 'INVALID_INPUT';
     err.status = 400;
     throw err;
@@ -1146,6 +1232,27 @@ async function consultarSugeridasPorIdentificador({
 
   if (!asistente) {
     asistente = await contactos.obtenerContacto(id);
+  }
+
+  let hidratacionPlatica = null;
+  if (identificadoPor === 'folio' && phone) {
+    const hidratar =
+      hidratarPerfilFn || require('./perfil-platica.service').hidratarPerfilPlatica;
+    try {
+      hidratacionPlatica = await hidratar({
+        asistentePageId: id,
+        telefonoDestino: phone,
+      });
+    } catch (error) {
+      // La identificación y las citas siguen siendo válidas aunque Plática
+      // falle. El payload lo hace visible para que el agente no afirme que el
+      // perfil quedó actualizado.
+      hidratacionPlatica = {
+        actualizado: false,
+        error: error.code || 'HIDRATACION_FALLO',
+        message: error.message,
+      };
+    }
   }
 
   const [sugeridasTodas, citasReales, canceladas, sponsorsActivos] = await Promise.all([
@@ -1183,12 +1290,49 @@ async function consultarSugeridasPorIdentificador({
     sponsorsActivos,
     sponsorMap,
   });
+  const faseEvento = obtenerFaseEvento({ ahora });
+  let sponsorSolicitado = null;
+  const empresaPedida = String(sponsorEmpresa || '').trim();
+  if (empresaPedida) {
+    const resolucion = await contactos.resolverSponsorPorEmpresa(empresaPedida);
+    if (resolucion.estado === 'unico') {
+      const matchmaking = require('./matchmaking.service');
+      const evaluacion = matchmaking.evaluarSolicitudDirectaSponsor(
+        asistente,
+        resolucion.sponsor
+      );
+      sponsorSolicitado = {
+        estado: evaluacion.elegible ? 'elegible' : 'no_elegible',
+        motivo: evaluacion.motivo,
+        via: evaluacion.via || null,
+        sponsor_notion_id: resolucion.sponsor.id,
+        sponsor_nombre: resolucion.sponsor.nombre || null,
+        sponsor_empresa: resolucion.sponsor.empresa || resolucion.sponsor.nombre || null,
+        estatus_origen: 'directo',
+        citaId: null,
+      };
+    } else {
+      sponsorSolicitado = {
+        estado: resolucion.estado,
+        motivo:
+          resolucion.estado === 'ambiguo' ? 'SPONSOR_AMBIGUO' : 'SPONSOR_NO_ENCONTRADO',
+        candidatos: resolucion.candidatos,
+      };
+    }
+  }
 
   return {
     asistente_notion_id: id,
     asistente_nombre: asistente?.nombre || null,
     asistente_empresa: asistente?.empresa || null,
+    asistente_email: asistente?.email || null,
+    tipo_de_asistencia: asistente?.ticketTipo || null,
     whatsapp: asistente?.whatsapp || phone || null,
+    identificado_por: identificadoPor,
+    hidratacion_platica: hidratacionPlatica,
+    fase_evento: faseEvento,
+    copys_contextuales: copysContextuales(faseEvento),
+    sponsor_solicitado: sponsorSolicitado,
     sugeridas: sugeridasAprobado.map((item) =>
       enriquecerOpcionOfrecida(
         {
@@ -1212,8 +1356,8 @@ async function consultarSugeridasPorIdentificador({
       LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER
     ),
     hay_mas_opciones: opcionesAdicionales.length > LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER,
-    citas_para_ofrecer: citasConfirmadas.slice(0, LIMITE_CITAS_PARA_OFRECER),
-    hay_mas_citas: citasConfirmadas.length > LIMITE_CITAS_PARA_OFRECER,
+    citas_para_ofrecer: citasConfirmadas,
+    hay_mas_citas: false,
     canceladas_para_ofrecer: citasCanceladas.slice(0, LIMITE_CANCELADAS_PARA_OFRECER),
     hay_mas_canceladas: citasCanceladas.length > LIMITE_CANCELADAS_PARA_OFRECER,
   };
@@ -1242,6 +1386,7 @@ function formatearCitaConfirmadaAsistente(cita) {
     sponsorNombre: cita.sponsorEmpresa || cita.sponsorNombre || 'Sponsor',
     sponsor_notion_id: cita.sponsorPageId || null,
     fechaHora: cita.inicio || null,
+    horario_legible: cita.inicio ? formatearHorarioLegible(cita.inicio) : null,
     mesa: cita.mesa || null,
     citaId: cita.id,
     checkInRealizado: cita.checkInRealizado === true,
@@ -2442,6 +2587,9 @@ module.exports = {
   LIMITE_CITAS_PARA_OFRECER,
   LIMITE_CANCELADAS_PARA_OFRECER,
   LIMITE_OPCIONES_ADICIONALES_PARA_OFRECER,
+  obtenerFaseEvento,
+  fechaLocalMexico,
+  copysContextuales,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
   cargarCitasPorAsistenteParaRecordatorio,

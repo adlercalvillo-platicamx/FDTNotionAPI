@@ -148,6 +148,8 @@ function parsearContacto(pagina) {
     quiereCitas1a1: select(p['Quiere Citas 1a1']),
     formatoRegistro: select(p['Formato Registro']),       // '2026' | 'Legacy pre-2026'
     giroIndustria: select(p['Giro / Industria']),
+    folioReservacion: texto(p['Folio Reservacion']),
+    folioBoleto: texto(p['Folio Boleto']),
     // Campos legacy — contactos de años anteriores, con el formato viejo.
     // No sirven para matchmaking directo (ver doc), son contexto histórico.
     etapaDeNegocioLegacy: select(p['Etapa de Negocio (Legacy)']),
@@ -422,6 +424,47 @@ async function buscarContactosPorEmail(emailEntrada) {
   return (data.results || []).map(parsearContacto);
 }
 
+function normalizarFolio(valor) {
+  return String(valor || '')
+    .trim()
+    .toLocaleUpperCase('es-MX')
+    .replace(/\s+/g, '');
+}
+
+function foliosDeContacto(contacto) {
+  return [contacto?.folioReservacion, contacto?.folioBoleto]
+    .flatMap((valor) => String(valor || '').split(','))
+    .map(normalizarFolio)
+    .filter(Boolean);
+}
+
+/**
+ * Identificación alternativa del Agente 2 cuando el WhatsApp entrante no
+ * coincide con Notion. Los imports pueden guardar varios folios en una misma
+ * celda separados por coma; el post-filtro exige igualdad de un token completo
+ * para evitar que "123" encuentre también "1234".
+ */
+async function buscarAsistentesPorFolio(folioEntrada) {
+  requireDataSourceId();
+  const folio = normalizarFolio(folioEntrada);
+  if (!folio) return [];
+  const valoresBusqueda = [...new Set([String(folioEntrada).trim(), folio])];
+
+  const filas = await queryContactosPaginado({
+    and: [
+      { property: 'Categoria', select: { equals: 'Asistente' } },
+      { property: 'Dado de Baja', checkbox: { equals: false } },
+      {
+        or: valoresBusqueda.flatMap((valor) => [
+          { property: 'Folio Reservacion', rich_text: { contains: valor } },
+          { property: 'Folio Boleto', rich_text: { contains: valor } },
+        ]),
+      },
+    ],
+  });
+  return filas.map(parsearContacto).filter((contacto) => foliosDeContacto(contacto).includes(folio));
+}
+
 const CATEGORIAS_BUSQUEDA = new Set(['Asistente', 'Sponsor']);
 
 function errorValidacionContacto(mensaje) {
@@ -500,6 +543,90 @@ async function buscarContacto({ nombre, telefono, empresa, categoria } = {}) {
     });
   }
   return [];
+}
+
+const ALIASES_EMPRESA_SPONSOR = new Map([
+  ['meli', 'mercadolibre'],
+  ['mercadolibre', 'mercadolibre'],
+  ['tiendanube', 'tiendanube'],
+  ['tiendanubecom', 'tiendanube'],
+  ['platica', 'platicamx'],
+  ['flowpagos', 'flow'],
+]);
+
+function normalizarEmpresaBusqueda(valor) {
+  return String(valor || '')
+    .trim()
+    .toLocaleLowerCase('es-MX')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' y ')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function distanciaLevenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  const anterior = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = anterior[0];
+    anterior[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const arriba = anterior[j];
+      anterior[j] = Math.min(
+        anterior[j] + 1,
+        anterior[j - 1] + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      diagonal = arriba;
+    }
+  }
+  return anterior[b.length];
+}
+
+function puntajeEmpresaSolicitada(entrada, sponsor) {
+  const buscadaOriginal = normalizarEmpresaBusqueda(entrada);
+  if (!buscadaOriginal) return 0;
+  const buscada = ALIASES_EMPRESA_SPONSOR.get(buscadaOriginal) || buscadaOriginal;
+  const empresa = normalizarEmpresaBusqueda(sponsor?.empresa || sponsor?.nombre);
+  if (!empresa) return 0;
+  const empresaAlias = ALIASES_EMPRESA_SPONSOR.get(empresa) || empresa;
+  if (buscada === empresaAlias) return 100;
+  if (buscada.length >= 5 && (empresaAlias.includes(buscada) || buscada.includes(empresaAlias))) {
+    return 90;
+  }
+  const distancia = distanciaLevenshtein(buscada, empresaAlias);
+  const similitud = 1 - distancia / Math.max(buscada.length, empresaAlias.length);
+  return similitud >= 0.82 ? Math.round(similitud * 80) : 0;
+}
+
+/**
+ * Resuelve el nombre comercial que llega en el texto prellenado de un QR.
+ * Devuelve ambigüedad en vez de elegir silenciosamente cuando dos empresas
+ * comparten el mejor puntaje.
+ */
+async function resolverSponsorPorEmpresa(empresaEntrada) {
+  const empresa = textoQuery(empresaEntrada);
+  if (!empresa) return { estado: 'no_encontrado', candidatos: [] };
+  const sponsors = await listarSponsorsActivos();
+  const evaluados = sponsors
+    .map((sponsor) => ({ sponsor, puntaje: puntajeEmpresaSolicitada(empresa, sponsor) }))
+    .filter((item) => item.puntaje > 0)
+    .sort((a, b) => b.puntaje - a.puntaje);
+  if (evaluados.length === 0) return { estado: 'no_encontrado', candidatos: [] };
+  const mejor = evaluados[0].puntaje;
+  const mejores = evaluados.filter((item) => item.puntaje === mejor);
+  if (mejores.length > 1) {
+    return {
+      estado: 'ambiguo',
+      candidatos: mejores.map(({ sponsor }) => ({
+        sponsor_notion_id: sponsor.id,
+        empresa: sponsor.empresa || sponsor.nombre,
+      })),
+    };
+  }
+  return { estado: 'unico', sponsor: mejores[0].sponsor, puntaje: mejor };
 }
 
 /**
@@ -811,8 +938,14 @@ module.exports = {
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
   buscarContactosPorEmail,
+  buscarAsistentesPorFolio,
+  normalizarFolio,
+  foliosDeContacto,
   buscarContactoPorNombre,
   buscarContacto,
+  resolverSponsorPorEmpresa,
+  normalizarEmpresaBusqueda,
+  puntajeEmpresaSolicitada,
   buscarAsistentePorWhatsApp,
   variantesTelefono,
   formatosTelefonoParaNotion,

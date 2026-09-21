@@ -284,6 +284,44 @@ function esSponsorElegibleParaMasOpciones(asistente, sponsor) {
   return sponsorPideAlgunTamano(sponsor, tamano.categorias);
 }
 
+/**
+ * Valida el par que el asistente pidió directamente (por ejemplo desde un QR
+ * de pantalla). A diferencia de Capa 1, aquí NO filtran área, soluciones ni
+ * Quiere Citas 1a1=No. Sí se respetan boleto, giro, Bronce y el tamaño
+ * asimétrico de las opciones adicionales.
+ */
+function evaluarSolicitudDirectaSponsor(asistente, sponsor) {
+  if (!asistente || asistente.categoria !== 'Asistente' || asistente.dadoDeBaja) {
+    return { elegible: false, motivo: 'ASISTENTE_NO_ELEGIBLE' };
+  }
+  if (asistente.ticketTipo === 'Expo') {
+    return { elegible: false, motivo: 'BOLETO_EXPO_NO_PERMITE_CITAS' };
+  }
+  if (!['Presencial', 'Presencial VIP', 'Virtual', 'Speaker'].includes(asistente.ticketTipo)) {
+    return { elegible: false, motivo: 'BOLETO_NO_ELEGIBLE' };
+  }
+  if (!sponsor || sponsor.dadoDeBaja || sponsor.categoria !== 'Sponsor') {
+    return { elegible: false, motivo: 'SPONSOR_NO_ELEGIBLE' };
+  }
+  if (NIVELES_SIN_CITAS_1A1.includes(sponsor.nivelPatrocinio)) {
+    return { elegible: false, motivo: 'SPONSOR_SIN_CITAS_1A1' };
+  }
+  if (!esGiroElegibleParaMasOpciones(asistente)) {
+    return { elegible: false, motivo: 'GIRO_NO_ELEGIBLE' };
+  }
+  if (asistente.ticketTipo === 'Presencial VIP' || asistente.ticketTipo === 'Speaker') {
+    return { elegible: true, motivo: null, via: 'bypass_tamano_boleto' };
+  }
+  const tamano = categoriasTamanoParaMasOpciones(asistente);
+  if (tamano.modo === 'cualquier_sponsor') {
+    return { elegible: true, motivo: null, via: 'tamano_grande_o_consolidado' };
+  }
+  if (tamano.modo === 'exacto' && sponsorPideAlgunTamano(sponsor, tamano.categorias)) {
+    return { elegible: true, motivo: null, via: 'tamano_solicitado' };
+  }
+  return { elegible: false, motivo: 'TAMANO_NO_COMPATIBLE' };
+}
+
 function solucionesEnComunYOtras(asistente, sponsor) {
   const buscadas = new Set(solucionesReales(asistente?.solucionesBuscadas));
   const ofertas = solucionesReales(sponsor?.solucion);
@@ -1069,6 +1107,7 @@ module.exports = {
   esGiroElegibleParaMasOpciones,
   categoriasTamanoParaMasOpciones,
   esSponsorElegibleParaMasOpciones,
+  evaluarSolicitudDirectaSponsor,
   solucionesEnComunYOtras,
   esCandidatoPorArea,
   esCandidatoPorSolucion,

@@ -134,12 +134,17 @@ async function ejecutarCancelarCita({ telefono, whatsapp, citaId, sponsorEmpresa
   }
 }
 
-async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePageId } = {}) {
-  if (!whatsapp && !asistentePageId) {
+async function ejecutarConsultarSugeridasParaAsistente({
+  whatsapp,
+  asistentePageId,
+  folio,
+  sponsorEmpresa,
+} = {}) {
+  if (!whatsapp && !asistentePageId && !folio) {
     return respuestaJson(
       {
         error: 'INVALID_INPUT',
-        message: 'Pasa whatsapp (preferido) o asistentePageId.',
+        message: 'Pasa whatsapp (preferido), folio o asistentePageId.',
       },
       true
     );
@@ -147,10 +152,12 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
   try {
     const resultado = await citasService.consultarSugeridasPorIdentificador({
       whatsapp,
-      asistentePageId: whatsapp ? undefined : asistentePageId,
+      asistentePageId: whatsapp || folio ? undefined : asistentePageId,
+      folio,
+      sponsorEmpresa,
     });
     const aviso =
-      'Ofrece máximo 4 por lote y recuerda cuáles ya dijiste; la oferta inicial también cuenta. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. Si la campaña ya mostró los Aprobado, “más opciones” empieza en adicionales. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. copy_sin_mas_opciones es dato interno: no lo pegues. Al agotar la pasada, al contacto: “Por ahora ya son todas las disponibles.” Si insiste: “No, por ahora no hay otra.” soluciones_en_comun y otras_soluciones son etiquetas internas, no copy; en WhatsApp usa persona + empresa + un beneficio corto. Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Lote exploratorio: solo el lote; si hay_mas_sugeridas o hay_mas_opciones puedes cerrar “Todavía hay más.” Sin pregunta. Pregunta de horarios solo cuando elija a alguien. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano no lleva citaId. No leas IDs en voz alta.';
+      'Primero mira fase_evento: despues = no agendes y usa copys_contextuales.despues_evento; durante permite frontdesk; antes no menciona frontdesk. Si llegó por QR o nombró una empresa, pasa sponsorEmpresa y usa solo sponsor_solicitado: elegible = consulta disponibilidad con ese sponsor_notion_id; no_elegible = usa el copy contextual del motivo; ambiguo = pregunta cuál candidato; no_encontrado = no inventes. Para GIRO_NO_ELEGIBLE usa giro_no_elegible; TAMANO_NO_COMPATIBLE usa tamano_no_compatible sustituyendo [Empresa]; Expo usa boleto_expo. Quiere Citas=No, área y soluciones NO bloquean una solicitud directa. Si identificado_por=folio, confirma nombre, empresa, tipo de boleto y correo antes de seguir. Si pide sus citas, muestra TODAS las de citas_para_ofrecer, cada una con horario_legible (incluye día), no las cortes en 3. Para listas normales ofrece máximo 4 por lote y recuerda cuáles ya dijiste; la oferta inicial también cuenta. Una llamada nueva, reserva, modificación o cancelación no reinicia la pasada. Una pasada recorre sugeridas_para_ofrecer / sponsors_para_agendar y después opciones_adicionales_para_ofrecer / opciones_adicionales. copy_sin_mas_opciones es dato interno: no lo pegues. Al agotar la pasada: “Por ahora ya son todas las disponibles.” Si insiste: “No, por ahora no hay otra.” soluciones_en_comun y otras_soluciones son etiquetas internas. Una Cancelada se reagenda con citaId + reservar_cita. estatus_origen=tamano o directo no lleva citaId. No leas IDs en voz alta.';
     if (Array.isArray(resultado.sugeridas_para_ofrecer)) {
       return respuestaJson({ ...resultado, copy_sin_mas_opciones: COPY_SIN_MAS_OPCIONES, aviso });
     }
@@ -167,15 +174,18 @@ async function ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePage
       sponsors_para_agendar: sponsorsParaAgendar,
       sugeridas_para_ofrecer: sponsorsParaAgendar.slice(0, citasService.LIMITE_SUGERIDAS_PARA_OFRECER),
       hay_mas_sugeridas: sponsorsParaAgendar.length > citasService.LIMITE_SUGERIDAS_PARA_OFRECER,
-      citas_para_ofrecer: citasConfirmadas.slice(0, citasService.LIMITE_CITAS_PARA_OFRECER),
-      hay_mas_citas: citasConfirmadas.length > citasService.LIMITE_CITAS_PARA_OFRECER,
+      citas_para_ofrecer: citasConfirmadas,
+      hay_mas_citas: false,
       canceladas_para_ofrecer: citasCanceladas.slice(0, citasService.LIMITE_CANCELADAS_PARA_OFRECER),
       hay_mas_canceladas: citasCanceladas.length > citasService.LIMITE_CANCELADAS_PARA_OFRECER,
       copy_sin_mas_opciones: COPY_SIN_MAS_OPCIONES,
       aviso,
     });
   } catch (err) {
-    return respuestaJson({ error: err.message, code: err.code }, true);
+    return respuestaJson(
+      { error: err.message, code: err.code, ...(err.detalle || {}) },
+      true
+    );
   }
 }
 
@@ -509,7 +519,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_sugeridas_para_asistente',
-    'Lista las 1a1 del asistente identificado por whatsapp: sugeridas_para_ofrecer (canceladas reagendables y luego Aprobado), citasConfirmadas, citasCanceladas y opciones_adicionales. Recorre por pasadas. Lo que ya salió en campaña cuenta como visto. Consultar de nuevo, reservar, modificar o cancelar no reinicia la pasada. Un sponsor Confirmado no se ofrece. No recalcula matchmaking ni escribe. soluciones_en_comun y otras_soluciones son etiquetas internas, no copy. En WhatsApp: nombre de persona + empresa + un beneficio corto, en prosa. Prohibido: “expertos en”, “También ofrecen”, “hacen match”, “según tu perfil”, “el sistema”. Lote exploratorio (pidió más / otras / dos): solo el lote. Si hay_mas_sugeridas o hay_mas_opciones, puedes cerrar “Todavía hay más.” Sin pregunta. Pregunta de horarios solo cuando elija a alguien. copy_sin_mas_opciones es dato interno. No lo pegues. Al agotar una pasada, al contacto: “Por ahora ya son todas las disponibles.” Si insiste: “No, por ahora no hay otra.”',
+    'Identifica al asistente por WhatsApp o, si no coincide, por folio de reservación/boleto. Devuelve fase_evento y copys_contextuales; despues no permite agendar. Si el mensaje/QR nombra una empresa, pásala en sponsorEmpresa: sponsor_solicitado resuelve nombre aproximado y valida ese par con boleto, giro y tamaño; Quiere Citas=No, área y soluciones no bloquean la solicitud directa. elegible trae el sponsor_notion_id para consultar disponibilidad; no_elegible trae motivo; ambiguo trae candidatos; no_encontrado no se inventa. Si pide sus citas, citasConfirmadas y citas_para_ofrecer traen TODAS, con horario_legible incluyendo día. Para oferta normal: sugeridas_para_ofrecer (Aprobado y canceladas), opciones_adicionales por pasadas; máximo 4 sponsors por lote; la campaña cuenta como visto y consultar/reservar/modificar/cancelar no reinicia la pasada. soluciones_en_comun y otras_soluciones son etiquetas internas, no copy. copy_sin_mas_opciones es dato interno: no lo pegues. No escribe en Notion; al identificar por folio sí hidrata el perfil de la conversación actual en Plática.',
     {
       whatsapp: z
         .string()
@@ -519,9 +529,22 @@ function crearServidorMcp() {
         .string()
         .optional()
         .describe('page_id del asistente en Notion. Solo si no hay teléfono.'),
+      folio: z
+        .string()
+        .optional()
+        .describe('Folio de reservación o de boleto. Usar si el WhatsApp no encontró al asistente.'),
+      sponsorEmpresa: z
+        .string()
+        .optional()
+        .describe('Empresa nombrada por el asistente o en el mensaje prellenado del QR. Puede ser aproximada; el backend resuelve o devuelve ambigüedad.'),
     },
-    async ({ whatsapp, asistentePageId }) =>
-      ejecutarConsultarSugeridasParaAsistente({ whatsapp, asistentePageId })
+    async ({ whatsapp, asistentePageId, folio, sponsorEmpresa }) =>
+      ejecutarConsultarSugeridasParaAsistente({
+        whatsapp,
+        asistentePageId,
+        folio,
+        sponsorEmpresa,
+      })
   );
 
   server.tool(

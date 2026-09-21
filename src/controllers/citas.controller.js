@@ -300,11 +300,13 @@ async function disponibilidad(req, res) {
 async function sugeridas(req, res) {
   const whatsapp = String(req.query.whatsapp || req.query.telefono || '').trim();
   const asistente_notion_id = String(req.query.asistente_notion_id || '').trim();
+  const folio = String(req.query.folio || '').trim();
+  const sponsor_empresa = String(req.query.sponsor_empresa || '').trim();
 
-  if (!whatsapp && !asistente_notion_id) {
+  if (!whatsapp && !asistente_notion_id && !folio) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'Se requiere whatsapp (teléfono del asistente) o asistente_notion_id.',
+      message: 'Se requiere whatsapp, folio o asistente_notion_id.',
     });
   }
   if (whatsapp && variantesTelefono(whatsapp).length === 0) {
@@ -313,7 +315,7 @@ async function sugeridas(req, res) {
       message: 'whatsapp debe ser un número de teléfono (dígitos, con o sin +52).',
     });
   }
-  if (!whatsapp && !esUuidCanonico(asistente_notion_id)) {
+  if (!whatsapp && !folio && !esUuidCanonico(asistente_notion_id)) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
       message: 'asistente_notion_id debe ser un UUID válido',
@@ -323,12 +325,25 @@ async function sugeridas(req, res) {
   try {
     const resultado = await consultarSugeridasPorIdentificador({
       whatsapp: whatsapp || undefined,
-      asistentePageId: whatsapp ? undefined : asistente_notion_id,
+      asistentePageId: whatsapp || folio ? undefined : asistente_notion_id,
+      folio: folio || undefined,
+      sponsorEmpresa: sponsor_empresa || undefined,
     });
     return res.status(200).json(resultado);
   } catch (error) {
     if (error.status === 404 || error.code === 'CONTACTO_NO_RESUELTO') {
-      return res.status(404).json({ error: 'CONTACTO_NO_RESUELTO', message: error.message });
+      return res.status(404).json({
+        error: error.code || 'CONTACTO_NO_RESUELTO',
+        message: error.message,
+        ...(error.detalle || {}),
+      });
+    }
+    if (error.status === 409 || error.code === 'FOLIO_AMBIGUO') {
+      return res.status(409).json({
+        error: error.code || 'FOLIO_AMBIGUO',
+        message: error.message,
+        ...(error.detalle || {}),
+      });
     }
     if (error.status === 400 || error.code === 'INVALID_INPUT') {
       return res.status(400).json({ error: 'INVALID_INPUT', message: error.message });

@@ -150,6 +150,7 @@ function payloadPerfil(contacto, citasConfirmadas, { perfilActual } = {}) {
 async function hidratarPerfilPlatica({
   whatsapp,
   asistentePageId,
+  telefonoDestino,
   actualizarClienteFn,
   obtenerClienteFn,
 } = {}) {
@@ -167,7 +168,10 @@ async function hidratarPerfilPlatica({
     throw error;
   }
 
-  const telefono = contacto.whatsapp || phone;
+  // Identificación por folio: el contacto puede estar escribiendo desde un
+  // número distinto al registrado. En ese caso hidratamos ESTA conversación,
+  // no el teléfono histórico que fue precisamente el que no coincidió.
+  const telefono = String(telefonoDestino || '').trim() || contacto.whatsapp || phone;
   if (!telefono) {
     const error = new Error('El asistente de Notion no tiene WhatsApp.');
     error.code = 'SIN_WHATSAPP';
