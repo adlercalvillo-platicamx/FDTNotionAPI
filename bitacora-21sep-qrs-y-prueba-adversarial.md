@@ -204,3 +204,17 @@ Reenvío de correo: filas nuevas mandan **solo** el lado en
 Prompt `KUoxYPuo0dFniH8GLKVa`: al asistente, `Confirmada sin notificar` solo
 habla de *su* correo pendiente; si solo falló el sponsor, le confirma la cita
 sin contar el fallo interno.
+
+## Horarios pasados (21-sep mañana)
+
+La garantía no es el modelo: `consultar_disponibilidad_cita` filtra con
+`esHorarioOfrecible` (margen 5 min, igual que `reservar`). El 8-oct a las
+09:30 CDMX, ningún bloque del 7 entra a `opciones_para_ofrecer`; las
+casillas colapsan a mañana/tarde del 8. Si el agente inventa un ISO viejo,
+`reservar`/`modificar` responden `HORARIO_EN_PASADO`. Cubierto en
+`tests/horarios-oferta.manual-test.js` (`casoEl8YaNoOfreceNingunBloqueDel7`).
+
+Marketing en horario de servicio (21-sep ~10:12 CDMX): preguntó Mercado Libre
+y Reversso, `search_knowledgebase` no los encontró y escaló. Se reprocessó
+`Programa FDT2026 vigente` (`uRpsngiGfSNKo4gktEcN`). Pendiente repreguntar
+tras indexar.

@@ -110,6 +110,29 @@ function casoMenosDeTres() {
   ]);
 }
 
+function casoEl8YaNoOfreceNingunBloqueDel7() {
+  const ahora = new Date('2026-10-08T09:30:00-06:00');
+  const elegidos = seleccionarHorariosParaOferta(
+    [
+      bloque('2026-10-07T10:30:00-06:00'),
+      bloque('2026-10-07T14:00:00-06:00'),
+      bloque('2026-10-07T18:30:00-06:00'),
+      bloque('2026-10-08T09:00:00-06:00'),
+      bloque('2026-10-08T09:30:00-06:00'),
+      bloque('2026-10-08T14:00:00-06:00'),
+      bloque('2026-10-08T14:30:00-06:00'),
+    ],
+    3,
+    { ahora }
+  );
+  assert.ok(elegidos.every((b) => b.inicio.startsWith('2026-10-08')));
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-08T09:30:00-06:00',
+    '2026-10-08T14:00:00-06:00',
+    '2026-10-08T14:30:00-06:00',
+  ]);
+}
+
 function casoDescartaHorariosPasadosConMismoMargenDeModificar() {
   const ahora = new Date('2026-10-07T11:05:01-06:00');
   const elegidos = seleccionarHorariosParaOferta(
@@ -262,6 +285,7 @@ function casoScoreFormulaYFallbackNotas() {
 
 casoAmbosDiasCompletos();
 caso1MananaDia1YaPaso();
+casoEl8YaNoOfreceNingunBloqueDel7();
 caso2SinDia2();
 caso3SinTardeDia1();
 casoMenosDeTres();
