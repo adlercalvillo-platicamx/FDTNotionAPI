@@ -116,6 +116,7 @@ async function main() {
   assert.strictEqual(resultado.sponsor_solicitado.sponsor_notion_id, 'sponsor-1');
   assert.strictEqual(resultado.fase_evento, 'antes');
   assert.strictEqual(resultado.hidratacion_platica.whatsapp, '5215599999999');
+  assert.strictEqual(resultado.motivo_sin_opciones, 'OPCIONES_AGOTADAS');
   console.log('✅ folio identifica y QR resuelve el sponsor solicitado');
 
   assert.strictEqual(resultado.citas_para_ofrecer.length, 4);
@@ -138,6 +139,17 @@ async function main() {
     'durante'
   );
   console.log('✅ fase del evento: antes/durante/después y override de prueba');
+
+  const giroOriginal = asistente.giroIndustria;
+  asistente.giroIndustria = 'Agencia de marketing / publicidad';
+  const sinGiro = await citas.consultarSugeridasPorIdentificador({
+    folio: 'FOLIO-OK',
+    hidratarPerfilFn: async () => ({ actualizado: true }),
+  });
+  asistente.giroIndustria = giroOriginal;
+  assert.strictEqual(sinGiro.giro_elegible, false);
+  assert.strictEqual(sinGiro.motivo_sin_opciones, 'GIRO_NO_ELEGIBLE');
+  console.log('✅ solicitud genérica distingue giro no elegible de opciones agotadas');
 
   await assert.rejects(
     citas.consultarSugeridasPorIdentificador({ whatsapp: '5215599999999' }),

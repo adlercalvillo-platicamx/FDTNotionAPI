@@ -68,6 +68,9 @@ vacía en producción.
 
 También viajan los copys aprobados de giro, Expo, tamaño, folio y post-evento.
 No llevan `Hola`; el prompt decide el saludo únicamente en el primer mensaje.
+Para solicitudes genéricas sin empresa, `giro_elegible` y
+`motivo_sin_opciones` distinguen `GIRO_NO_ELEGIBLE` de
+`OPCIONES_AGOTADAS`; una lista vacía ya no obliga al agente a adivinar.
 
 `citas_para_ofrecer` ya no se corta en tres: trae todas las confirmadas,
 ordenadas, y cada una incluye `horario_legible` con día, fecha y hora.

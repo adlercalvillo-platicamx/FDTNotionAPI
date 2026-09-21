@@ -1291,12 +1291,20 @@ async function consultarSugeridasPorIdentificador({
     sponsorMap,
   });
   const faseEvento = obtenerFaseEvento({ ahora });
+  const matchmaking = require('./matchmaking.service');
+  const giroElegible = matchmaking.esGiroElegibleParaMasOpciones(asistente);
+  const sinOpciones =
+    sponsorsParaAgendar.length === 0 && opcionesAdicionales.length === 0;
+  const motivoSinOpciones = sinOpciones
+    ? giroElegible
+      ? 'OPCIONES_AGOTADAS'
+      : 'GIRO_NO_ELEGIBLE'
+    : null;
   let sponsorSolicitado = null;
   const empresaPedida = String(sponsorEmpresa || '').trim();
   if (empresaPedida) {
     const resolucion = await contactos.resolverSponsorPorEmpresa(empresaPedida);
     if (resolucion.estado === 'unico') {
-      const matchmaking = require('./matchmaking.service');
       const evaluacion = matchmaking.evaluarSolicitudDirectaSponsor(
         asistente,
         resolucion.sponsor
@@ -1332,6 +1340,8 @@ async function consultarSugeridasPorIdentificador({
     hidratacion_platica: hidratacionPlatica,
     fase_evento: faseEvento,
     copys_contextuales: copysContextuales(faseEvento),
+    giro_elegible: giroElegible,
+    motivo_sin_opciones: motivoSinOpciones,
     sponsor_solicitado: sponsorSolicitado,
     sugeridas: sugeridasAprobado.map((item) =>
       enriquecerOpcionOfrecida(
