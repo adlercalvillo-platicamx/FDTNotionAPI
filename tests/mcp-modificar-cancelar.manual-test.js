@@ -620,7 +620,9 @@ async function ok(nombre, fn) {
         argsDispo({ fecha: '2026-10-07', hora: '15:00' })
       )
     );
-    assert.strictEqual(body.opciones_para_ofrecer[0].inicio, '2026-10-07T15:00:00-06:00');
+    const inicios = body.opciones_para_ofrecer.map((opcion) => opcion.inicio);
+    assert.ok(inicios.includes('2026-10-07T15:00:00-06:00'));
+    assert.deepStrictEqual(inicios, [...inicios].sort());
     assert.strictEqual(body.horario_solicitado.length, 1);
     assert.strictEqual(body.horario_solicitado[0].disponible, true);
     assert.ok(body.aviso.includes('SÍ está libre'));

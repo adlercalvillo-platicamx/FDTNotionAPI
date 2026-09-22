@@ -80,6 +80,7 @@ delete require.cache[citasPath];
 const {
   consultarSugerenciasAprobadasPorAsistente,
   formatearSugerenciaAprobada,
+  formatearHorarioLegible,
 } = require('../src/services/citas.service');
 
 delete require.cache[controllerPath];
@@ -328,6 +329,7 @@ async function casoAprobadasYConfirmadasNoSeMezclan() {
     sponsorNombre: 'Empresa Bajo',
     sponsor_notion_id: 'sponsor-bajo',
     fechaHora: '2026-10-07T12:00:00-06:00',
+    horario_legible: formatearHorarioLegible('2026-10-07T12:00:00-06:00'),
     mesa: 'Mesa 3',
     citaId: 'conf-1',
     checkInRealizado: false,

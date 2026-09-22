@@ -1282,7 +1282,7 @@ async function consultarSugeridasPorIdentificador({
     citasCanceladas,
     citasConfirmadas,
   }).map((item) => enriquecerOpcionOfrecida(item, asistente, sponsorMap));
-  const opcionesAdicionales = armarOpcionesAdicionales({
+  const opcionesAdicionalesTodas = armarOpcionesAdicionales({
     asistente,
     sugeridasSugerido,
     sponsorsParaAgendar,
@@ -1290,11 +1290,23 @@ async function consultarSugeridasPorIdentificador({
     sponsorsActivos,
     sponsorMap,
   });
+  // Si el primer grupo (canceladas reagendables + Aprobado) no llena el lote,
+  // se completa con las adicionales y esas salen de la lista de adicionales:
+  // el primer mensaje ofrece hasta 4 y la pasada no las repite (21-sep).
+  const promovidasAlPrimerLote = opcionesAdicionalesTodas.slice(
+    0,
+    Math.max(0, LIMITE_SUGERIDAS_PARA_OFRECER - sponsorsParaAgendar.length)
+  );
+  const opcionesAdicionales = opcionesAdicionalesTodas.slice(promovidasAlPrimerLote.length);
+  const sugeridasParaOfrecer = [
+    ...sponsorsParaAgendar.slice(0, LIMITE_SUGERIDAS_PARA_OFRECER),
+    ...promovidasAlPrimerLote,
+  ];
   const faseEvento = obtenerFaseEvento({ ahora });
   const matchmaking = require('./matchmaking.service');
   const giroElegible = matchmaking.esGiroElegibleParaMasOpciones(asistente);
   const sinOpciones =
-    sponsorsParaAgendar.length === 0 && opcionesAdicionales.length === 0;
+    sponsorsParaAgendar.length === 0 && opcionesAdicionalesTodas.length === 0;
   const motivoSinOpciones = sinOpciones
     ? giroElegible
       ? 'OPCIONES_AGOTADAS'
@@ -1358,7 +1370,7 @@ async function consultarSugeridasPorIdentificador({
     citasConfirmadas,
     citasCanceladas,
     sponsors_para_agendar: sponsorsParaAgendar,
-    sugeridas_para_ofrecer: sponsorsParaAgendar.slice(0, LIMITE_SUGERIDAS_PARA_OFRECER),
+    sugeridas_para_ofrecer: sugeridasParaOfrecer,
     hay_mas_sugeridas: sponsorsParaAgendar.length > LIMITE_SUGERIDAS_PARA_OFRECER,
     opciones_adicionales: opcionesAdicionales,
     opciones_adicionales_para_ofrecer: opcionesAdicionales.slice(
@@ -1445,6 +1457,11 @@ function enriquecerOpcionOfrecida(item, asistente, sponsorMap) {
   }
   return {
     ...item,
+    // Las canceladas reagendables llegan con la empresa en sponsor_nombre
+    // (formatearCitaConfirmadaAsistente). El agente necesita la persona para
+    // decir "con Magali Parra" (Adler/Eduardo, 21-sep).
+    sponsor_nombre: sponsor.nombre || item.sponsor_nombre || null,
+    sponsor_empresa: sponsor.empresa || item.sponsor_empresa || null,
     estatus_origen: estatusOrigen,
     soluciones_en_comun,
     otras_soluciones,
@@ -2397,9 +2414,10 @@ function normalizarHoraPedido(hora) {
  * Casilla vacía → el más próximo que quede, sin repetir.
  * Un solo día restante (el otro ya pasó, o el usuario pidió `fecha`) →
  * colapsa a Mañana / Tarde / relleno. Nunca inventa bloques.
- * Si pidió una hora concreta (`priorizarHora`), esa entra primero cuando
- * está libre — si no, las casillas solas nunca eligen 15:00 si 14:00 está
- * libre (el primer bloque de Tarde gana).
+ * Si pidió una hora concreta (`priorizarHora`), entra en el lote cuando
+ * está libre — las casillas solas nunca eligen 15:00 si 14:00 está libre
+ * (el primer bloque de Tarde gana). El lote final se ordena cronológicamente
+ * para el chat (Adler/Eduardo, 21-sep): no se ofrece 11:30, 14:00, 12:00.
  */
 function seleccionarHorariosParaOferta(
   bloquesDisponibles,
@@ -2450,7 +2468,9 @@ function seleccionarHorariosParaOferta(
     vistos.add(bloque.inicio);
     unicos.push(bloque);
   }
-  return unicos.slice(0, limite);
+  return unicos
+    .slice(0, limite)
+    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
 }
 
 function formatearHorarioLegible(inicio) {

@@ -62,8 +62,8 @@ function caso1MananaDia1YaPaso() {
     { ahora }
   );
     assert.deepStrictEqual(iniciosDe(elegidos), [
-      '2026-10-07T15:30:00-06:00',
       '2026-10-07T15:00:00-06:00',
+      '2026-10-07T15:30:00-06:00',
       '2026-10-08T09:00:00-06:00',
     ]);
     assert.strictEqual(new Set(iniciosDe(elegidos)).size, 3);
@@ -78,8 +78,8 @@ function caso2SinDia2() {
   ]);
   assert.deepStrictEqual(iniciosDe(elegidos), [
     '2026-10-07T10:30:00-06:00',
-    '2026-10-07T14:00:00-06:00',
     '2026-10-07T11:00:00-06:00',
+    '2026-10-07T14:00:00-06:00',
   ]);
   assert.ok(elegidos.every((b) => b.inicio.startsWith('2026-10-07')));
 }
@@ -93,8 +93,8 @@ function caso3SinTardeDia1() {
   ]);
   assert.deepStrictEqual(iniciosDe(elegidos), [
     '2026-10-07T10:30:00-06:00',
-    '2026-10-08T09:30:00-06:00',
     '2026-10-08T09:00:00-06:00',
+    '2026-10-08T09:30:00-06:00',
   ]);
 }
 
@@ -251,13 +251,14 @@ function casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14() {
   const sinPedido = seleccionarHorariosParaOferta(dia7);
   assert.deepStrictEqual(iniciosDe(sinPedido), [
     '2026-10-07T10:30:00-06:00',
-    '2026-10-07T14:00:00-06:00',
     '2026-10-07T11:00:00-06:00',
+    '2026-10-07T14:00:00-06:00',
   ]);
   assert.ok(!iniciosDe(sinPedido).includes('2026-10-07T15:00:00-06:00'));
 
   const conPedido = seleccionarHorariosParaOferta(dia7, 3, { priorizarHora: '15:00' });
-  assert.strictEqual(conPedido[0].inicio, '2026-10-07T15:00:00-06:00');
+  assert.ok(iniciosDe(conPedido).includes('2026-10-07T15:00:00-06:00'));
+  assert.deepStrictEqual(iniciosDe(conPedido), [...iniciosDe(conPedido)].sort());
   assert.strictEqual(new Set(iniciosDe(conPedido)).size, 3);
 }
 

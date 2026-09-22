@@ -440,7 +440,7 @@ function baseParams(overrides = {}) {
   });
 
   console.log('\n=== Match Aprobado no queda huérfano al confirmar ===');
-  await ok('tras Confirmada, la fila Aprobado del mismo par se archiva', async () => {
+  await ok('tras Confirmada, solo se archiva Aprobado del mismo par; otros sponsors quedan intactos', async () => {
     const h = crearHarness({ emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' } });
     h.porId.set('match-aprobado', {
       id: 'match-aprobado',
@@ -450,11 +450,35 @@ function baseParams(overrides = {}) {
       mesa: null,
       requestId: null,
     });
+    h.porId.set('aprobado-otro-sponsor', {
+      id: 'aprobado-otro-sponsor',
+      sponsor: 'sponsor-c',
+      asistente: 'asistente-b',
+      estatus: 'Aprobado',
+    });
+    h.porId.set('sugerido-otro-sponsor', {
+      id: 'sugerido-otro-sponsor',
+      sponsor: 'sponsor-d',
+      asistente: 'asistente-b',
+      estatus: 'Sugerido',
+    });
+    h.porId.set('aprobado-otro-asistente', {
+      id: 'aprobado-otro-asistente',
+      sponsor: 'sponsor-a',
+      asistente: 'asistente-c',
+      estatus: 'Aprobado',
+    });
     const r = await h.booking.reservarCita(baseParams({ request_id: 'req-archiva-aprobado' }));
     assert.strictEqual(r.estado, 'Confirmada');
     assert.notStrictEqual(r.notion_page_id, 'match-aprobado');
     assert.strictEqual(h.porId.get('match-aprobado').archivada, true);
     assert.strictEqual(h.porId.get(r.notion_page_id).archivada, undefined);
+    assert.strictEqual(h.porId.get('aprobado-otro-sponsor').archivada, undefined);
+    assert.strictEqual(h.porId.get('aprobado-otro-sponsor').estatus, 'Aprobado');
+    assert.strictEqual(h.porId.get('sugerido-otro-sponsor').archivada, undefined);
+    assert.strictEqual(h.porId.get('sugerido-otro-sponsor').estatus, 'Sugerido');
+    assert.strictEqual(h.porId.get('aprobado-otro-asistente').archivada, undefined);
+    assert.strictEqual(h.porId.get('aprobado-otro-asistente').estatus, 'Aprobado');
   });
 
   await ok('Confirmada sin notificar también archiva la Aprobado (la cita ya es real)', async () => {

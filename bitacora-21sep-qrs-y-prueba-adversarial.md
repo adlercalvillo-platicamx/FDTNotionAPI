@@ -218,3 +218,157 @@ Marketing en horario de servicio (21-sep ~10:12 CDMX): preguntó Mercado Libre
 y Reversso, `search_knowledgebase` no los encontró y escaló. Se reprocessó
 `Programa FDT2026 vigente` (`uRpsngiGfSNKo4gktEcN`). Pendiente repreguntar
 tras indexar.
+
+## Teléfono con espacios internos rompe la hidratación (21-sep)
+
+Eduardo Heath llegó sin ningún campo personalizado en Plática y el agente le
+pidió folio. No fue el folio: su `WhatsApp` en Notion era `+52 844 464 4160`
+(agrupación 3-3-4). `formatosTelefonoParaNotion` genera `+52 8444644160`,
+`+52 84 44644160` y `+52 84 4464 4160`, pero no esa agrupación, y el fallback
+`contains: <10 dígitos>` tampoco pega porque el valor guardado trae espacios
+entre esos dígitos. Notion devolvía 0 resultados y sin contacto no hay
+hidratación.
+
+Adler corrigió el valor a `+52 8444644160` (el formato con que sube
+Ticketópolis: `+52` + espacio + 10 dígitos pegados). Verificado contra el
+backend desplegado: `GET /contactos/buscar` lo encuentra con `528444644160`,
+`5218444644160` y `8444644160`.
+
+No hizo falta que Eduardo volviera a escribir: se hidrató a mano con
+`POST /contactos/hidratar-perfil-platica` (`{"whatsapp":"+52 8444644160"}`),
+que solo escribe su ficha y no le manda mensajes. Respuesta
+`actualizado:true`, contacto `3df62dda-199a-81dd-9f65-d5d794e5ac8b`,
+`numeroCitasConfirmadas:0`, `solucionesEscritas:true`. En Plática
+(`528444644160`, id `5218444644160`) ya trae `area`, `role_puesto`,
+`tamano_de_negocio`, `tipo_de_asistencia = Presencial VIP`, `giro_industria`,
+`redes_sociales` y `soluciones_buscadas`.
+
+Pendiente (no hecho): el matcher sigue siendo una lista de agrupaciones
+enumeradas. Cualquier carga futura con otra separación vuelve a fallar en
+silencio. La opción discutida es consultar Notion por los últimos 4 dígitos
+(`contains`) y decidir en JS con `coincidenTelefonos`, en vez de adivinar el
+formato exacto.
+
+## Incidente Luis Portugal: sugerencias en papelera (21-sep)
+
+Investigación de solo lectura; no se restauró ni modificó ninguna fila.
+Los cambios recientes en el contacto (Virtual → Presencial VIP y limpiar
+campaña/respondió) fueron manuales de Adler y no se tomaron como evidencia.
+
+El historial crudo de Plática prueba que a las 11:27 CDMX Luis tenía **4
+Aprobado** (CaaS, Blip, Reevolution y Pikstudio), **6 Sugerido** guardadas
+(Tiendanube, Reversso, Leadin, Mercado Libre, Flow y Envia.com) y 3 opciones
+calculadas sin fila. Las mismas diez filas seguían presentes a las 11:45,
+después de reservar, mover y cancelar la primera cita con Plática.mx. Esta
+cita era solicitud directa y creó una fila aparte; no consumió ninguna de
+las diez originales.
+
+La reagenda creó otra fila de Plática.mx. Al investigar después, el endpoint
+desplegado (`/matchmaking/sugerencias-asistente` y `/citas/sugeridas`, que sí
+leen el workspace correcto) devolvió cero aprobadas y cero sugeridas para Luis.
+Esa es la única evidencia válida de la desaparición.
+
+**Corrección del método (misma sesión):** las consultas REST y los GET por id
+que se corrieron desde la laptop usaron `NOTION_API_KEY` de `.env-coolify.txt`,
+que apunta a **otro workspace** (ids con prefijo `…0fe2-7345`), no al de estas
+pruebas (prefijo `…62dda`). Por eso los doce ids respondían 404 y la query
+directa salía en cero: el token no ve ese workspace. Un control lo confirma —
+el contacto de Luis da 404 con ese token y la conexión MCP de Notion
+(integración `1f8d872b`) también, mientras que una fila cualquiera del data
+source local sí abre. **Ese 404 no prueba papelera ni borrado**; la conclusión
+anterior se apoyaba en un artefacto de credenciales. Para revisar papelera hace
+falta la UI de Notion del workspace correcto o un token de ese workspace.
+
+Tampoco es evidencia que la cancelada dejara de aparecer: `citasCanceladas`
+oculta a propósito un origen ya consumido por su reagenda
+(`filtrarCanceladasReagendables`), y esa cancelada ya tenía hija.
+
+El backend no tiene una operación que archive todas las filas de un
+asistente al reservar. `archivarSugerenciasDelPar` consulta con AND por el
+sponsor exacto + asistente exacto y solo archiva duplicados Sugerido/Aprobado
+de ese mismo par. Como Plática.mx no era una sugerencia guardada, esa ruta no
+podía tocar CaaS/Blip/Reevolution/Pikstudio ni las seis sugeridas. Reservar,
+modificar y cancelar no archivan filas ajenas. Lo que queda probado es que el
+backend no las quitó y que dejaron de existir entre las 11:45 y la revisión;
+el actor no se pudo atribuir con las credenciales disponibles. Para cerrarlo,
+abrir la papelera de la base Citas en ese workspace y buscar los renglones
+`Sugerido:`/`Aprobado:` de Luis: si están, el borrado fue manual y la papelera
+trae la hora.
+
+Adler decidió **no restaurar** y ya volvió a correr el cron de matchmaking:
+las 10 filas que hoy se ven para Luis son nuevas, con ids distintos a los del
+incidente. La ficha de Plática quedó desfasada
+(`numero_de_citas_confirmadas=1`) porque borrar directo en Notion no dispara
+hidratación; antes de la nueva prueba hay que hidratar otra vez.
+
+Cobertura agregada en `tests/email-notificacion.manual-test.js`: al confirmar
+un par, se archiva únicamente una fila hermana Aprobado del mismo
+sponsor+asistente; una Aprobado y una Sugerido de otros sponsors para el mismo
+asistente, y una Aprobado del mismo sponsor para otro asistente, permanecen
+intactas. La batería completa pasó. No se cambió lógica de producción porque
+no se reprodujo un borrado del backend.
+
+Precisión sobre el conteo: no eran 8 filas. A las 11:45 había 4 Aprobado + 6
+Sugerido guardadas. Además aparecían opciones calculadas sin fila. La cita que
+Luis confirmó fue Plática.mx, una opción directa que no estaba en las cuatro
+aprobadas, así que al reservar debían seguir las 4 Aprobado, no 3; el historial
+confirma que seguían ahí después de cancelar la primera cita.
+
+## Prueba Luis con boleto Expo (21-sep)
+
+Adler cambió el ticket a Expo y dejó `Quiere Citas 1a1` vacío. Recomendación:
+dejarlo vacío. Expo ya bloquea reserva, QR y solicitud directa; `No` solo
+cambia el pool de matchmaking (excluir opt-out explícito) y no es el caso
+Expo. Vacío es el dato real de Ticketópolis cuando nadie preguntó.
+
+Perfil rehidratado: `tipo_de_asistencia=Expo`, 0 citas confirmadas. Si las
+10 filas Sugerido/Aprobado siguen en Citas, `consultar_sugeridas` todavía
+las lista; el corte duro está en `reservar_cita` y en `sponsor_solicitado`
+(`BOLETO_EXPO_NO_PERMITE_CITAS` + copy `boleto_expo`). El agente debe mirar
+`tipo_de_asistencia` y no ofrecer esas filas.
+
+## Presentación ejecutiva y evidencia por fase (21-sep)
+
+Se conservó intacta
+`presentacion-pruebas-agente2-flujos-boletos-21sep.pptx` (8 láminas) y se
+creó `presentacion-pruebas-agente2-flujos-boletos-fases-21sep.pptx`, hoy con
+**13 láminas**:
+
+- 9: matriz de comportamiento antes / durante / después;
+- 10–12: una lámina por fase con la captura real de WhatsApp;
+- 13: cobertura demostrada y pruebas de borde que conviene dejar como anexo.
+
+Paginado renumerado a `/ 13` en todas las láminas (el original decía `/ 11`).
+
+Versión para compartir: `presentacion-citas-1a1-flujos-agente-21sep-LAURA.pptx`.
+Criterio de Adler: Laura y los clientes **sí** conocen Notion, así que esa
+palabra se conserva. Solo se traduce lo que es nombre de variable o de
+campo: fuera `CITAS_FASE_EVENTO_SIMULADA`, Coolify, redeploy y `request_id`
+(la lámina 5 ahora dice “con los datos correctos”). `guardrail` quedó como
+**bloqueo**. La lista de pruebas de borde y “lo que seguimos afinando” salieron del
+cierre para Laura: quedan solo logros y “El flujo está listo para operar.”
+Esos pendientes se resuelven aparte, no en el mazo de cliente. Portada: “Fashion Digital Talks 2026 ·
+Resultados de prueba” en vez de “Uso interno · Luis Portugal”; contador de
+capturas 15 → 18; acento corregido en “Confirmación”. Conviven la de Luis
+(8 láminas), la interna con fases (13) y la de cliente (13).
+
+Ejecutada en WhatsApp real con Adler (`5214492867741`), boleto Presencial VIP
+y giro cambiado a `Agencia de marketing / Consultoria / Servicios digitales`
+para forzar `GIRO_NO_ELEGIBLE` (Presencial VIP **no** salta el filtro de
+giro). Mismo mensaje de QR de Mercado Libre en las tres fases, con redeploy
+entre cada valor de `CITAS_FASE_EVENTO_SIMULADA`:
+
+| Fase | Respuesta observada |
+|---|---|
+| `antes` | Copy de giro no elegible sin frontdesk; ofreció conferencias y dio día y hora de Mercado Libre (jue 8, 13:00–13:30). |
+| `durante` | Mandó al frontdesk de Citas de Negocios; al preguntar por qué, explicó el giro registrado sin exponer filtros ni scores. |
+| `despues` | Cierre de edición terminada, sin horarios ni frontdesk. |
+
+Cerrado: variable vaciada y redeploy hecho por Adler. Verificado por GET
+`/citas/sugeridas`: `fase_evento=antes` (fecha real).
+Pendiente al terminar las pruebas: regresar el giro de Adler a
+`Marca de moda / Fashion brand` y rehidratar su perfil.
+
+La variable simula el **copy de fase**, no mueve el reloj a octubre. Por eso
+no sirve para obtener hoy una captura real de “horario ya pasado”; ese caso
+queda cubierto por pruebas del backend o se valida con reloj controlado.

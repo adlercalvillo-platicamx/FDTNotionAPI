@@ -138,9 +138,15 @@ async function main() {
   assert.strictEqual(aprobada.sponsor_nombre, 'Daniela Test');
   assert.ok(Array.isArray(aprobada.soluciones_en_comun));
   assert.strictEqual(aprobada.estatus_origen, 'aprobado');
-  assert.strictEqual(porWhatsapp.opciones_adicionales.length, 1);
-  assert.strictEqual(porWhatsapp.opciones_adicionales[0].estatus_origen, 'sugerido');
-  assert.strictEqual(porWhatsapp.opciones_adicionales[0].sponsor_empresa, 'Marca Sugerida');
+  // El primer lote no llegaba a 4, así que la adicional sube ahí y sale de
+  // opciones_adicionales para que la pasada no la repita (21-sep).
+  const promovida = porWhatsapp.sugeridas_para_ofrecer.find(
+    (s) => s.sponsor_empresa === 'Marca Sugerida'
+  );
+  assert.ok(promovida);
+  assert.strictEqual(promovida.estatus_origen, 'sugerido');
+  assert.strictEqual(promovida.sponsor_nombre, 'Luis Test');
+  assert.strictEqual(porWhatsapp.opciones_adicionales.length, 0);
   assert.strictEqual(porWhatsapp.hay_mas_opciones, false);
   assert.ok(!porWhatsapp.sugeridas_para_ofrecer.some((s) => s.sponsor_notion_id === sponsorId));
   assert.strictEqual(aprobada.sponsor_calendario_id, undefined);
@@ -151,6 +157,7 @@ async function main() {
       sponsorNombre: 'Sponsor Test',
       sponsor_notion_id: sponsorId,
       fechaHora: '2026-10-07T12:00:00-06:00',
+      horario_legible: 'miércoles, 7 de octubre, 12:00 h',
       mesa: 'Mesa 3',
       citaId: 'cita-confirmada',
       checkInRealizado: false,
@@ -189,12 +196,16 @@ async function main() {
   );
   assert.strictEqual(paraAgente.sugeridas[0].cita_page_id, 'cita-aprobada');
   assert.deepStrictEqual(paraAgente.citasConfirmadas, porWhatsapp.citasConfirmadas);
-  assert.strictEqual(paraAgente.opciones_adicionales[0].estatus, 'Sugerido');
+  assert.ok(
+    paraAgente.sugeridas_para_ofrecer.some(
+      (s) => s.estatus === 'Sugerido' && s.estatus_origen === 'sugerido'
+    )
+  );
   const filtrosMcp = filtros.slice(nFiltrosAntesMcp);
   assert.ok(filtrosMcp.some((f) => JSON.stringify(f).includes('"Sugerido"')));
 
   console.log('✅ sugeridas hidrata empresas por WhatsApp y page_id');
-  console.log('✅ sugeridas (capa 1) es solo Aprobado; Sugerido va a opciones_adicionales');
+  console.log('✅ sugeridas (capa 1) es solo Aprobado; el Sugerido completa el lote de 4');
   console.log('✅ Confirmada no se vuelve a ofrecer en sugeridas_para_ofrecer');
   console.log('✅ incluye citasConfirmadas y ya no expone calendarioGoogleId');
 }

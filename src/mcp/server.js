@@ -298,7 +298,7 @@ async function ejecutarConsultarDisponibilidadCita(
         ? pedidoLibre
           ? `El usuario pidió las ${horaPedida}. Esa hora SÍ está libre (horario_solicitado.disponible=true) y ya va en opciones_para_ofrecer. Dilo explícitamente; no la niegues porque no salía en las casillas. Ofrece como máximo estas 3.`
           : `El usuario pidió las ${horaPedida}. Esa hora NO está libre (mira horario_solicitado). Dilo así y ofrece SOLO las alternativas de opciones_para_ofrecer. No inventes otra hora.`
-        : 'Ofrece SOLO estas opciones_para_ofrecer, en el mismo orden, y solo lo que encaje con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con hora=15:00 (y fecha si dijo el día). Si pide otras horas, excluirInicios = los inicio ya ofrecidos. Foto: reservar_cita / modificar_cita revalidan el bloque.',
+        : 'Ofrece SOLO estas opciones_para_ofrecer, en este orden cronológico, y solo lo que encaje con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con hora=15:00 (y fecha si dijo el día). Si pide otras horas, excluirInicios = los inicio ya ofrecidos. Foto: reservar_cita / modificar_cita revalidan el bloque.',
     });
   } catch (err) {
     return respuestaJson(
@@ -549,7 +549,7 @@ function crearServidorMcp() {
 
   server.tool(
     'consultar_disponibilidad_cita',
-    'Consulta horarios reales libres de un sponsor. Excluye bloques donde el asistente ya tiene cita y bloques que ya no se pueden tomar. Devuelve máximo 3 en opciones_para_ofrecer, en ese orden: no inventes, no reordenes, no listes más. Pasa siempre whatsapp (o asistentePageId). Si acotó día, pasa fecha. Si pidió una hora (ej. 15:00), pasa hora y fecha; no la niegues solo porque no salía en las 3 — mira horario_solicitado. Si hay_mas y pide otras, excluirInicios. En el chat: menciona solo lo que encaja con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. reservar_cita / modificar_cita revalidan el bloque.',
+    'Consulta horarios reales libres de un sponsor. Excluye bloques donde el asistente ya tiene cita y bloques que ya no se pueden tomar. Devuelve máximo 3 en opciones_para_ofrecer, en orden cronológico: no inventes, no reordenes, no listes más. Pasa siempre whatsapp (o asistentePageId). Si acotó día, pasa fecha. Si pidió una hora (ej. 15:00), pasa hora y fecha; no la niegues solo porque no salía en las 3 — mira horario_solicitado. Si hay_mas y pide otras, excluirInicios. En el chat: menciona solo lo que encaja con lo que pidió. Si dijo “jueves tarde”, no recites mañana ni el otro día. Pregunta “¿lo dejo?” solo si aún no eligió hora. reservar_cita / modificar_cita revalidan el bloque.',
     {
       sponsorPageId: z
         .string()
