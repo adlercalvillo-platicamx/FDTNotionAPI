@@ -47,6 +47,9 @@ const ESTADO_FOLLOWUP_ENVIADO = 'Enviado';
 const ESTADO_FOLLOWUP_FALLO = 'Falló';
 const TEMPLATE_ENV_RECORDATORIO = 'PLATICA_TEMPLATE_RECORDATORIO_EVENTO';
 const TEMPLATE_SIMULACION_RECORDATORIO = 'PENDIENTE_PLANTILLA_RECORDATORIO_EVENTO';
+// 22-sep Adler: no se usa. El endpoint queda vivo por si el cron de Coolify
+// sigue pegando; nunca llama Notion ni Plática. No hay env para reactivar.
+const RECORDATORIO_EVENTO_HABILITADO = false;
 // Confirmado por Adler: 14 días antes del evento. El endpoint es seguro
 // como cron diario: si la ventana no se ha cumplido, sale sin efecto.
 const DIAS_ANTES_RECORDATORIO_EVENTO = 14;
@@ -1057,6 +1060,21 @@ function payloadRecordatorio({ contacto, modoSimulacion }) {
  * ni Plática. `ahora` es solo para pruebas; el HTTP no lo acepta.
  */
 async function enviarRecordatorioEvento({ modoSimulacion, ahora = new Date() } = {}) {
+  if (!RECORDATORIO_EVENTO_HABILITADO) {
+    return {
+      disparado: false,
+      motivo: 'RECORDATORIO_EVENTO_DESHABILITADO',
+      enviados: 0,
+      simulados: 0,
+      contactosEvaluados: 0,
+      marcadosSinEnviarPorInteraccion: 0,
+      omitidosYaMarcado: 0,
+      sinEnviar: 0,
+      errores: [],
+      detalle: [],
+    };
+  }
+
   const ventana = evaluarVentanaRecordatorio(ahora);
   if (!ventana.cumplida) {
     return {
@@ -1168,6 +1186,7 @@ async function enviarRecordatorioEvento({ modoSimulacion, ahora = new Date() } =
 
 module.exports = {
   OFERTA_INICIAL,
+  RECORDATORIO_EVENTO_HABILITADO,
   DIAS_ANTES_RECORDATORIO_EVENTO,
   FECHA_EVENTO,
   evaluarVentanaRecordatorio,
