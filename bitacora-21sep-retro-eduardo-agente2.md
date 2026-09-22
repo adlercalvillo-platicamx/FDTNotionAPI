@@ -23,7 +23,14 @@ El chat de Eduardo (`29kjcyV4wVnhkqKXTQ99`, 5218444644160) confirma los 4 puntos
 
 ## Cómo operarlo
 
-- Coolify fue redesplegado y el MCP refrescado por Adler. El backend ya devuelve `opciones_para_ofrecer` en orden cronológico.
+- **Corrección (21-sep, cierre):** Adler redesplegó Coolify y refrescó el MCP,
+  pero el sort seguía sin commitear. El backend que se probó era `99e0359`,
+  cuyo `seleccionarHorariosParaOferta` termina en `return unicos.slice(0,
+  limite)` — sin ordenar. El código salió hasta `24808b2`. El orden cronológico
+  que se vio en el chat venía de dos cosas ajenas al deploy: las casillas ya
+  producen Mañana → Tarde → Día 2 (cronológicas por construcción) y el prompt
+  manda reordenar en el chat. Decir “el backend ya devuelve
+  `opciones_para_ofrecer` en orden cronológico” era falso.
 - `PRB004` y `PRB104` están repetidos en cinco clones de prueba. Para probar el caso feliz se cambiaron temporalmente solo en Adler por `ADLER21SEP-R/B`; al terminar se restauraron y verificaron.
 - Destinatarios de la prueba E2E: Adler `adlerero666@gmail.com`; CaaS `adler.calvillo@platica.mx`. Ningún correo externo.
 
@@ -36,11 +43,18 @@ El chat de Eduardo (`29kjcyV4wVnhkqKXTQ99`, 5218444644160) confirma los 4 puntos
 | Folio ambiguo `PRB004` | Detectó 5 coincidencias y transfirió correctamente |
 | Folio único temporal | Identificó a Adler, hidrató el teléfono nuevo y listó CaaS/Reevolution/Blip/Tiendanube |
 | Adler: duración | “La reunión dura 20 minutos. La invitación aparta 30: incluye 10 para el cambio de mesa.” |
-| Adler: CaaS, sin agendar | miércoles 10:30, miércoles 14:00, jueves 09:00 (cronológico desde MCP) |
+| Adler: CaaS, sin agendar | miércoles 10:30, miércoles 14:00, jueves 09:00. Cronológico, pero ese caso ya sale ordenado de las casillas: no prueba el sort del backend |
 | Reserva real | CaaS 7-oct 10:30, Mesa 1, cita `3e362dda-199a-8110-951b-df8ba84ca8c5` |
 | Reagenda real | 7-oct 14:00, Mesa 1; WhatsApp resumió fecha, hora, mesa y Club France |
 | Limpieza | Cita cancelada, 0 activas; folios/WhatsApp/giro restaurados; 4 contactos sintéticos eliminados |
 | `node tests/horarios-oferta.manual-test.js` | OK |
 | `node tests/mcp-modificar-cancelar.manual-test.js` | OK; expectativa de hora solicitada actualizada al orden cronológico |
 
-Sin pendientes de esta prueba. La mesa no cambió (Mesa 1 en ambos bloques), pero el agente la reportó explícitamente después de reservar y de modificar.
+La mesa no cambió (Mesa 1 en ambos bloques), pero el agente la reportó explícitamente después de reservar y de modificar.
+
+Pendiente real: el único caso que depende del sort del backend es cuando el
+contacto pide una hora concreta (`hora=HH:MM`), porque el bloque pedido se
+mete al frente del lote antes de ordenar. Ese no se probó en vivo y necesita
+redeploy de `24808b2`. Los puntos 1, 2 y 3 de Eduardo (folio, resumen completo
+al confirmar/mover, 20+10) son solo prompt: esos sí quedaron verificados,
+porque Plática aplica el prompt al instante y no dependen de Coolify.
