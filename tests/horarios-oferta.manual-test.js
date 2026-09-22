@@ -262,6 +262,32 @@ function casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14() {
   assert.strictEqual(new Set(iniciosDe(conPedido)).size, 3);
 }
 
+// La hora pedida ocupa su casilla (Día 1 Mañana), no se suma encima: antes el
+// corte a 3 tiraba la casilla de Día 2 y pedir una hora borraba el jueves.
+function casoPedidoDeHoraNoBorraElDia2() {
+  const bloques = [];
+  for (const h of ['10:30', '11:00', '11:30', '12:00', '14:00', '14:30']) {
+    bloques.push(bloque(`2026-10-07T${h}:00-06:00`));
+  }
+  for (const h of ['09:00', '09:30', '14:00']) {
+    bloques.push(bloque(`2026-10-08T${h}:00-06:00`));
+  }
+  const elegidos = seleccionarHorariosParaOferta(bloques, 3, { priorizarHora: '11:30' });
+  assert.deepStrictEqual(iniciosDe(elegidos), [
+    '2026-10-07T11:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
+    '2026-10-08T09:00:00-06:00',
+  ]);
+
+  // Hora pedida en el Día 2: toma la casilla del Día 2, no la de Día 1 Tarde.
+  const enDia2 = seleccionarHorariosParaOferta(bloques, 3, { priorizarHora: '09:30' });
+  assert.deepStrictEqual(iniciosDe(enDia2), [
+    '2026-10-07T10:30:00-06:00',
+    '2026-10-07T14:00:00-06:00',
+    '2026-10-08T09:30:00-06:00',
+  ]);
+}
+
 function casoFormatoLegible() {
   assert.strictEqual(
     formatearHorarioLegible('2026-10-07T10:30:00-06:00'),
@@ -296,6 +322,7 @@ casoFotoDisponibilidadMarcaPasado();
 casoDisponibilidadDelSponsorTopNoCruzaConOtros();
 casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque();
 casoPedidoDeLas15hEntraAunqueLasCasillasElijianLas14();
+casoPedidoDeHoraNoBorraElDia2();
 casoFormatoLegible();
 casoScoreFormulaYFallbackNotas();
 console.log('✅ Selección compartida: casillas Día1 Mañana/Tarde + Día2, relleno, exclusión de pasados, ocupación propia, formato y score.');

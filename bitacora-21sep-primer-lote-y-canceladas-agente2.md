@@ -119,6 +119,50 @@ de disparar: Adler `adlerero666@gmail.com` y Magali/CaaS de prueba
 Estado final: Adler con 0 citas activas; CaaS sigue como cancelada reagendable.
 `fase_evento=antes`. Toda la batería `tests/*.manual-test.js`: 0 fallas.
 
+## Prueba por WhatsApp real y la casilla de Día 2 (22-sep, 05:31–05:33 UTC)
+
+Lo anterior se había probado por el canal de chat de la API, no por WhatsApp.
+Adler repitió el saludo y los horarios desde su teléfono en el canal
+`wb-1167456423128610`. Antes se cerró el hilo `OuigYiPKdwhNojLUUwnt`, que
+seguía `active` con el saludo viejo, para no probar una continuación.
+
+Saludo: correcto. Cancelada de Magali Parra / CaaS en un renglón aparte y
+tres empresas numeradas; cuatro opciones en total.
+
+**Bug encontrado por Adler.** Con `hora=11:30` la tool devolvió `10:30`,
+`11:30` y `14:00`, todas del miércoles 7: el jueves nunca apareció en el
+primer ofrecimiento. No era azar. La hora pedida se **sumaba** a las tres
+casillas y el lote quedaba `[11:30, D1 Mañana, D1 Tarde, D2]`; el corte a 3
+tiraba siempre el último, que es la casilla de Día 2. O sea: pedir una hora
+concreta borraba el segundo día. Sin pedir hora, el Día 2 sí salía.
+
+Arreglo en `seleccionarHorariosParaOferta`: la hora pedida ocupa la casilla
+que le corresponde por día y periodo en lugar de agregarse encima. La misma
+consulta ahora devuelve `11:30`, `14:00` y jueves `09:00`. Se pierde el 10:30
+y se gana el segundo día. Decisión de Adler, 22-sep.
+
+Caso nuevo en `tests/horarios-oferta.manual-test.js`
+(`casoPedidoDeHoraNoBorraElDia2`), que fija el triple exacto y cubre también
+una hora pedida que cae en el Día 2. `casoPedidoDeLas15h…` sigue pasando sin
+tocarlo. Suite completa: 0 fallas (`asignacion-mesa.notion-smoke.js` aborta
+por falta de `NOTION_API_KEY`, como siempre fuera de Coolify).
+
+Verificado contra Notion de producción: Reevolution tiene el 7 libre desde
+las 10:30 (hora de inicio configurada del día, no ocupación) y el 8 desde las
+9:00, con solo las 15:30 ocupadas. Los datos que dio el agente eran correctos,
+solo incompletos.
+
+**Guarda de ids funcionando.** En la primera llamada el agente armó un
+`sponsorPageId` inválido pegando el prefijo de sponsors con la cola del id de
+Adler — la misma falla del 2-sep. `requireSponsorExistente` respondió
+`SPONSOR_NO_ENCONTRADO`, el agente reconsultó sugeridas y se corrigió en el
+mismo turno, sin efecto visible. Adler decidió no endurecer el prompt: la
+guarda basta.
+
 ## Pendientes
 
-Ninguno de esta revalidación.
+- **Requiere redeploy**: el arreglo de la casilla de Día 2 es backend.
+- No se revisó el contenido real de los correos ni del `.ics` en esta ronda;
+  solo se verificó que los destinatarios estén en la allowlist.
+- El caso de Eduardo donde la mesa cambia de número al mover no se reprodujo:
+  en las pruebas la mesa se quedó en 1 las dos veces.

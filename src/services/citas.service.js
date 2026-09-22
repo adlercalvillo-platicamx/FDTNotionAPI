@@ -2416,8 +2416,12 @@ function normalizarHoraPedido(hora) {
  * colapsa a Mañana / Tarde / relleno. Nunca inventa bloques.
  * Si pidió una hora concreta (`priorizarHora`), entra en el lote cuando
  * está libre — las casillas solas nunca eligen 15:00 si 14:00 está libre
- * (el primer bloque de Tarde gana). El lote final se ordena cronológicamente
- * para el chat (Adler/Eduardo, 21-sep): no se ofrece 11:30, 14:00, 12:00.
+ * (el primer bloque de Tarde gana). La hora pedida **ocupa la casilla que le
+ * toca** por día y periodo; cuando se sumaba encima, el corte a 3 tiraba
+ * siempre la casilla de Día 2 y pedir una hora borraba el segundo día del
+ * primer ofrecimiento (Adler, 21-sep: 11:30 devolvía 10:30/11:30/14:00 y
+ * nunca el jueves). El lote final se ordena cronológicamente para el chat
+ * (Adler/Eduardo, 21-sep): no se ofrece 11:30, 14:00, 12:00.
  */
 function seleccionarHorariosParaOferta(
   bloquesDisponibles,
@@ -2436,31 +2440,38 @@ function seleccionarHorariosParaOferta(
   const pedido = horaPedida
     ? extraerPrimero(restantes, (bloque) => horaDeInicio(bloque.inicio) === horaPedida)
     : null;
-  const fechas = [...new Set(restantes.map((bloque) => fechaDeInicio(bloque.inicio)))].sort();
-  const slots =
+  const fechas = [
+    ...new Set([...(pedido ? [pedido] : []), ...restantes].map((bloque) => fechaDeInicio(bloque.inicio))),
+  ].sort();
+  // null = casilla de relleno: el bloque más próximo que quede.
+  const casillas =
     fechas.length >= 2
       ? [
-          extraerPrimero(
-            restantes,
-            (bloque) =>
-              fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Mañana'
-          ),
-          extraerPrimero(
-            restantes,
-            (bloque) =>
-              fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Tarde'
-          ),
-          extraerPrimero(restantes, (bloque) => fechaDeInicio(bloque.inicio) === fechas[1]),
+          (bloque) =>
+            fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Mañana',
+          (bloque) =>
+            fechaDeInicio(bloque.inicio) === fechas[0] && periodoDeHorario(bloque.inicio) === 'Tarde',
+          (bloque) => fechaDeInicio(bloque.inicio) === fechas[1],
         ]
       : [
-          extraerPrimero(restantes, (bloque) => periodoDeHorario(bloque.inicio) === 'Mañana'),
-          extraerPrimero(restantes, (bloque) => periodoDeHorario(bloque.inicio) === 'Tarde'),
-          extraerMasProximo(restantes),
+          (bloque) => periodoDeHorario(bloque.inicio) === 'Mañana',
+          (bloque) => periodoDeHorario(bloque.inicio) === 'Tarde',
+          null,
         ];
+  const slots = new Array(casillas.length).fill(null);
+  if (pedido) {
+    const suya = casillas.findIndex((encaja) => (encaja ? encaja(pedido) : true));
+    slots[suya < 0 ? casillas.length - 1 : suya] = pedido;
+  }
+  for (let i = 0; i < casillas.length; i += 1) {
+    if (slots[i]) continue;
+    const encaja = casillas[i];
+    slots[i] = encaja ? extraerPrimero(restantes, encaja) : extraerMasProximo(restantes);
+  }
   for (let i = 0; i < slots.length; i += 1) {
     if (!slots[i]) slots[i] = extraerMasProximo(restantes);
   }
-  const ordenados = [pedido, ...slots].filter(Boolean);
+  const ordenados = slots.filter(Boolean);
   const vistos = new Set();
   const unicos = [];
   for (const bloque of ordenados) {
