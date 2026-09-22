@@ -1,6 +1,8 @@
 # Bitácora 21sep — el "hola" que solo ofreció CaaS
 Handoff. Código gana si esto contradice algo.
-Trabajo del 21-sep (madrugada del 22 UTC). Sin commit al cerrar: cambios en árbol de trabajo. Continúa [bitacora-21sep-retro-eduardo-agente2.md].
+Trabajo del 21-sep (madrugada del 22 UTC). Backend en `24808b2`; corrección
+de evidencia en `17ff497`. Continúa
+[bitacora-21sep-retro-eduardo-agente2.md].
 
 ## Pedido
 
@@ -43,9 +45,8 @@ Dos causas, las dos en `citas.service.js`:
 - `motivo_sin_opciones` sigue mirando la lista completa de adicionales: sin la
   promoción contaría 0 y diría “opciones agotadas” con opciones en mano.
 
-**Prompt del Agente 2** (`c1IYnFsr0Jzfqq4NeLAs`, activo
-`8PwHCaweJS4enS9l3KCX`, 22 sep 04:57 UTC, tres ediciones exactas sobre
-`knaysLsydl5vrN8Q1R9R`):
+**Prompt del Agente 2** (`c1IYnFsr0Jzfqq4NeLAs`; tras la revalidación,
+activo `Tzj02oyPHGAmhQGyW7C9`, 22 sep 05:21 UTC):
 
 - Si la lista trae 4, van las 4 en ese mensaje.
 - Una cancelada reagendable se nombra antes de la lista y con la persona:
@@ -55,8 +56,7 @@ Dos causas, las dos en `citas.service.js`:
   nueva; prohibido repetir de memoria algo que dependa de `fase_evento` o del
   estado de las citas.
 
-Snapshot en `prompts-agentes-platica/` actualizado y verificado idéntico al
-prompt vivo.
+Snapshot en `prompts-agentes-platica/` actualizado.
 
 ## Lo de “la edición ya terminó”
 
@@ -69,8 +69,7 @@ No se cambió nada de infraestructura; solo el guardrail del prompt.
 
 ## Cómo operarlo
 
-Requiere **redeploy** de Coolify: los dos arreglos son de backend. Sin
-redeploy, el prompt nuevo seguirá recibiendo un solo ítem en el lote.
+Redeploy de Coolify hecho por Adler después de subir `24808b2`.
 
 ## Evidencia
 
@@ -85,9 +84,41 @@ redeploy, el prompt nuevo seguirá recibiendo un solo ítem en el lote.
   `citasConfirmadas`, que entró en `e80214c` y nunca se reflejó en el test;
   ya fallaban **antes** de este cambio).
 
+## Revalidación real post-redeploy (22-sep, 05:10–05:24 UTC)
+
+No se dio por bueno el primer resultado. Se abrieron conversaciones nuevas
+con el Agente 2 y se corrigió cada desviación encontrada:
+
+1. Primer “Hola”: duplicó CaaS (cancelada + número 1).
+2. Segundo “Hola”: dejó de duplicarla, pero ofreció 5 posibilidades totales.
+3. Tercer “Hola”: aprobado. Cancelada CaaS/Magali una sola vez + Reevolution,
+   Blip y Tiendanube; pregunta concreta.
+4. Folio: la primera repetición pidió “empresa a la que te interesa
+   contactar”, ambiguo e incorrecto. Corregido y repetido en chat limpio:
+   pidió nombre, correo de compra y “empresa con la que te registraste o donde
+   trabajas”, aclarando que no es el sponsor. Solo después de los tres datos
+   escaló. Cliente sintético eliminado al terminar.
+5. Orden backend, caso que antes no se había probado: Reevolution con
+   `hora=11:30` devolvió desde la tool `10:30`, `11:30`, `jueves 11:30`. El
+   agente conservó el orden. Esto sí prueba el sort desplegado.
+6. Duración: “20 minutos”; calendario 30 = 20 + 10 de margen.
+7. Reserva controlada CaaS: confirmó miércoles 7 10:30, Mesa 1, Club France,
+   zona y pasillo.
+8. Modificación controlada: confirmó miércoles 7 14:00, Mesa 1, Club France,
+   zona y pasillo.
+9. Primera cancelación: **falló** el guardrail; ejecutó la tool sin pedir
+   confirmación. Se endureció a dos turnos y se repitió desde una conversación
+   nueva. Resultado final aprobado: “Cancela…” solo repitió empresa, fecha,
+   hora y mesa y preguntó “¿Confirmas que la cancele?”; únicamente después de
+   “Sí” ejecutó la cancelación.
+
+Destinatarios reales de las pruebas de reserva/mover/cancelar, nombrados antes
+de disparar: Adler `adlerero666@gmail.com` y Magali/CaaS de prueba
+`adler.calvillo@platica.mx`. Ningún correo externo.
+
+Estado final: Adler con 0 citas activas; CaaS sigue como cancelada reagendable.
+`fase_evento=antes`. Toda la batería `tests/*.manual-test.js`: 0 fallas.
+
 ## Pendientes
 
-- Redeploy y volver a escribir “Hola” desde el WhatsApp de Adler para ver el
-  lote de 4 y la frase de la cancelada en vivo.
-- La cita cancelada de CaaS sigue abierta como reagendable; si estorba en las
-  pruebas, reagendarla o dejarla consumida.
+Ninguno de esta revalidación.
