@@ -46,11 +46,14 @@ async function request(path, options = {}) {
   return data;
 }
 
-export async function identificar(email) {
+export async function identificar(email, contactoId) {
   const data = await request('/identificar', {
     method: 'POST',
     auth: false,
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email,
+      ...(contactoId ? { contactoId } : {}),
+    }),
   });
   window.sessionStorage.setItem(TOKEN_KEY, data.token);
   return data;
@@ -64,8 +67,9 @@ export function listarSponsors() {
   return request('/sponsors');
 }
 
-export function consultarDisponibilidad(sponsor, fecha) {
+export function consultarDisponibilidad(sponsor, fecha, exceptCitaId) {
   const query = new URLSearchParams({ sponsor, fecha });
+  if (exceptCitaId) query.set('exceptCitaId', exceptCitaId);
   return request(`/disponibilidad?${query}`);
 }
 
@@ -78,5 +82,18 @@ export function reservar({ sponsor, inicio, fin, requestId }) {
       fin,
       request_id: requestId,
     }),
+  });
+}
+
+export function modificarCita({ citaId, inicio }) {
+  return request(`/citas/${citaId}/modificar`, {
+    method: 'POST',
+    body: JSON.stringify({ inicio }),
+  });
+}
+
+export function cancelarCita(citaId) {
+  return request(`/citas/${citaId}/cancelar`, {
+    method: 'POST',
   });
 }

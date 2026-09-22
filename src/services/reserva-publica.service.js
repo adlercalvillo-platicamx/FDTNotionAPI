@@ -1,11 +1,13 @@
 const contactos = require('./contactos.service');
 const citas = require('./citas.service');
-const { reservarCita } = require('./booking.service');
+const { reservarCita, modificarCita, cancelarCita } = require('./booking.service');
 const { emitirTokenReserva } = require('./reserva-publica-token.service');
 
 const BOLETOS_CON_CITAS = new Set(['Presencial', 'Presencial VIP', 'Virtual', 'Speaker']);
 const NIVELES_SIN_CITAS = new Set(['Bronce']);
 const WHATSAPP_SOPORTE_CITAS = '+52 33 3236 1963';
+const UUID_CANONICO_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class ReservaPublicaError extends Error {
   constructor(code, message, status = 400, detalle) {
@@ -23,6 +25,15 @@ function normalizarEmail(valor) {
 
 function emailValido(valor) {
   return valor.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+}
+
+function pageIdCanonico(id) {
+  return String(id || '').replace(/-/g, '').toLowerCase();
+}
+
+function etiquetaGiro(giro) {
+  const texto = String(giro || '').trim();
+  return texto || 'sin giro';
 }
 
 function exigirAsistenteElegible(asistente) {
@@ -47,6 +58,16 @@ function exigirAsistenteElegible(asistente) {
       403
     );
   }
+  const giros = contactos.GIROS_ELEGIBLES_MATCHMAKING || [];
+  if (!giros.includes(asistente.giroIndustria)) {
+    const giro = etiquetaGiro(asistente.giroIndustria);
+    throw new ReservaPublicaError(
+      'GIRO_NO_ELEGIBLE',
+      `El giro registrado de tu empresa es ${giro}. Las citas 1 a 1 están disponibles para marca de moda, retailer/marketplace o manufactura. Este perfil no es elegible. Si hace falta revisarlo, acércate con el equipo de Fashion Digital Talks.`,
+      403,
+      { giro }
+    );
+  }
   return asistente;
 }
 
@@ -57,10 +78,20 @@ function formatearCita(cita) {
     sponsor_notion_id: cita.sponsorPageId || null,
     fechaHora: cita.inicio || null,
     mesa: cita.mesa || null,
+    checkInRealizado: cita.checkInRealizado === true,
   };
 }
 
-async function identificarPorEmail(emailEntrada) {
+function opcionPersona(asistente) {
+  return {
+    id: asistente.id,
+    nombre: asistente.nombre || 'Asistente',
+    empresa: asistente.empresa || '',
+    ticketTipo: asistente.ticketTipo || '',
+  };
+}
+
+async function identificarPorEmail(emailEntrada, contactoIdSeleccionado) {
   const email = normalizarEmail(emailEntrada);
   if (!emailValido(email)) {
     throw new ReservaPublicaError('EMAIL_INVALIDO', 'El formato del correo no es válido.', 400);
@@ -85,16 +116,34 @@ async function identificarPorEmail(emailEntrada) {
       403
     );
   }
-  if (asistentesActivos.length > 1) {
+  const seleccion = String(contactoIdSeleccionado || '').trim();
+  if (asistentesActivos.length > 1 && !seleccion) {
     throw new ReservaPublicaError(
       'EMAIL_AMBIGUO',
-      'Hay más de un asistente activo con ese correo; requiere revisión del equipo.',
-      409
+      'Este correo corresponde a más de una persona. Elige para quién quieres gestionar las citas.',
+      409,
+      { personas: asistentesActivos.map(opcionPersona) }
     );
   }
 
-  const asistente = exigirAsistenteElegible(asistentesActivos[0]);
+  const asistenteSeleccionado = seleccion
+    ? asistentesActivos.find(
+        (asistente) => pageIdCanonico(asistente.id) === pageIdCanonico(seleccion)
+      )
+    : asistentesActivos[0];
+  if (!asistenteSeleccionado) {
+    throw new ReservaPublicaError(
+      'SELECCION_PERSONA_INVALIDA',
+      'La persona elegida no corresponde a este correo.',
+      400
+    );
+  }
+
+  const asistente = exigirAsistenteElegible(asistenteSeleccionado);
   const citasReales = await citas.listarCitasRealesPorAsistente(asistente.id);
+  const canceladas = await citas.listarCanceladasReagendablesPorAsistente(asistente.id, {
+    citasConfirmadas: citasReales,
+  });
 
   return {
     token: emitirTokenReserva({ contactoId: asistente.id }),
@@ -102,10 +151,15 @@ async function identificarPorEmail(emailEntrada) {
       nombre: asistente.nombre || '',
       empresa: asistente.empresa || '',
       ticketTipo: asistente.ticketTipo,
+      giroIndustria: asistente.giroIndustria || '',
     },
     citasConfirmadas: citasReales
       .slice()
       .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')))
+      .map(formatearCita),
+    citasCanceladasReagendables: canceladas
+      .slice()
+      .sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || '')))
       .map(formatearCita),
   };
 }
@@ -126,11 +180,48 @@ async function listarSponsorsPublicos() {
     .sort((a, b) => a.empresa.localeCompare(b.empresa, 'es'));
 }
 
-async function obtenerDisponibilidadPublica({ contactoId, sponsorPageId, fecha }) {
+async function exigirCitaDelContacto(contactoId, citaId) {
+  const id = String(citaId || '').trim();
+  if (!UUID_CANONICO_RE.test(id)) {
+    throw new ReservaPublicaError('INVALID_INPUT', 'citaId debe ser un UUID válido.', 400);
+  }
+
+  let pagina;
+  try {
+    pagina = await citas.obtenerCitaPorId(id);
+  } catch (err) {
+    if (err.status === 404 || err.status === 400) {
+      throw new ReservaPublicaError(
+        'CITA_NO_ENCONTRADA',
+        'No encontramos esa cita.',
+        404
+      );
+    }
+    throw err;
+  }
+
+  const cita = citas.datosDeCita(pagina);
+  if (pageIdCanonico(cita.asistentePageId) !== pageIdCanonico(contactoId)) {
+    throw new ReservaPublicaError(
+      'CITA_NO_PERTENECE',
+      'Esa cita no corresponde a este registro.',
+      403
+    );
+  }
+  return cita;
+}
+
+async function obtenerDisponibilidadPublica({ contactoId, sponsorPageId, fecha, exceptCitaId }) {
+  let exceptPageId;
+  if (exceptCitaId) {
+    const cita = await exigirCitaDelContacto(contactoId, exceptCitaId);
+    exceptPageId = cita.id;
+  }
   return citas.obtenerDisponibilidadSponsor({
     sponsorPageId,
     fecha,
     asistentePageId: contactoId,
+    exceptPageId,
   });
 }
 
@@ -150,6 +241,14 @@ function requestIdPublico(contactoId, requestId) {
     );
   }
   return `qr:${contactoId}:${valor}`;
+}
+
+function respuestaOperacion(resultado) {
+  return {
+    ...resultado,
+    mesa: etiquetaMesa(resultado.mesa),
+    whatsappSoporte: WHATSAPP_SOPORTE_CITAS,
+  };
 }
 
 async function reservarPublicamente({
@@ -176,13 +275,28 @@ async function reservarPublicamente({
     ...(cancelada ? { cita_origen_cancelada_id: cancelada.id } : {}),
   });
 
-  return {
-    ...resultado,
-    // `reservarCita` devuelve el número crudo; Notion y `identificar` usan
-    // la etiqueta "Mesa N". La página imprime este valor tal cual.
-    mesa: etiquetaMesa(resultado.mesa),
-    whatsappSoporte: WHATSAPP_SOPORTE_CITAS,
-  };
+  return respuestaOperacion(resultado);
+}
+
+async function modificarPublicamente({ contactoId, citaId, inicio }) {
+  const asistente = await contactos.obtenerContacto(contactoId);
+  exigirAsistenteElegible(asistente);
+  await exigirCitaDelContacto(contactoId, citaId);
+
+  const resultado = await modificarCita({
+    citaId,
+    nuevaFechaHora: inicio,
+  });
+  return respuestaOperacion(resultado);
+}
+
+async function cancelarPublicamente({ contactoId, citaId }) {
+  const asistente = await contactos.obtenerContacto(contactoId);
+  exigirAsistenteElegible(asistente);
+  await exigirCitaDelContacto(contactoId, citaId);
+
+  const resultado = await cancelarCita({ citaId });
+  return respuestaOperacion(resultado);
 }
 
 module.exports = {
@@ -191,5 +305,7 @@ module.exports = {
   listarSponsorsPublicos,
   obtenerDisponibilidadPublica,
   reservarPublicamente,
+  modificarPublicamente,
+  cancelarPublicamente,
   exigirAsistenteElegible,
 };

@@ -19,5 +19,15 @@ router.get(
   controller.disponibilidad
 );
 router.post('/reservar', limitarReservaPublica({ max: 20 }), controller.reservar);
+router.post(
+  '/citas/:citaId/modificar',
+  limitarReservaPublica({ max: 20 }),
+  controller.modificar
+);
+router.post(
+  '/citas/:citaId/cancelar',
+  limitarReservaPublica({ max: 20 }),
+  controller.cancelar
+);
 
 module.exports = router;

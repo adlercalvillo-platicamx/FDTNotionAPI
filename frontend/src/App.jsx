@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
   ApiError,
+  cancelarCita,
   cerrarSesion,
   consultarDisponibilidad,
   identificar,
   listarSponsors,
+  modificarCita,
   reservar,
 } from './api';
 
@@ -20,6 +22,8 @@ const COPY_ERROR = {
     'No encontramos este correo entre los asistentes registrados. Intenta con el mismo correo que utilizaste en tu registro. Si necesitas ayuda, acércate con el equipo de Fashion Digital Talks.',
   BOLETO_EXPO_NO_PERMITE_CITAS:
     'Tu boleto Expo incluye acceso al piso de exhibición, pero no incluye citas 1 a 1. Si tienes dudas, acércate con el equipo de Fashion Digital Talks.',
+  CITA_YA_OCURRIO:
+    'Esta cita ya ocurrió y tiene el check-in marcado, así que no se puede mover. Si hace falta, agenda una cita nueva.',
 };
 
 function fechaLarga(fecha) {
@@ -43,6 +47,11 @@ function mensajeError(error) {
   return COPY_ERROR[error.code] || error.message;
 }
 
+function citaYaOcurrio(cita) {
+  if (!cita?.checkInRealizado || !cita.fechaHora) return false;
+  return Date.parse(cita.fechaHora) < Date.now();
+}
+
 function Brand() {
   return (
     <a
@@ -60,9 +69,15 @@ function Brand() {
   );
 }
 
-function Steps({ step }) {
-  const labels = ['Identifícate', 'Elige sponsor', 'Selecciona horario', 'Confirma'];
-  const active = { email: 0, sponsors: 1, horarios: 2, exito: 3 }[step] ?? 0;
+function Steps({ step, requierePersona = false }) {
+  const labels = requierePersona
+    ? ['Identifícate', 'Elige persona', 'Elige sponsor', 'Selecciona horario', 'Confirma']
+    : ['Identifícate', 'Elige sponsor', 'Selecciona horario', 'Confirma'];
+  const active = (
+    requierePersona
+      ? { email: 0, persona: 1, sponsors: 2, horarios: 3, exito: 4 }
+      : { email: 0, sponsors: 1, horarios: 2, exito: 3 }
+  )[step] ?? 0;
   return (
     <ol className="steps" aria-label="Progreso de la reserva">
       {labels.map((label, index) => (
@@ -75,19 +90,112 @@ function Steps({ step }) {
   );
 }
 
-function ExistingAppointments({ citas, virtual = false }) {
+function PersonSelection({ personas, loading, onSelect }) {
+  return (
+    <section className="content-section person-selection">
+      <span className="eyebrow">Correo compartido</span>
+      <h1>¿Para quién quieres gestionar las citas?</h1>
+      <p>
+        Encontramos más de una persona registrada con este correo. Elige el
+        registro correcto para continuar.
+      </p>
+      <div className="person-grid">
+        {personas.map((persona) => (
+          <article className="person-card" key={persona.id}>
+            <div>
+              <h2>{persona.nombre}</h2>
+              {persona.empresa && <p>{persona.empresa}</p>}
+              {persona.ticketTipo && <small>{persona.ticketTipo}</small>}
+            </div>
+            <button
+              type="button"
+              className="button button-small"
+              disabled={loading}
+              onClick={() => onSelect(persona)}
+            >
+              Continuar con {persona.nombre.split(/\s+/)[0]}
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ExistingAppointments({
+  citas,
+  virtual = false,
+  onModificar,
+  onCancelar,
+}) {
   if (!citas?.length) return null;
   return (
     <aside className="existing">
       <span className="eyebrow">Tus citas confirmadas</span>
+      {citas.map((cita) => {
+        const noMover = citaYaOcurrio(cita);
+        return (
+          <div className="existing-row" key={cita.citaId}>
+            <div className="existing-copy">
+              <strong>{cita.sponsorNombre}</strong>
+              <span>
+                {cita.fechaHora && fechaLarga(cita.fechaHora.slice(0, 10))} ·{' '}
+                {horaCorta(cita.fechaHora)} ·{' '}
+                {virtual ? 'Google Meet' : cita.mesa || 'Mesa por asignar'}
+              </span>
+            </div>
+            <div className="existing-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={noMover}
+                title={noMover ? COPY_ERROR.CITA_YA_OCURRIO : undefined}
+                onClick={() => onModificar(cita)}
+              >
+                Modificar horario
+              </button>
+              <button
+                type="button"
+                className="ghost-button ghost-danger"
+                onClick={() => onCancelar(cita)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </aside>
+  );
+}
+
+function CancelledAppointments({ citas, virtual = false, onReagendar }) {
+  if (!citas?.length) return null;
+  return (
+    <aside className="existing cancelled">
+      <span className="eyebrow">Citas canceladas</span>
       {citas.map((cita) => (
         <div className="existing-row" key={cita.citaId}>
-          <strong>{cita.sponsorNombre}</strong>
-          <span>
-            {cita.fechaHora && fechaLarga(cita.fechaHora.slice(0, 10))} ·{' '}
-            {horaCorta(cita.fechaHora)} ·{' '}
-            {virtual ? 'Google Meet' : cita.mesa || 'Mesa por asignar'}
-          </span>
+          <div className="existing-copy">
+            <strong>{cita.sponsorNombre}</strong>
+            <span>
+              La cita con {cita.sponsorNombre} quedó cancelada; se puede volver a
+              agendar
+              {cita.fechaHora
+                ? ` · era el ${fechaLarga(cita.fechaHora.slice(0, 10))} a las ${horaCorta(cita.fechaHora)}`
+                : ''}
+              {virtual ? ' · Google Meet' : ''}.
+            </span>
+          </div>
+          <div className="existing-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => onReagendar(cita)}
+            >
+              Reagendar
+            </button>
+          </div>
         </div>
       ))}
     </aside>
@@ -141,6 +249,8 @@ function SponsorCard({ sponsor, onSelect }) {
 export default function App() {
   const [step, setStep] = useState('email');
   const [email, setEmail] = useState('');
+  const [personas, setPersonas] = useState([]);
+  const [selectedPersonaId, setSelectedPersonaId] = useState('');
   const [identidad, setIdentidad] = useState(null);
   const [sponsors, setSponsors] = useState([]);
   const [selectedSponsor, setSelectedSponsor] = useState(null);
@@ -148,6 +258,9 @@ export default function App() {
   const [bloques, setBloques] = useState([]);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [reservationRequestId, setReservationRequestId] = useState('');
+  const [modoHorario, setModoHorario] = useState('reservar');
+  const [citaEnEdicion, setCitaEnEdicion] = useState(null);
+  const [citaACancelar, setCitaACancelar] = useState(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -164,20 +277,42 @@ export default function App() {
     );
   }, [query, sponsors]);
 
-  async function cargarSponsors(correo) {
+  function sponsorDesdeCita(cita) {
+    return (
+      sponsors.find((item) => item.id === cita.sponsor_notion_id) || {
+        id: cita.sponsor_notion_id,
+        empresa: cita.sponsorNombre,
+      }
+    );
+  }
+
+  async function cargarSponsors(correo, contactoId) {
     setLoading(true);
     setError('');
     try {
-      const persona = await identificar(correo);
+      const persona = await identificar(correo, contactoId);
       const catalogo = await listarSponsors();
       setIdentidad(persona);
       setSponsors(catalogo.sponsors || []);
+      setSelectedPersonaId(contactoId || '');
       setSelectedSponsor(null);
       setSelectedBlock(null);
       setReservationRequestId('');
+      setCitaEnEdicion(null);
+      setCitaACancelar(null);
+      setModoHorario('reservar');
       setResultado(null);
       setStep('sponsors');
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'EMAIL_AMBIGUO') {
+        cerrarSesion();
+        setPersonas(Array.isArray(err.data?.personas) ? err.data.personas : []);
+        setSelectedPersonaId('');
+        setIdentidad(null);
+        setSponsors([]);
+        setStep('persona');
+        return;
+      }
       setError(mensajeError(err));
     } finally {
       setLoading(false);
@@ -186,17 +321,26 @@ export default function App() {
 
   async function submitEmail(event) {
     event.preventDefault();
+    cerrarSesion();
+    setPersonas([]);
+    setSelectedPersonaId('');
     await cargarSponsors(email);
   }
 
-  async function cargarHorarios(sponsor, nuevaFecha = fecha) {
+  async function cargarHorarios(sponsor, nuevaFecha = fecha, { modo = 'reservar', cita = null } = {}) {
     setLoading(true);
     setError('');
     setSelectedSponsor(sponsor);
     setSelectedBlock(null);
     setReservationRequestId('');
+    setModoHorario(modo);
+    setCitaEnEdicion(modo === 'modificar' ? cita : null);
     try {
-      const data = await consultarDisponibilidad(sponsor.id, nuevaFecha);
+      const data = await consultarDisponibilidad(
+        sponsor.id,
+        nuevaFecha,
+        modo === 'modificar' ? cita?.citaId : undefined
+      );
       setBloques((data.bloques || []).filter((bloque) => bloque.disponible));
       setFecha(nuevaFecha);
       setStep('horarios');
@@ -212,19 +356,43 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const data = await reservar({
-        sponsor: selectedSponsor.id,
-        inicio: selectedBlock.inicio,
-        fin: selectedBlock.fin,
-        requestId: reservationRequestId,
-      });
+      const data =
+        modoHorario === 'modificar' && citaEnEdicion
+          ? await modificarCita({
+              citaId: citaEnEdicion.citaId,
+              inicio: selectedBlock.inicio,
+            })
+          : await reservar({
+              sponsor: selectedSponsor.id,
+              inicio: selectedBlock.inicio,
+              fin: selectedBlock.fin,
+              requestId: reservationRequestId,
+            });
       setResultado(data);
       setStep('exito');
     } catch (err) {
       setError(mensajeError(err));
       if (['SPONSOR_YA_OCUPADO', 'ASISTENTE_YA_OCUPADO', 'CAPACIDAD_MESAS_LLENA'].includes(err.code)) {
-        await cargarHorarios(selectedSponsor, fecha);
+        await cargarHorarios(selectedSponsor, fecha, {
+          modo: modoHorario,
+          cita: citaEnEdicion,
+        });
       }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmarCancelacion() {
+    if (!citaACancelar) return;
+    setLoading(true);
+    setError('');
+    try {
+      await cancelarCita(citaACancelar.citaId);
+      setCitaACancelar(null);
+      await cargarSponsors(email, selectedPersonaId);
+    } catch (err) {
+      setError(mensajeError(err));
     } finally {
       setLoading(false);
     }
@@ -234,20 +402,28 @@ export default function App() {
     cerrarSesion();
     setStep('email');
     setEmail('');
+    setPersonas([]);
+    setSelectedPersonaId('');
     setIdentidad(null);
     setSponsors([]);
     setSelectedSponsor(null);
     setSelectedBlock(null);
     setReservationRequestId('');
+    setCitaEnEdicion(null);
+    setCitaACancelar(null);
+    setModoHorario('reservar');
     setError('');
     setResultado(null);
   }
+
+  const virtual = identidad?.asistente?.ticketTipo === 'Virtual';
+  const confirmandoModificacion = modoHorario === 'modificar';
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <Brand />
-        {identidad && (
+        {(identidad || step === 'persona') && (
           <button className="text-button" onClick={reiniciar}>
             Cambiar correo
           </button>
@@ -255,7 +431,7 @@ export default function App() {
       </header>
 
       <main>
-        <Steps step={step} />
+        <Steps step={step} requierePersona={personas.length > 1} />
         {error && <div className="alert" role="alert">{error}</div>}
 
         {step === 'email' && (
@@ -290,6 +466,14 @@ export default function App() {
           </section>
         )}
 
+        {step === 'persona' && (
+          <PersonSelection
+            personas={personas}
+            loading={loading}
+            onSelect={(persona) => cargarSponsors(email, persona.id)}
+          />
+        )}
+
         {step === 'sponsors' && (
           <section className="content-section">
             <div className="section-heading">
@@ -310,11 +494,29 @@ export default function App() {
             <ModalityNotice ticketTipo={identidad?.asistente?.ticketTipo} />
             <ExistingAppointments
               citas={identidad?.citasConfirmadas}
-              virtual={identidad?.asistente?.ticketTipo === 'Virtual'}
+              virtual={virtual}
+              onModificar={(cita) =>
+                cargarHorarios(sponsorDesdeCita(cita), fecha, {
+                  modo: 'modificar',
+                  cita,
+                })
+              }
+              onCancelar={setCitaACancelar}
+            />
+            <CancelledAppointments
+              citas={identidad?.citasCanceladasReagendables}
+              virtual={virtual}
+              onReagendar={(cita) =>
+                cargarHorarios(sponsorDesdeCita(cita), fecha, { modo: 'reservar' })
+              }
             />
             <div className="sponsor-grid">
               {filtrados.map((sponsor) => (
-                <SponsorCard key={sponsor.id} sponsor={sponsor} onSelect={cargarHorarios} />
+                <SponsorCard
+                  key={sponsor.id}
+                  sponsor={sponsor}
+                  onSelect={(item) => cargarHorarios(item, fecha, { modo: 'reservar' })}
+                />
               ))}
             </div>
           </section>
@@ -323,8 +525,16 @@ export default function App() {
         {step === 'horarios' && selectedSponsor && (
           <section className="content-section schedule">
             <button className="back" onClick={() => setStep('sponsors')}>← Sponsors</button>
-            <span className="eyebrow">Cita con {selectedSponsor.empresa}</span>
-            <h1>Elige el mejor momento para ti.</h1>
+            <span className="eyebrow">
+              {confirmandoModificacion
+                ? `Cambiar horario con ${selectedSponsor.empresa}`
+                : `Cita con ${selectedSponsor.empresa}`}
+            </span>
+            <h1>
+              {confirmandoModificacion
+                ? 'Elige el nuevo horario.'
+                : 'Elige el mejor momento para ti.'}
+            </h1>
             <ModalityNotice
               ticketTipo={identidad?.asistente?.ticketTipo}
               compact
@@ -334,7 +544,12 @@ export default function App() {
                 <button
                   key={item}
                   className={item === fecha ? 'active' : ''}
-                  onClick={() => cargarHorarios(selectedSponsor, item)}
+                  onClick={() =>
+                    cargarHorarios(selectedSponsor, item, {
+                      modo: modoHorario,
+                      cita: citaEnEdicion,
+                    })
+                  }
                 >
                   {fechaLarga(item)}
                 </button>
@@ -367,7 +582,13 @@ export default function App() {
                 </strong>
               </div>
               <button className="button" disabled={!selectedBlock || loading} onClick={confirmar}>
-                {loading ? 'Confirmando…' : 'Confirmar cita'}
+                {loading
+                  ? confirmandoModificacion
+                    ? 'Guardando…'
+                    : 'Confirmando…'
+                  : confirmandoModificacion
+                    ? 'Guardar horario'
+                    : 'Confirmar cita'}
               </button>
             </div>
           </section>
@@ -376,22 +597,28 @@ export default function App() {
         {step === 'exito' && (
           <section className="success panel">
             <div className="success-icon">✓</div>
-            <span className="eyebrow">Reserva completada</span>
-            <h1>¡Tu cita quedó confirmada!</h1>
+            <span className="eyebrow">
+              {confirmandoModificacion ? 'Horario actualizado' : 'Reserva completada'}
+            </span>
+            <h1>
+              {confirmandoModificacion
+                ? 'El horario de tu cita quedó actualizado.'
+                : '¡Tu cita quedó confirmada!'}
+            </h1>
             <p>
               Tu cita con {selectedSponsor?.empresa} es el{' '}
               {selectedBlock && fechaLarga(selectedBlock.inicio.slice(0, 10))} a las{' '}
               {selectedBlock && horaCorta(selectedBlock.inicio)}
-              {identidad?.asistente?.ticketTipo === 'Virtual'
+              {virtual
                 ? ', por Google Meet. '
                 : `, en la ${resultado?.mesa || 'mesa por confirmar'}. `}
               {resultado?.notificacion_error
                 ? 'No pudimos enviar el correo con los detalles. '
                 : 'También recibirás los detalles por correo. '}
-              {identidad?.asistente?.ticketTipo === 'Virtual' &&
+              {virtual &&
                 'Recibirás la liga aproximadamente 15 minutos antes por WhatsApp y también una invitación de Google en tu correo. '}
-              Guarda estos datos. Para modificar, cancelar o preguntar por
-              esta cita, escríbenos por WhatsApp al{' '}
+              Desde esta página puedes modificar o cancelar la cita. Si necesitas
+              ayuda, escríbenos por WhatsApp al{' '}
               <a href={`https://wa.me/${String(resultado?.whatsappSoporte || '').replace(/\D/g, '')}`}>
                 {resultado?.whatsappSoporte}
               </a>.
@@ -400,24 +627,56 @@ export default function App() {
               <span>{selectedSponsor?.empresa}</span>
               <strong>{selectedBlock && horaCorta(selectedBlock.inicio)}</strong>
               <small>{selectedBlock && fechaLarga(selectedBlock.inicio.slice(0, 10))}</small>
-              <em>
-                {identidad?.asistente?.ticketTipo === 'Virtual'
-                  ? 'Google Meet'
-                  : resultado?.mesa || 'Mesa por confirmar'}
-              </em>
+              <em>{virtual ? 'Google Meet' : resultado?.mesa || 'Mesa por confirmar'}</em>
             </div>
             <div className="success-actions">
               <button
                 className="button"
                 disabled={loading}
-                onClick={() => cargarSponsors(email)}
+                onClick={() => cargarSponsors(email, selectedPersonaId)}
               >
-                {loading ? 'Cargando…' : 'Agendar con otro sponsor'}
+                {loading ? 'Cargando…' : 'Volver a tus citas'}
               </button>
             </div>
           </section>
         )}
       </main>
+
+      {citaACancelar && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setCitaACancelar(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="eyebrow">Cancelar cita</span>
+            <h2 id="cancel-title">¿Confirmas que la cancele?</h2>
+            <p>
+              Se cancelará la cita con {citaACancelar.sponsorNombre}
+              {citaACancelar.fechaHora
+                ? ` del ${fechaLarga(citaACancelar.fechaHora.slice(0, 10))} a las ${horaCorta(citaACancelar.fechaHora)}`
+                : ''}
+              . Después podrás reagendarla si lo necesitas.
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="text-button" onClick={() => setCitaACancelar(null)}>
+                No, mantenerla
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={loading}
+                onClick={confirmarCancelacion}
+              >
+                {loading ? 'Cancelando…' : 'Sí, cancelar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer>
         <span>Fashion Digital Talks 2026</span>
         <a href="https://www.fashiondigitaltalks.com/" target="_blank" rel="noreferrer">

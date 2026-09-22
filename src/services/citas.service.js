@@ -110,6 +110,7 @@ function esMismaPagina(a, b) {
 
 function extraerIdsDeCitaConfirmada(fila) {
   return {
+    id: fila.id,
     inicio: normalizarInicioIso(fila.properties?.['Fecha y Hora']?.date?.start || ''),
     sponsorId: primerRelacionId(fila.properties?.['Contacto Match']),
     asistentePageId: primerRelacionId(fila.properties?.['Contacto Principal']),
@@ -895,6 +896,37 @@ async function buscarCanceladaReagendableDelPar({ sponsorPageId, asistentePageId
     if (!hija) return cancelada;
   }
   return null;
+}
+
+/**
+ * Canceladas que aún pueden originar una hija nueva (sin reagenda activa)
+ * y cuyo sponsor no tiene ya una cita real con este asistente.
+ */
+async function listarCanceladasReagendablesPorAsistente(
+  asistentePageId,
+  { citasConfirmadas } = {}
+) {
+  const [canceladas, confirmadas] = await Promise.all([
+    listarCitasCanceladasPorAsistente(asistentePageId),
+    citasConfirmadas
+      ? Promise.resolve(citasConfirmadas)
+      : listarCitasRealesPorAsistente(asistentePageId),
+  ]);
+  const sponsorsConfirmados = new Set(
+    (confirmadas || []).map((cita) => pageIdCanonico(cita.sponsorPageId)).filter(Boolean)
+  );
+  const porSponsor = new Map();
+  const ordenadas = canceladas
+    .slice()
+    .sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || '')));
+
+  for (const cita of ordenadas) {
+    const clave = pageIdCanonico(cita.sponsorPageId);
+    if (!clave || sponsorsConfirmados.has(clave) || porSponsor.has(clave)) continue;
+    const hija = await buscarReagendaActivaDeCancelada(cita.id);
+    if (!hija) porSponsor.set(clave, cita);
+  }
+  return [...porSponsor.values()];
 }
 
 async function buscarCitaRealActivaDelPar({ sponsorPageId, asistentePageId, exceptPageId }) {
@@ -2543,7 +2575,7 @@ async function requireSponsorExistente(sponsorPageId) {
  * @param {string} params.fecha - "2026-10-07" o "2026-10-08"
  * @returns {Promise<Array<{inicio: string, disponible: boolean, motivo: string|null}>>}
  */
-async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePageId }) {
+async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePageId, exceptPageId }) {
   requireDataSourceId();
 
   const fechasValidas = obtenerFechasEvento();
@@ -2557,7 +2589,9 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePag
   await requireSponsorExistente(sponsorPageId);
 
   const bloques = generarBloquesParaFecha(fecha);
-  const confirmadas = await listarCitasConfirmadasEnFecha(fecha);
+  const confirmadas = (await listarCitasConfirmadasEnFecha(fecha)).filter(
+    (cita) => !esMismaPagina(cita.id, exceptPageId)
+  );
 
   return bloques.map((inicio) => {
     const enBloque = confirmadas.filter((c) => c.inicio === inicio);
@@ -2604,6 +2638,7 @@ module.exports = {
   listarCitasRealesPorAsistente,
   listarCitasCanceladasPorAsistente,
   buscarCanceladaReagendableDelPar,
+  listarCanceladasReagendablesPorAsistente,
   buscarReagendaActivaDeCancelada,
   buscarCitaRealActivaDelPar,
   MARCA_CANCELACION_PENDIENTE,

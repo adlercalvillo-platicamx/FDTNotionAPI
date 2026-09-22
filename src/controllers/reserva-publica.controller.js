@@ -4,6 +4,8 @@ const {
   listarSponsorsPublicos,
   obtenerDisponibilidadPublica,
   reservarPublicamente,
+  modificarPublicamente,
+  cancelarPublicamente,
 } = require('../services/reserva-publica.service');
 const { BookingError } = require('../services/booking.service');
 
@@ -15,13 +17,17 @@ const STATUS_BOOKING = {
   HORARIO_EN_PASADO: 400,
   SPONSOR_CATEGORIA_INVALIDA: 400,
   BOLETO_EXPO_NO_PERMITE_CITAS: 403,
+  CITA_NO_PERTENECE: 403,
   ASISTENTE_NO_ENCONTRADO: 404,
   SPONSOR_NO_ENCONTRADO: 404,
+  CITA_NO_ENCONTRADA: 404,
   SPONSOR_YA_OCUPADO: 409,
   ASISTENTE_YA_OCUPADO: 409,
   CAPACIDAD_MESAS_LLENA: 409,
   CITA_PARA_YA_ACTIVA: 409,
   CITA_CANCELADA_YA_REAGENDADA: 409,
+  CITA_YA_OCURRIO: 409,
+  ESTADO_INVALIDO: 409,
   NOTION_FALLO: 502,
   NOTIFICACION_FALLO: 502,
   HORARIO_NO_CONFIGURADO: 503,
@@ -58,7 +64,10 @@ function sponsorValido(sponsorPageId) {
 
 async function identificar(req, res) {
   try {
-    const resultado = await identificarPorEmail(req.body?.email);
+    const resultado = await identificarPorEmail(
+      req.body?.email,
+      req.body?.contactoId
+    );
     return res.status(200).json(resultado);
   } catch (error) {
     return responderError(res, error, 'identificar');
@@ -76,6 +85,7 @@ async function sponsors(_req, res) {
 async function disponibilidad(req, res) {
   const sponsorPageId = String(req.query.sponsor || '').trim();
   const fecha = String(req.query.fecha || '').trim();
+  const exceptCitaId = String(req.query.exceptCitaId || '').trim() || undefined;
   if (!sponsorValido(sponsorPageId) || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
@@ -87,6 +97,7 @@ async function disponibilidad(req, res) {
       contactoId: req.reservaContactoId,
       sponsorPageId,
       fecha,
+      exceptCitaId,
     });
     return res.status(200).json({ sponsor: sponsorPageId, fecha, bloques });
   } catch (error) {
@@ -116,9 +127,36 @@ async function reservar(req, res) {
   }
 }
 
+async function modificar(req, res) {
+  try {
+    const resultado = await modificarPublicamente({
+      contactoId: req.reservaContactoId,
+      citaId: req.params.citaId,
+      inicio: req.body?.inicio,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return responderError(res, error, 'modificar');
+  }
+}
+
+async function cancelar(req, res) {
+  try {
+    const resultado = await cancelarPublicamente({
+      contactoId: req.reservaContactoId,
+      citaId: req.params.citaId,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return responderError(res, error, 'cancelar');
+  }
+}
+
 module.exports = {
   identificar,
   sponsors,
   disponibilidad,
   reservar,
+  modificar,
+  cancelar,
 };
