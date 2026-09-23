@@ -109,6 +109,7 @@ HMAC temporal emitido al identificar el correo.
 | POST | `/contactos/hidratar-perfil-platica` | Sincroniza un asistente de Notion hacia su perfil de Plática por `whatsapp` o `asistente_notion_id`: nombre completo, primer nombre, correo, empresa (`company`), datos de matchmaking y citas confirmadas (`citas_confirmadas_del_asistente`, texto con una cita por línea, + conteo). Lee el perfil antes de escribir para no volver a llenar `soluciones_buscadas`, que es `textList` y solo acumula. También se ejecuta automáticamente antes de plantillas y al reservar, modificar o cancelar. |
 | GET | `/checklist/consultar?nombre=...` | Consulta bajo demanda — "cómo va fulano". |
 | POST | `/checklist/revisar-pendientes` | Barrido completo, pensado para dispararse desde un Cron Job de Coolify. |
+| POST | `/notion/respaldar` | **Nueva (23 sep).** Cron diario ~03:00 CDMX. Lee Contactos y Citas (schema + filas paginadas), gzip, `PutObject` a Cloudflare R2. No escribe Notion. Campos `files` solo con el nombre, sin URL. Rotación `R2_RETENCION_DIAS` (default 14). `X-API-Key`. Sin vars R2 → **503** `RESPALDO_NO_CONFIGURADO`. 200 `{ ok, key, bytesGzip, conteos, rotacion }`. Instructivo: `instrucciones-luis-r2-respaldos-notion.md`. |
 
 **Reserva — mesa y correo (18 ago; huecos corregidos 7 sep; copy sponsor 15 sep; copy por boleto 17 sep; granular por destinatario 20 sep):** `CAPACIDAD_MAXIMA_MESAS = 11`. La cita efectiva comunicada dura 20 min; la grilla conserva bloques operativos de 30 min para dejar margen. Reserva y modificación leen las mesas de las citas `Confirmada` / `Confirmada sin notificar` del bloque y asignan el menor número libre. Una cancelada conserva fecha y mesa como historial, pero no ocupa capacidad y su número puede reutilizarse; las vistas operativas por mesa la ocultan. No se reordenan las demás citas. Antes de cualquier escritura, `reservar_cita` lee el boleto y rechaza `Expo` con `BOLETO_EXPO_NO_PERMITE_CITAS`. El sponsor recibe copy de negocios (`Totalplay agendó un espacio con Tiendanube`; en modificación: `Totalplay modificó el horario de su cita con Tiendanube`), mesa/sede y datos del asistente; nombre, puesto y empresas gritadas se presentan en Title Case. El asistente recibe copy propio con la encargada 1a1 y la empresa del sponsor; el WhatsApp de soporte es solo del asistente. Si es Virtual, confirmar y modificar omiten mesa/sede/llegada en el correo del asistente y explican que el Meet llega ~15 min antes por WhatsApp + invitación de Google; el correo del sponsor conserva mesa y sede porque él sí está en piso y agrega `Modalidad: Google Meet` más la nota de tomarla desde su mesa. Presencial/VIP/Speaker conservan mesa y Club France. Cada lado se intenta de forma independiente: si uno falla, el otro sí se manda y `Notas Envio Email` conserva exactamente qué lado falta, para que un reintento no duplique el correo exitoso. La cancelación no cambia. Destinatarios se resuelven desde Contactos. El UID del `.ics` es el page_id de Notion; `SEQUENCE` en reenvíos es un timestamp para que el calendario actualice, no duplique.
 
@@ -165,6 +166,7 @@ Ver `.env.example`. Resumen:
   El frontend solo recibe `VITE_API_BASE_URL`; ninguna variable `VITE_*`
   puede contener secretos.
 - `NOTION_API_KEY`, `NOTION_CONTACTOS_DATA_SOURCE_ID`, `NOTION_CITAS_DATA_SOURCE_ID`.
+- **Respaldo R2 (23-sep):** `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). Opcional `R2_RETENCION_DIAS=14`. Las pega Luis en Coolify; no van al git. Cron `POST /notion/respaldar`. Detalle para Luis: `instrucciones-luis-r2-respaldos-notion.md`.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
   - `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`
@@ -229,6 +231,7 @@ node tests/recordatorio-evento.manual-test.js
 node tests/recordatorio-cita-15min.manual-test.js
 node tests/google-meet-virtual.manual-test.js
 node tests/recordatorio-cita-2h.manual-test.js
+node tests/notion-respaldo.manual-test.js
 node tests/sugerencias-asistente.manual-test.js
 node tests/modificar-cancelar-cita.manual-test.js
 node tests/mcp-modificar-cancelar.manual-test.js
