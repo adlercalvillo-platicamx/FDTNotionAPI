@@ -1,6 +1,6 @@
 # Bitácora 23sep — respaldo diario Contactos/Citas a Cloudflare R2
 Handoff. Código gana si esto contradice algo.
-Fecha del trabajo: 23-sep-2026. Sin commit aún. Continúa el hilo de backups de Notion (conversación; no había bitácora previa de R2).
+Fecha del trabajo: 23-sep-2026. Commit `32199f6` en `main`. Continúa el hilo de backups de Notion (conversación; no había bitácora previa de R2).
 
 Pedido de Adler: dump diario de las dos tablas de producción de Laura, cron en Coolify, archivos en R2 (no el disco del contenedor). Cloudflare y credenciales las arma **Luis**; el backend ya queda en el repo.
 
