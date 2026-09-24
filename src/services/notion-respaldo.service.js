@@ -1,6 +1,6 @@
 // Snapshot de solo lectura de Contactos + Citas → gzip a Cloudflare R2.
-// Notion no se escribe. No descarga archivos (files: solo el nombre).
-// Rotación: borra objetos notion-fdt/ con LastModified > R2_RETENCION_DIAS.
+// Schema, vistas (pestañas) y filas. Notion no se escribe.
+// files: solo el nombre. Rotación: LastModified > R2_RETENCION_DIAS.
 
 const zlib = require('zlib');
 const { promisify } = require('util');
@@ -16,6 +16,7 @@ const gzipAsync = promisify(zlib.gzip);
 
 const PREFIJO = 'notion-fdt/';
 const RETENCION_DEFAULT_DIAS = 14;
+const VIEWS_VER = '2026-03-11';
 
 class RespaldoError extends Error {
   constructor(code, message, status = 502) {
@@ -101,6 +102,42 @@ function simplificarSchema(ds) {
   };
 }
 
+async function listarVistas(dataSourceId) {
+  const vistas = [];
+  let cursor;
+  do {
+    const q = new URLSearchParams({ data_source_id: dataSourceId, page_size: '100' });
+    if (cursor) q.set('start_cursor', cursor);
+    const lista = await notionFetch(`/views?${q}`, {
+      headers: { 'Notion-Version': VIEWS_VER },
+    });
+    for (const ref of lista.results || []) {
+      const v = await notionFetch(`/views/${ref.id}`, {
+        headers: { 'Notion-Version': VIEWS_VER },
+      });
+      vistas.push(simplificarVista(v));
+    }
+    cursor = lista.has_more ? lista.next_cursor : undefined;
+  } while (cursor);
+  return vistas;
+}
+
+function simplificarVista(v) {
+  return {
+    id: v.id,
+    name: v.name,
+    type: v.type,
+    data_source_id: v.data_source_id,
+    parent: v.parent,
+    filter: v.filter || null,
+    sorts: v.sorts || [],
+    quick_filters: v.quick_filters || [],
+    configuration: v.configuration || null,
+    last_edited_time: v.last_edited_time,
+    url: v.url || null,
+  };
+}
+
 async function queryTodasLasFilas(dataSourceId) {
   let cursor;
   const filas = [];
@@ -175,12 +212,15 @@ async function respaldarNotion(opciones = {}) {
   const retencionDias = diasRetencion();
   const s3 = opciones.s3 || crearClienteS3(creds);
 
-  const [schemaContactos, schemaCitas, filasContactos, filasCitas] = await Promise.all([
-    notionFetch(`/data_sources/${contactosId}`),
-    notionFetch(`/data_sources/${citasId}`),
-    queryTodasLasFilas(contactosId),
-    queryTodasLasFilas(citasId),
-  ]);
+  const [schemaContactos, schemaCitas, filasContactos, filasCitas, vistasContactos, vistasCitas] =
+    await Promise.all([
+      notionFetch(`/data_sources/${contactosId}`),
+      notionFetch(`/data_sources/${citasId}`),
+      queryTodasLasFilas(contactosId),
+      queryTodasLasFilas(citasId),
+      listarVistas(contactosId),
+      listarVistas(citasId),
+    ]);
 
   const payload = {
     generadoEn: ahora.toISOString(),
@@ -190,6 +230,10 @@ async function respaldarNotion(opciones = {}) {
       contactos: simplificarSchema(schemaContactos),
       citas: simplificarSchema(schemaCitas),
     },
+    vistas: {
+      contactos: vistasContactos,
+      citas: vistasCitas,
+    },
     filas: {
       contactos: filasContactos,
       citas: filasCitas,
@@ -197,6 +241,8 @@ async function respaldarNotion(opciones = {}) {
     conteos: {
       contactos: filasContactos.length,
       citas: filasCitas.length,
+      vistasContactos: vistasContactos.length,
+      vistasCitas: vistasCitas.length,
     },
   };
 

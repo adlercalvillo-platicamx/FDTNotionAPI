@@ -53,6 +53,25 @@ require.cache[notionPath] = {
       if (ruta === '/data_sources/ds-citas/query') {
         return { results: paginasCitas, has_more: false };
       }
+      if (ruta.startsWith('/views?')) {
+        const ds = new URLSearchParams(ruta.slice(ruta.indexOf('?') + 1)).get('data_source_id');
+        if (ds === 'ds-contactos') return { results: [{ id: 'v-co-1' }], has_more: false };
+        if (ds === 'ds-citas') return { results: [{ id: 'v-ci-1' }], has_more: false };
+        return { results: [], has_more: false };
+      }
+      if (ruta === '/views/v-co-1') {
+        return { id: 'v-co-1', name: 'Raw contactos', type: 'table', data_source_id: 'ds-contactos', filter: null, sorts: [] };
+      }
+      if (ruta === '/views/v-ci-1') {
+        return {
+          id: 'v-ci-1',
+          name: 'Confirmadas',
+          type: 'table',
+          data_source_id: 'ds-citas',
+          filter: { property: 'Estatus', select: { equals: 'Confirmada' } },
+          sorts: [],
+        };
+      }
       throw new Error(`ruta inesperada ${ruta}`);
     },
   },
@@ -148,6 +167,8 @@ async function casoFelizYRotacion() {
   check('PutObject gzip', put.ContentType === 'application/gzip');
   const json = JSON.parse(zlib.gunzipSync(put.Body).toString('utf8'));
   check('payload tiene 2 filas contactos', json.filas.contactos.length === 2);
+  check('vistas 1 contactos 1 citas', json.vistas.contactos.length === 1 && json.vistas.citas[0].name === 'Confirmadas');
+  check('conteos vistas', r.conteos.vistasContactos === 1 && r.conteos.vistasCitas === 1);
   const foto = json.filas.contactos[0].properties.Foto;
   check('files sin url', foto.files[0].name === 'cara.png' && foto.files[0].url === undefined && !JSON.stringify(foto).includes('secret.example'));
   check('delete solo el viejo', enviados.some((e) => e.delete && e.delete.length === 1 && e.delete[0].Key.includes('viejo')));

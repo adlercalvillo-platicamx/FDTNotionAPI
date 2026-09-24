@@ -4,7 +4,7 @@ Adler ya dejó el código en `fdt-notion-api`. Tú armas **Cloudflare R2**, pega
 
 ## Qué estamos haciendo
 
-Cada madrugada el backend **lee** las dos tablas de producción de Laura y sube un `.json.gz` a un bucket privado. Notion no se escribe. No se bajan fotos/PDFs, solo nombres de archivo si el campo es `files`.
+Cada madrugada el backend **lee** las dos tablas de producción de Laura (schema, **vistas/pestañas** y filas) y sube un `.json.gz` a un bucket privado. Notion no se escribe. No se bajan fotos/PDFs, solo nombres de archivo si el campo es `files`.
 
 Cloudflare R2 Standard trae **10 GB + 1 millón de escrituras / mes gratis**. Este uso son megas y un PUT al día. Pide tarjeta igual; no uses **Infrequent Access** (no tiene free).
 
