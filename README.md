@@ -64,6 +64,12 @@ frontend/                              # SPA de reserva QR (recurso Coolify apar
 ├── Dockerfile                         # build Vite + nginx
 └── README.md                          # operación y variables de build
 
+middleware-enriquecimiento/            # Application Coolify separada, Python
+├── notion_platica_middleware.py        # Polling Contactos + capa cualitativa por fila de Citas
+├── test_middleware.py                  # Unit tests sin Notion ni Plática reales
+├── requirements.txt                    # Dependencias para Nixpacks
+└── .env.example
+
 scripts/one-shots/                    # Ya ejecutados — no volver a correr sin revisar
 ├── cargar-29-asistentes-faltantes.js
 ├── verificar-casos-quiere-citas-giro.js
@@ -114,6 +120,8 @@ HMAC temporal emitido al identificar el correo.
 **Reserva — mesa y correo (18 ago; huecos corregidos 7 sep; copy sponsor 15 sep; copy por boleto 17 sep; granular por destinatario 20 sep):** `CAPACIDAD_MAXIMA_MESAS = 11`. La cita efectiva comunicada dura 20 min; la grilla conserva bloques operativos de 30 min para dejar margen. Reserva y modificación leen las mesas de las citas `Confirmada` / `Confirmada sin notificar` del bloque y asignan el menor número libre. Una cancelada conserva fecha y mesa como historial, pero no ocupa capacidad y su número puede reutilizarse; las vistas operativas por mesa la ocultan. No se reordenan las demás citas. Antes de cualquier escritura, `reservar_cita` lee el boleto y rechaza `Expo` con `BOLETO_EXPO_NO_PERMITE_CITAS`. El sponsor recibe copy de negocios (`Totalplay agendó un espacio con Tiendanube`; en modificación: `Totalplay modificó el horario de su cita con Tiendanube`), mesa/sede y datos del asistente; nombre, puesto y empresas gritadas se presentan en Title Case. El asistente recibe copy propio con la encargada 1a1 y la empresa del sponsor; el WhatsApp de soporte es solo del asistente. Si es Virtual, confirmar y modificar omiten mesa/sede/llegada en el correo del asistente y explican que el Meet llega ~15 min antes por WhatsApp + invitación de Google; el correo del sponsor conserva mesa y sede porque él sí está en piso y agrega `Modalidad: Google Meet` más la nota de tomarla desde su mesa. Presencial/VIP/Speaker conservan mesa y Club France. Cada lado se intenta de forma independiente: si uno falla, el otro sí se manda y `Notas Envio Email` conserva exactamente qué lado falta, para que un reintento no duplique el correo exitoso. La cancelación no cambia. Destinatarios se resuelven desde Contactos. El UID del `.ics` es el page_id de Notion; `SEQUENCE` en reenvíos es un timestamp para que el calendario actualice, no duplique.
 
 **Generación automática de sugerencias:** no hay scheduler dentro de Node. Configurar un cron HTTP externo cada 6 horas hacia `POST /matchmaking/sugerir-todos`, incluyendo `X-API-Key` desde un secret (nunca hardcodeado). Este cron solo crea `Sugerido`; no dispara WhatsApp.
+
+**Enriquecimiento cualitativo de matches (23-sep):** es una capa posterior e independiente; no modifica `/matchmaking/sugerir-todos`, scores, `Notas` ni `Estatus`. La Application Python de `middleware-enriquecimiento/` consulta filas reales de Citas con sponsor y asistente, excluye el contacto de bloqueo de agenda y delega un par por mensaje al subagente `vhmqfLCnNLKsBDh2HEd2`. Reclama primero la fila (`En curso`, intento +1, fecha); un 2xx de Plática la deja en curso para que el agente escriba `Match Ideal Sponsor`, `Explicación Match Ideal` y `Completado`. `Ambiguo` es terminal válido. Rechazo de Plática → `Falló`; `En curso` con más de 60 min puede retomarse, hasta 3 intentos. En producción permanece apagado por default (`MATCHES_HABILITADO=false`) hasta nombrar y revisar una fila de prueba y el backfill.
 
 **Títulos y presentación por empresa (19 ago):** las sugerencias se guardan como `Sugerido: Empresa asistente × Empresa sponsor`; una reserva confirmada usa `Cita — Empresa asistente - Empresa sponsor` en Notion y correo. Si `Empresa` está vacía, el nombre de la persona es únicamente el fallback. El parser concatena todos los fragmentos `title`/`rich_text` de Notion para no truncar nombres o empresas multipart.
 
@@ -166,6 +174,7 @@ Ver `.env.example`. Resumen:
   El frontend solo recibe `VITE_API_BASE_URL`; ninguna variable `VITE_*`
   puede contener secretos.
 - `NOTION_API_KEY`, `NOTION_CONTACTOS_DATA_SOURCE_ID`, `NOTION_CITAS_DATA_SOURCE_ID`.
+- **Application Python de enriquecimiento:** misma Application que ya procesa Contactos, ahora desde este repo con Base Directory `/middleware-enriquecimiento`, Build Pack Nixpacks y Start Command `python notion_platica_middleware.py`; no usa Docker ni cron HTTP. Conserva compatibilidad con las env legacy del poller de Contactos. Usa su propio `NOTION_TOKEN` y `PLATICA_API_KEY`, los data source IDs de Laura, `PLATICA_AGENT_ID=vhmqfLCnNLKsBDh2HEd2` y `NOTION_CONTACTO_BLOQUEO_AGENDA_ID`. Defaults seguros: `MATCHES_HABILITADO=false`, `MATCH_BACKFILL_GUARD_MAX=15`, `MATCH_STALE_MINUTES=60`, `MATCH_MAX_ATTEMPTS=3`; ver [`middleware-enriquecimiento/.env.example`](middleware-enriquecimiento/.env.example). No comparte `API_SECRET_KEY` con Node.
 - **Respaldo R2 (23-sep):** `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). Opcional `R2_RETENCION_DIAS=14`. Las pega Luis en Coolify; no van al git. Cron `POST /notion/respaldar`. Detalle para Luis: `instrucciones-luis-r2-respaldos-notion.md`.
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
@@ -237,6 +246,9 @@ node tests/modificar-cancelar-cita.manual-test.js
 node tests/mcp-modificar-cancelar.manual-test.js
 node tests/campanas-webhook.manual-test.js
 node tests/marcar-cola-sin-enviar.manual-test.js
+
+# Middleware Python, aislado: no llama Notion ni Plática
+python -m unittest discover -s middleware-enriquecimiento -p "test_*.py"
 # Verificación contra Notion real de los 5 casos Quiere Citas 1a1 + Giro (12-ago):
 node scripts/one-shots/verificar-casos-quiere-citas-giro.js
 ```

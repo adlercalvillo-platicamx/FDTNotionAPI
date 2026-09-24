@@ -33,11 +33,22 @@ src/mcp/                     # Capa delgada: tools llaman services/, no reimplem
 src/utils/notion-client.js   # REST Notion (nunca MCP hacia Notion)
 src/jobs/                    # Reintento a demanda de correos, no cron
 frontend/                    # React/Vite QR; Dockerfile/nginx; recurso aparte
+middleware-enriquecimiento/ # Poller Python en Application aparte; Contactos + match cualitativo
 tests/                       # Manuales; mocks vía require.cache
 scripts/one-shots/           # Ya corridos — no reejecutar sin revisar
 ```
 
 Convención: **nueva capacidad = service primero**, luego REST y (si aplica) tool MCP con los mismos defaults.
+
+El enriquecimiento cualitativo por par no vive en el backend Node ni altera el
+score. `middleware-enriquecimiento/` consulta Citas y delega una fila a la vez
+al subagente Plática `vhmqfLCnNLKsBDh2HEd2`. Es una Application Coolify
+separada; `MATCHES_HABILITADO=false` por default. Antes de encenderla, nombrar
+la fila de prueba y revisar el backfill. Campos terminales: `Match Ideal
+Sponsor`, `Explicación Match Ideal`, `Estado Enriquecimiento Match`,
+`Intentos Enriquecimiento Match`, `Fecha Enriquecimiento Match`. Nunca toca
+`Estatus`, `Notas` ni score. Pruebas aisladas:
+`python -m unittest discover -s middleware-enriquecimiento -p "test_*.py"`.
 
 ## REST vs MCP
 
