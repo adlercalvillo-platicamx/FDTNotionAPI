@@ -864,6 +864,8 @@ async function validarOrigenDeReagenda({
  * @param {string} [params.sponsor_calendario_id] - legado (Google Calendar propio
  *   retirado 27-ago). Se ignora si llega, para no romper clientes que aún lo mandan.
  * @param {string} params.sponsor_notion_id     - page_id en Notion del contacto sponsor
+ * @param {string} [params.sponsor_empresa_confirmada] - empresa canónica que el contacto eligió;
+ *                                                        si no corresponde al page_id, no escribe
  * @param {string} params.asistente_notion_id   - page_id en Notion del contacto asistente
  * @param {string} params.inicio                - ISO 8601, ej. "2026-10-07T10:30:00-06:00"
  * @param {string} params.fin                   - ISO 8601
@@ -879,6 +881,7 @@ async function validarOrigenDeReagenda({
 async function reservarCita({
   sponsor_calendario_id: _sponsorCalendarioId, // eslint-disable-line no-unused-vars -- legado 27-ago
   sponsor_notion_id,
+  sponsor_empresa_confirmada,
   asistente_notion_id,
   inicio,
   fin,
@@ -898,6 +901,37 @@ async function reservarCita({
   }
   if (!inicio || !fin) {
     throw new BookingError('INVALID_INPUT', '"inicio" y "fin" son requeridos en formato ISO 8601');
+  }
+
+  const empresaEsperada = String(sponsor_empresa_confirmada || '').trim();
+  if (empresaEsperada) {
+    let sponsorValidado;
+    try {
+      sponsorValidado = await contactosService.obtenerContacto(sponsor_notion_id);
+    } catch (error) {
+      throw (
+        errorDeContactoInexistente(error, {
+          sponsorPageId: sponsor_notion_id,
+          asistentePageId: asistente_notion_id,
+        }) || error
+      );
+    }
+    const empresaReal = sponsorValidado.empresa || sponsorValidado.nombre || '';
+    const normalizar = contactosService.normalizarEmpresaBusqueda;
+    if (
+      typeof normalizar !== 'function' ||
+      !normalizar(empresaEsperada) ||
+      normalizar(empresaEsperada) !== normalizar(empresaReal)
+    ) {
+      throw new BookingError(
+        'SPONSOR_EMPRESA_NO_COINCIDE',
+        `La empresa elegida "${empresaEsperada}" no corresponde al sponsor recibido (${empresaReal || 'sin empresa'}). Vuelve a consultar sponsor_solicitado y copia ambos valores de la misma respuesta.`,
+        {
+          sponsor_empresa_confirmada: empresaEsperada,
+          sponsor_empresa_resuelta: empresaReal || null,
+        }
+      );
+    }
   }
 
   // Duración + día del evento + bloque operativo (mismas env que

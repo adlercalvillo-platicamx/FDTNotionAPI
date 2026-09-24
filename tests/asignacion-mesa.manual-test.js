@@ -236,12 +236,20 @@ require.cache[contactosPath] = {
       return {
         id: pageId,
         nombre: 'Mock',
-        empresa: '',
+        empresa: pageId === 'sponsor-revie' ? 'Revie' : '',
         email: '',
         whatsapp: '',
         rolPuesto: '',
         ticketTipo: pageId === 'asistente-expo' ? 'Expo' : 'Presencial',
       };
+    },
+    normalizarEmpresaBusqueda(valor) {
+      return String(valor || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '');
     },
   },
 };
@@ -618,6 +626,34 @@ function baseParams(overrides = {}) {
       (e) => e instanceof BookingError && e.code === 'CONTACTO_NO_RESUELTO'
     );
     assert.strictEqual(estado.porId.size, filasAntes);
+  });
+
+  console.log('\n=== Empresa elegida corresponde al sponsor ===');
+  await ok('Revie + ID de otro sponsor → SPONSOR_EMPRESA_NO_COINCIDE sin escribir', async () => {
+    const filasAntes = estado.porId.size;
+    await assert.rejects(
+      () =>
+        reservarCita(
+          baseParams({
+            sponsor: 'sponsor-caas',
+            sponsor_empresa_confirmada: 'Revie',
+            request_id: 'req-empresa-no-coincide',
+          })
+        ),
+      (e) => e instanceof BookingError && e.code === 'SPONSOR_EMPRESA_NO_COINCIDE'
+    );
+    assert.strictEqual(estado.porId.size, filasAntes);
+  });
+
+  await ok('Revie + ID de Revie → permite reservar', async () => {
+    const r = await reservarCita(
+      baseParams({
+        sponsor: 'sponsor-revie',
+        sponsor_empresa_confirmada: 'Revie',
+        request_id: 'req-empresa-coincide',
+      })
+    );
+    assert.strictEqual(r.estado, 'Confirmada');
   });
 
   console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);

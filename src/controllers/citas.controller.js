@@ -29,6 +29,7 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   ASISTENTE_NO_ENCONTRADO: 404,
   SPONSOR_NO_ENCONTRADO: 404, // page_id que no existe en Contactos (agente armando ids, 2-sep)
   SPONSOR_CATEGORIA_INVALIDA: 400,
+  SPONSOR_EMPRESA_NO_COINCIDE: 409,
   BOLETO_EXPO_NO_PERMITE_CITAS: 400,
   CITA_NO_ENCONTRADA: 404,
   CITA_ORIGEN_NO_ENCONTRADA: 404,
@@ -63,6 +64,7 @@ async function reservar(req, res) {
   const {
     sponsor_calendario_id: _sponsorCalendarioId, // legado 27-ago, se ignora
     sponsor_notion_id,
+    sponsor_empresa_confirmada,
     asistente_notion_id,
     inicio,
     fin,
@@ -105,6 +107,7 @@ async function reservar(req, res) {
   try {
     const resultado = await reservarCita({
       sponsor_notion_id,
+      sponsor_empresa_confirmada,
       asistente_notion_id,
       inicio,
       fin,
