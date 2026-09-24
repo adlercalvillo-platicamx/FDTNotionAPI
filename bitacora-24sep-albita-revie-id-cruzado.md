@@ -70,9 +70,22 @@ fila de CaaS queda como historial y la de Revie es la cita activa.
   “Revie + ID de Revie → permite reservar”.
 - `node --check src/services/booking.service.js`: OK.
 - `node --check src/controllers/citas.controller.js`: OK.
+- Commit desplegado: `c6d2108` sobre `main`.
+- Redeploy manual (Adler) el 24-sep. Verificación contra Coolify con fecha
+  fuera del evento, que ninguna versión puede escribir: antes del deploy
+  respondía `400 INVALID_INPUT` por fecha; después responde
+  `409 SPONSOR_EMPRESA_NO_COINCIDE` con `esperada=Revie`, `resuelta=CaaS`.
+  La guarda corre antes de validar fecha, así que ese cambio de código de
+  error es la señal de que la versión nueva está viva.
+- Estado final en Notion: `3e562dda-199a-8136-b9d2-cd6004d587ce`
+  “Cita — VITORIA PRATES - Revie” **Confirmada**, 8-oct 10:00, Mesa 1;
+  `3e562dda-199a-8117-bd2e-c4948d2ae37d` “Cita — VITORIA PRATES - CaaS”
+  **Cancelada**. La cancelada conserva “Mesa 1” como historial: no ocupa
+  capacidad ni duplica la mesa del bloque.
+- Adler avisó a Albita del cambio por WhatsApp.
 
-## Pendiente operativo
+## Nota de operación
 
-- El cambio de backend requiere desplegar el commit en Coolify. Hasta ese
-  deploy, el prompt nuevo reduce el riesgo, pero la versión anterior del
-  endpoint ignora el campo adicional.
+Los correos de sponsors en producción ya son los reales. No hacer pruebas que
+disparen SMTP. Para validar esta guarda, usar una fecha fuera del evento como
+arriba: nunca llega a escribir ni a notificar.
