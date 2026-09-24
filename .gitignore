@@ -4,6 +4,9 @@ METSA/
 .env
 .env-coolify.txt
 .env-pruebas.txt
+.cursor/mcp.json
+__pycache__/
+*.pyc
 *.log
 .DS_Store
 commit-message.txt
