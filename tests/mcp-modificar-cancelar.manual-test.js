@@ -12,6 +12,7 @@ const path = require('path');
 
 process.env.NOTION_CITAS_DATA_SOURCE_ID = 'fake-mcp-citas';
 process.env.NOTION_CONTACTOS_DATA_SOURCE_ID = 'fake-mcp-contactos';
+process.env.CITAS_FECHAS_EVENTO = '2026-10-07,2026-10-08';
 
 class BookingError extends Error {
   constructor(code, message, detalle) {
@@ -534,6 +535,7 @@ async function ok(nombre, fn) {
       'casillas: Día 1 Mañana, Día 1 Tarde, Día 2'
     );
     assert.ok(body.aviso.includes('opciones_para_ofrecer'));
+    assert.deepStrictEqual(body.fechas_permitidas, ['2026-10-07', '2026-10-08']);
   });
 
   await ok('sin Tarde Día 1 rellena la casilla con Día 2 y no repite', async () => {
@@ -638,6 +640,23 @@ async function ok(nombre, fn) {
     const r = await ejecutarConsultarDisponibilidadCita({});
     assert.strictEqual(r.isError, true);
     assert.strictEqual(parse(r).error, 'INVALID_INPUT');
+  });
+
+  await ok('sponsor con un solo día no consulta el otro', async () => {
+    const original = citasService.fechasPermitidasParaSponsor;
+    citasService.fechasPermitidasParaSponsor = (id) => {
+      assert.strictEqual(id, 'sponsor-1');
+      return ['2026-10-08'];
+    };
+    escenarioDisponibilidad = 'variado';
+    try {
+      const body = parse(await ejecutarConsultarDisponibilidadCita(argsDispo()));
+      assert.deepStrictEqual(body.fechas_permitidas, ['2026-10-08']);
+      assert.ok(body.opciones_para_ofrecer.every((h) => h.inicio.startsWith('2026-10-08')));
+      assert.ok(!body.opciones_para_ofrecer.some((h) => h.inicio.startsWith('2026-10-07')));
+    } finally {
+      citasService.fechasPermitidasParaSponsor = original;
+    }
   });
 
   citasService.consultarSugeridasPorIdentificador = consultarOriginal;

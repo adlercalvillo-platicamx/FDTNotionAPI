@@ -94,6 +94,10 @@ require.cache[citasPath] = {
         estatus: pagina.estatus || 'Confirmada',
       };
     },
+    fechasPermitidasParaSponsor(id) {
+      if (id === 'pik') return ['2026-10-08'];
+      return ['2026-10-07', '2026-10-08'];
+    },
   },
 };
 
@@ -246,6 +250,17 @@ async function main() {
   ];
   const catalogo = await listarSponsorsPublicos();
   assert.deepEqual(catalogo.map((item) => item.id), ['oro']);
+  assert.deepEqual(catalogo[0].fechasPermitidas, ['2026-10-07', '2026-10-08']);
+
+  sponsors = [
+    { id: 'pik', empresa: 'Pikstudio', nivelPatrocinio: 'Oro', solucion: [] },
+  ];
+  const catalogoPik = await listarSponsorsPublicos();
+  assert.deepEqual(catalogoPik[0].fechasPermitidas, ['2026-10-08']);
+  sponsors = [
+    { id: 'oro', empresa: 'Oro', nivelPatrocinio: 'Oro', solucion: [] },
+    { id: 'bronce', empresa: 'Bronce', nivelPatrocinio: 'Bronce', solucion: [] },
+  ];
 
   const bloques = await obtenerDisponibilidadPublica({
     contactoId: ASISTENTE.id,

@@ -176,6 +176,7 @@ async function listarSponsorsPublicos() {
       logoUrl: sponsor.logoEmpresaSpeaker || null,
       sitioWeb: sponsor.sitioWebEmpresa || null,
       soluciones: sponsor.solucion || [],
+      fechasPermitidas: citas.fechasPermitidasParaSponsor(sponsor.id),
     }))
     .sort((a, b) => a.empresa.localeCompare(b.empresa, 'es'));
 }
@@ -217,12 +218,24 @@ async function obtenerDisponibilidadPublica({ contactoId, sponsorPageId, fecha, 
     const cita = await exigirCitaDelContacto(contactoId, exceptCitaId);
     exceptPageId = cita.id;
   }
-  return citas.obtenerDisponibilidadSponsor({
-    sponsorPageId,
-    fecha,
-    asistentePageId: contactoId,
-    exceptPageId,
-  });
+  try {
+    return await citas.obtenerDisponibilidadSponsor({
+      sponsorPageId,
+      fecha,
+      asistentePageId: contactoId,
+      exceptPageId,
+    });
+  } catch (err) {
+    if (err.status === 400 || err.status === 404) {
+      throw new ReservaPublicaError(
+        err.code || 'INVALID_INPUT',
+        err.message,
+        err.status,
+        err.detalle
+      );
+    }
+    throw err;
+  }
 }
 
 function etiquetaMesa(mesa) {

@@ -84,8 +84,8 @@ async function sponsorsParaFlow(asistenteId) {
     }));
 }
 
-function datosFecha() {
-  const fechas = citas.obtenerFechasEvento();
+function datosFecha(sponsorPageId) {
+  const fechas = citas.fechasPermitidasParaSponsor(sponsorPageId);
   return fechas.map((id) => ({ id, title: tituloFecha(id) }));
 }
 
@@ -141,7 +141,7 @@ async function manejarAdvance(envelope) {
     if (!sponsorId) return errorPantalla(MSG.INVALIDO);
     let fechas;
     try {
-      fechas = datosFecha();
+      fechas = datosFecha(sponsorId);
     } catch (err) {
       return errorPantalla(MSG.TIMEOUT);
     }
@@ -232,7 +232,7 @@ async function manejarBack(envelope) {
   }
   if (screen === 'HORARIO') {
     try {
-      const fechas = datosFecha();
+      const fechas = datosFecha(payload.sponsor_id);
       return datosPantalla('FECHA', { ...payload, fechas });
     } catch {
       return errorPantalla(MSG.TIMEOUT);

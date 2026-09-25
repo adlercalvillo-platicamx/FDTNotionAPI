@@ -153,6 +153,25 @@ async function main() {
     fallos += 1;
   }
 
+  try {
+    process.env.CITAS_SPONSOR_FECHAS = '3df62dda-199a-81e1-bf0d-c64484844e02:2026-10-08';
+    await citas.obtenerDisponibilidadSponsor({
+      sponsorPageId: '3df62dda-199a-81e1-bf0d-c64484844e02',
+      fecha: '2026-10-07',
+    });
+    console.log('❌ FECHA_NO_PERMITIDA esperado — no lanzó');
+    fallos += 1;
+  } catch (err) {
+    if (err.code === 'FECHA_NO_PERMITIDA_PARA_SPONSOR' && err.status === 400) {
+      console.log('✅ Pikstudio el 7 → FECHA_NO_PERMITIDA_PARA_SPONSOR (sin Notion)');
+    } else {
+      console.log('❌ Pikstudio el 7 inesperado:', err.code, err.status, err.message);
+      fallos += 1;
+    }
+  } finally {
+    delete process.env.CITAS_SPONSOR_FECHAS;
+  }
+
   if (fallos > 0) {
     console.error(`\n${fallos} fallo(s)`);
     process.exit(1);

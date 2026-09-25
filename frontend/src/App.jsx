@@ -17,6 +17,14 @@ const FECHAS = String(
   .map((fecha) => fecha.trim())
   .filter(Boolean);
 
+function fechasDeSponsor(sponsor) {
+  const listadas = Array.isArray(sponsor?.fechasPermitidas)
+    ? sponsor.fechasPermitidas.map((fecha) => String(fecha).trim()).filter(Boolean)
+    : [];
+  const filtradas = listadas.filter((fecha) => FECHAS.includes(fecha));
+  return filtradas.length ? filtradas : FECHAS;
+}
+
 const COPY_ERROR = {
   EMAIL_NO_ENCONTRADO:
     'No encontramos este correo entre los asistentes registrados. Intenta con el mismo correo que utilizaste en tu registro. Si necesitas ayuda, acércate con el equipo de Fashion Digital Talks.',
@@ -24,6 +32,8 @@ const COPY_ERROR = {
     'Tu boleto Expo incluye acceso al piso de exhibición, pero no incluye citas 1 a 1. Si tienes dudas, acércate con el equipo de Fashion Digital Talks.',
   CITA_YA_OCURRIO:
     'Esta cita ya ocurrió y tiene el check-in marcado, así que no se puede mover. Si hace falta, agenda una cita nueva.',
+  FECHA_NO_PERMITIDA_PARA_SPONSOR:
+    'Este sponsor no recibe citas ese día. Elige una de las fechas que aparecen arriba.',
 };
 
 function fechaLarga(fecha) {
@@ -495,27 +505,29 @@ export default function App() {
             <ExistingAppointments
               citas={identidad?.citasConfirmadas}
               virtual={virtual}
-              onModificar={(cita) =>
-                cargarHorarios(sponsorDesdeCita(cita), fecha, {
+              onModificar={(cita) => {
+                const sponsor = sponsorDesdeCita(cita);
+                return cargarHorarios(sponsor, fechasDeSponsor(sponsor)[0], {
                   modo: 'modificar',
                   cita,
-                })
-              }
+                });
+              }}
               onCancelar={setCitaACancelar}
             />
             <CancelledAppointments
               citas={identidad?.citasCanceladasReagendables}
               virtual={virtual}
-              onReagendar={(cita) =>
-                cargarHorarios(sponsorDesdeCita(cita), fecha, { modo: 'reservar' })
-              }
+              onReagendar={(cita) => {
+                const sponsor = sponsorDesdeCita(cita);
+                return cargarHorarios(sponsor, fechasDeSponsor(sponsor)[0], { modo: 'reservar' });
+              }}
             />
             <div className="sponsor-grid">
               {filtrados.map((sponsor) => (
                 <SponsorCard
                   key={sponsor.id}
                   sponsor={sponsor}
-                  onSelect={(item) => cargarHorarios(item, fecha, { modo: 'reservar' })}
+                  onSelect={(item) => cargarHorarios(item, fechasDeSponsor(item)[0], { modo: 'reservar' })}
                 />
               ))}
             </div>
@@ -540,7 +552,7 @@ export default function App() {
               compact
             />
             <div className="date-tabs" role="tablist">
-              {FECHAS.map((item) => (
+              {fechasDeSponsor(selectedSponsor).map((item) => (
                 <button
                   key={item}
                   className={item === fecha ? 'active' : ''}

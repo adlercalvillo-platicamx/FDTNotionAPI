@@ -41,6 +41,7 @@ const STATUS_POR_CODIGO_NEGOCIO = {
   CITA_NO_PERTENECE: 403, // el teléfono no corresponde al Contacto Principal de esa cita
   VARIAS_CITAS_ACTIVAS: 409,
   HORARIO_EN_PASADO: 400,
+  FECHA_NO_PERMITIDA_PARA_SPONSOR: 400,
   CITA_YA_OCURRIO: 409,
   LIMITE_INTENTOS_ALCANZADO: 409, // legado — ya no se lanza; se deja por si llega un cliente viejo
   NOTIFICACION_FALLO: 502,
@@ -274,7 +275,11 @@ async function disponibilidad(req, res) {
   } catch (error) {
     // Fecha fuera del evento → error controlado (400), es un dato inválido del cliente.
     if (error.status === 400) {
-      return res.status(400).json({ error: 'Bad Request', message: error.message });
+      return res.status(400).json({
+        error: error.code || 'Bad Request',
+        message: error.message,
+        ...(error.detalle || {}),
+      });
     }
 
     // Horario de citas todavía no configurado en variables de entorno para

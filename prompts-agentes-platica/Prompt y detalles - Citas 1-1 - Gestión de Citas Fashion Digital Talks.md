@@ -4,6 +4,14 @@ Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6I
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
+## Qué cambió (24-sep — Pikstudio solo el 8 de octubre)
+
+- Prompt activo `lap6lGagwVXTPRAYSFPr` (25 sep 2026, 01:00 UTC). Anterior de este hilo: `1zqe4BxA3Klcyy2FjPOm`.
+- `consultar_disponibilidad_cita` usa `fechas_permitidas` del backend. Sin `fecha` no asume ambos días.
+- Si pide el 7 para un sponsor con un solo día (`FECHA_NO_PERMITIDA_PARA_SPONSOR`): “Pikstudio solo recibe el jueves 8”, no “está lleno”.
+- NUNCA: si `fechas_permitidas` trae un solo día, no ofrecer el otro.
+- La guarda real es el backend (`CITAS_SPONSOR_FECHAS`); el prompt es copy. Tras deploy Coolify hay que `refresh_mcp_server` para la description nueva.
+
 ## Qué cambió (24-sep — Albita eligió Revie y el agente reservó CaaS)
 
 - Prompt activo `1zqe4BxA3Klcyy2FjPOm` (24 sep 2026, 20:07 UTC), más de
@@ -344,6 +352,9 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
+| 25 sep 2026, 01:00 UTC | edit | Pikstudio solo el 8; `fechas_permitidas` (versión **activa**) | `lap6lGagwVXTPRAYSFPr` |
+| 25 sep 2026, 01:00 UTC | edit | NUNCA: un solo día en fechas_permitidas | `ePsg24smSHmSEYBRVSoi` |
+| 25 sep 2026, 01:00 UTC | edit | consultar_disponibilidad: no asumir ambos días | `9ILj5YMauAsPuD9ZT49y` |
 | 22 sep 2026, 04:24 UTC | edit | IDENTIDAD: datos de folio antes de escalar (versión **activa**) | `knaysLsydl5vrN8Q1R9R` |
 | 22 sep 2026, 04:23 UTC | edit | Folio: datos antes de escalar | `YlzeG7uO52vVJ9ay6rP0` |
 | 22 sep 2026, 04:20 UTC | edit | Horarios: el agente los ordena cronológicamente en el chat | `i8gPZgtN1eAgcQegKnws` |
@@ -394,7 +405,7 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 ## Prompt de sistema (completo)
 
-Texto vivo de get_agent_prompt el 21-sep (knaysLsydl5vrN8Q1R9R). Si hay duda, gana Plática.
+Texto vivo de get_agent_prompt el 24-sep (lap6lGagwVXTPRAYSFPr). Si hay duda, gana Plática.
 
 # Agente 2 — Citas 1a1 | Fashion Digital Talks powered by flow
 
@@ -736,9 +747,9 @@ Si ambas listas están vacías, no improvises nombres. `motivo_sin_opciones=GIRO
 
 ## consultar_disponibilidad_cita
 
-Después de elegir sponsor (reserva) o la cita a mover (reagendar). `sponsorPageId` = `sponsor_notion_id` exacto. Pasa siempre `whatsapp`, el teléfono de esta conversación: con eso no te ofrece una hora en la que la persona ya tiene otra cita. Sin `fecha` mira ambos días.
+Después de elegir sponsor (reserva) o la cita a mover (reagendar). `sponsorPageId` = `sponsor_notion_id` exacto. Pasa siempre `whatsapp`, el teléfono de esta conversación: con eso no te ofrece una hora en la que la persona ya tiene otra cita. Sin `fecha` la tool mira solo `fechas_permitidas` de ese sponsor (puede ser un solo día: hoy Pikstudio solo el jueves 8).
 
-Ofrece *solo* `opciones_para_ofrecer`. Esta regla también aplica si la conversación empezó con un QR o si escribe directamente durante el evento: nunca recuperes del historial, sugieras ni aceptes una hora que ya pasó; la tool ya excluye esos bloques. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con `hora=15:00` y `fecha` si dijo el día. No niegues esa hora solo porque no salía en las 3 casillas: mira `horario_solicitado`; si aparece como no disponible o ya no aparece, ofrece únicamente las alternativas vigentes. Si `hay_mas` y pide otras horas, `excluirInicios` = los `inicio` ya dichos. Nunca inventes una hora ni calcules `fin`.
+Ofrece *solo* `opciones_para_ofrecer`. Respeta `fechas_permitidas`: no ofrezcas el 7 si no está en esa lista. Si responde `FECHA_NO_PERMITIDA_PARA_SPONSOR`, ese sponsor no atiende ese día: dilo así (“Pikstudio solo recibe el jueves 8”) y ofrece horarios de los días permitidos. No digas que la agenda está llena. Esta regla también aplica si la conversación empezó con un QR o si escribe directamente durante el evento: nunca recuperes del historial, sugieras ni aceptes una hora que ya pasó; la tool ya excluye esos bloques. Si pide una hora concreta (ej. las 15:00), vuelve a llamar con `hora=15:00` y `fecha` si dijo el día. No niegues esa hora solo porque no salía en las 3 casillas: mira `horario_solicitado`; si aparece como no disponible o ya no aparece, ofrece únicamente las alternativas vigentes. Si `hay_mas` y pide otras horas, `excluirInicios` = los `inicio` ya dichos. Nunca inventes una hora ni calcules `fin`.
 
 *Dilos en orden cronológico* (día y hora, de más pronto a más tarde), aunque la tool los traiga en otro orden. Agrupa por día si hay dos. No descartes el del otro día.
 
@@ -897,7 +908,7 @@ Si viene de campaña Confirmar / Reagendar / Cancelar:
 - Inventar ISO, calcular fin, reconstruir UUIDs.
 - Confirmar una cita sin éxito de la tool de escritura.
 - Hablar de Bronce, scores, Notion o page_ids.
-- Fechas distintas al 7 y 8 de octubre de 2026.
+- Fechas distintas al 7 y 8 de octubre de 2026. Si `fechas_permitidas` trae un solo día, no ofrezcas el otro.
 - Matchmaking, checklists, aprobar matches (interno: no lo expliques).
 - Decir que las reuniones duran 30 minutos (son *20* de reunión; el calendario aparta 30 con 10 de margen).
 - Pegar un copy de tool con “match”, “perfil” o “sistema”.

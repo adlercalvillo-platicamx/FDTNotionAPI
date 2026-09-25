@@ -179,6 +179,7 @@ Ver `.env.example`. Resumen:
 - `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` — contacto ficticio de los bloqueos de conferencia (26-ago). Default = el de `Contactos (nueva)`. **Al apuntar a producción** (data sources con prefijo `3b162dda`) hay que ponerle el page_id del contacto ficticio del workspace de Laura: si falta, va vacía o quedó el default de pruebas, el servicio **no arranca** (error 503 explícito). Es a propósito — con el default equivocado la exclusión de mesas se apagaría en silencio y las conferencias volverían a restar de las 11.
 - **Horario de citas 1a1** (para `GET /citas/disponibilidad`, 14-ago) — cargar en Coolify Application → Environment Variables (`.env.example` solo documenta el formato):
   - `CITAS_FECHAS_EVENTO=2026-10-07,2026-10-08`
+  - `CITAS_SPONSOR_FECHAS=` — opcional. Sin ella, todos los sponsors reciben ambos días. Formato `page_id:YYYY-MM-DD` (varios sponsors con `;`, varios días con `,`). Pikstudio en Laura (24-sep): `3df62dda-199a-81e1-bf0d-c64484844e02:2026-10-08`. El backend rechaza consulta y escritura el 7 con `FECHA_NO_PERMITIDA_PARA_SPONSOR`; no usar bloqueos de conferencia para esto.
   - `CITAS_FASE_EVENTO_SIMULADA=` — solo pruebas de copy (`antes`, `durante`, `despues`). Vacía en producción; si queda puesta reemplaza la fecha real.
   - `CITAS_HORA_INICIO_2026_10_07` / `CITAS_HORA_FIN_2026_10_07` (mié: `10:30` / `19:00`)
   - `CITAS_HORA_INICIO_2026_10_08` / `CITAS_HORA_FIN_2026_10_08` (jue: `09:00` / `18:00`)

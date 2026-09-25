@@ -140,8 +140,10 @@ const DURACION_CITA_MINUTOS = Number(process.env.CITAS_DURACION_BLOQUE_MINUTOS |
  *
  * @param {string} inicio - ISO 8601
  * @param {string} fin - ISO 8601
+ * @param {string} [sponsorPageId] - si el sponsor tiene días restringidos
+ *   (CITAS_SPONSOR_FECHAS), el día también tiene que estar en esa lista.
  */
-function validarDuracionYFecha(inicio, fin) {
+function validarDuracionYFecha(inicio, fin, sponsorPageId) {
   const fechaInicio = new Date(inicio);
   const fechaFin = new Date(fin);
 
@@ -187,6 +189,17 @@ function validarDuracionYFecha(inicio, fin) {
       `Las citas 1a1 solo se pueden agendar en las fechas del evento (${fechasValidas.join(', ')}). ` +
         `La fecha solicitada (${diaInicio}) está fuera de ese rango.`
     );
+  }
+
+  if (sponsorPageId) {
+    try {
+      citasService.assertFechaPermitidaParaSponsor(sponsorPageId, diaInicio);
+    } catch (err) {
+      if (err.code === 'FECHA_NO_PERMITIDA_PARA_SPONSOR') {
+        throw new BookingError(err.code, err.message, err.detalle);
+      }
+      throw err;
+    }
   }
 
   try {
@@ -937,7 +950,7 @@ async function reservarCita({
   // Duración + día del evento + bloque operativo (mismas env que
   // /citas/disponibilidad). Antes del chequeo de idempotencia: no gastar
   // Notion en una reserva con horario inválido de entrada.
-  validarDuracionYFecha(inicio, fin);
+  validarDuracionYFecha(inicio, fin, sponsor_notion_id);
 
   const existenteFuera = await citasService.buscarPorRequestId(request_id);
   if (existenteFuera) {
@@ -1604,7 +1617,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
   requerirHorarioNoPasado(nuevoInicioMs, ahoraMs);
 
   const fin = citasService.finDeBloque(inicio);
-  validarDuracionYFecha(inicio, fin);
+  validarDuracionYFecha(inicio, fin, cita.sponsorPageId);
 
   return bookingMutex.runExclusive(async () => {
     const [sponsorOcupado, asistenteOcupado, ocupacionMesas] = await Promise.all([

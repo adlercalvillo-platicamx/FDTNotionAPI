@@ -442,6 +442,30 @@ ok('Sin CITAS_HORA_INICIO del día → HORARIO_NO_CONFIGURADO (503)', () => {
   }
 });
 
+ok('Sponsor restringido al 8: reserva el 7 → FECHA_NO_PERMITIDA_PARA_SPONSOR', () => {
+  const backup = process.env.CITAS_SPONSOR_FECHAS;
+  process.env.CITAS_SPONSOR_FECHAS = '3df62dda-199a-81e1-bf0d-c64484844e02:2026-10-08';
+  try {
+    assert.throws(
+      () =>
+        validarDuracionYFecha(
+          '2026-10-07T10:30:00-06:00',
+          '2026-10-07T11:00:00-06:00',
+          '3df62dda-199a-81e1-bf0d-c64484844e02'
+        ),
+      (e) => e instanceof BookingError && e.code === 'FECHA_NO_PERMITIDA_PARA_SPONSOR'
+    );
+    validarDuracionYFecha(
+      '2026-10-08T09:00:00-06:00',
+      '2026-10-08T09:30:00-06:00',
+      '3df62dda-199a-81e1-bf0d-c64484844e02'
+    );
+  } finally {
+    if (backup === undefined) delete process.env.CITAS_SPONSOR_FECHAS;
+    else process.env.CITAS_SPONSOR_FECHAS = backup;
+  }
+});
+
 console.log('\n=== Tipos boleto elegibles (DIFF-1 B.2) ===');
 ok('Virtual y Speaker siempre en lista elegible (incluirVirtual ignorado)', () => {
   // Réplica de la constante post-diff

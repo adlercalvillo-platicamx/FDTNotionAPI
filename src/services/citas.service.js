@@ -2346,7 +2346,52 @@ async function cargarIndiceCitasConfirmadas() {
 }
 
 function obtenerFechasEvento() {
-  return process.env.CITAS_FECHAS_EVENTO.split(',').map((f) => f.trim());
+  return process.env.CITAS_FECHAS_EVENTO.split(',').map((f) => f.trim()).filter(Boolean);
+}
+
+/**
+ * Días en los que UN sponsor recibe citas. Default = todos los de
+ * CITAS_FECHAS_EVENTO. Pikstudio (Laura, 24-sep) solo el 8: la env
+ * CITAS_SPONSOR_FECHAS lista page_id:YYYY-MM-DD (varios sponsors con `;`,
+ * varios días con `,`). Ids con o sin guiones. Sin la env, nadie cambia.
+ */
+function parsearFechasPorSponsor() {
+  const mapa = new Map();
+  const crudo = String(process.env.CITAS_SPONSOR_FECHAS || '').trim();
+  if (!crudo) return mapa;
+  for (const parte of crudo.split(';')) {
+    const entrada = parte.trim();
+    if (!entrada) continue;
+    const sep = entrada.indexOf(':');
+    if (sep <= 0) continue;
+    const id = pageIdCanonico(entrada.slice(0, sep));
+    const fechas = entrada
+      .slice(sep + 1)
+      .split(',')
+      .map((f) => f.trim())
+      .filter(Boolean);
+    if (id && fechas.length) mapa.set(id, fechas);
+  }
+  return mapa;
+}
+
+function fechasPermitidasParaSponsor(sponsorPageId) {
+  const evento = obtenerFechasEvento();
+  const restringidas = parsearFechasPorSponsor().get(pageIdCanonico(sponsorPageId));
+  if (!restringidas) return evento;
+  return restringidas.filter((fecha) => evento.includes(fecha));
+}
+
+function assertFechaPermitidaParaSponsor(sponsorPageId, fecha) {
+  const permitidas = fechasPermitidasParaSponsor(sponsorPageId);
+  if (permitidas.includes(fecha)) return permitidas;
+  const err = new Error(
+    `Este sponsor no recibe citas el ${fecha}. Días en los que sí: ${permitidas.join(', ') || '(ninguno)'}.`
+  );
+  err.status = 400;
+  err.code = 'FECHA_NO_PERMITIDA_PARA_SPONSOR';
+  err.detalle = { fechas_permitidas: permitidas, fecha };
+  throw err;
 }
 
 /**
@@ -2359,7 +2404,7 @@ function bloquesDisponiblesParaSponsor({ sponsorPageId, indiceConfirmadas, asist
   const indice = indiceConfirmadas || new Map();
   const asistenteCanonico = asistentePageId ? pageIdCanonico(asistentePageId) : null;
   const disponibles = [];
-  for (const fecha of obtenerFechasEvento()) {
+  for (const fecha of fechasPermitidasParaSponsor(sponsorPageId)) {
     requireHorarioConfigurado(fecha);
     for (const inicio of generarBloquesParaFecha(fecha)) {
       const entrada = indice.get(inicio) || {
@@ -2586,6 +2631,7 @@ async function obtenerDisponibilidadSponsor({ sponsorPageId, fecha, asistentePag
   }
 
   requireHorarioConfigurado(fecha);
+  assertFechaPermitidaParaSponsor(sponsorPageId, fecha);
   await requireSponsorExistente(sponsorPageId);
 
   const bloques = generarBloquesParaFecha(fecha);
@@ -2713,4 +2759,6 @@ module.exports = {
   generarBloquesParaFecha,
   requireHorarioConfigurado,
   obtenerFechasEvento,
+  fechasPermitidasParaSponsor,
+  assertFechaPermitidaParaSponsor,
 };

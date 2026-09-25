@@ -50,6 +50,7 @@ require.cache[citasPath] = {
     ];
     },
     obtenerFechasEvento: () => ['2026-10-07', '2026-10-08'],
+    fechasPermitidasParaSponsor: () => ['2026-10-07', '2026-10-08'],
     obtenerDisponibilidadSponsor: async ({ fecha }) => {
       if (fecha === '2026-10-07') {
         return [
