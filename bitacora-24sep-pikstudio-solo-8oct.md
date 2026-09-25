@@ -38,7 +38,37 @@ Rollback: borrar `CITAS_SPONSOR_FECHAS` y restart. El código sin mapa vuelve a 
 
 En el workspace de pruebas el page_id de Pikstudio es otro: o se pone el de ese workspace o se deja la env vacía.
 
+## Evidencia post-env (24-sep, ~19:43 CDMX)
+
+Lecturas contra `f8wwwgc0g88wccscww4cccco.appsplatica.site`. Nada escrito en Notion.
+
+| Prueba | Resultado |
+|---|---|
+| `GET /health` | 200 |
+| Pikstudio `GET /citas/disponibilidad?fecha=2026-10-07` | **400** `FECHA_NO_PERMITIDA_PARA_SPONSOR`, `fechas_permitidas: ["2026-10-08"]` |
+| Pikstudio el 8 | 200, 17 bloques libres (igual que antes de la env) |
+| Mercado Libre el 7 | 200, 15 bloques libres (sin regresión) |
+| MCP `consultar_disponibilidad_cita` sin fecha (asistente de prueba Laura) | `fechas_permitidas: ["2026-10-08"]`, opciones solo ese día |
+| MCP con `fecha=2026-10-07` | `FECHA_NO_PERMITIDA_PARA_SPONSOR` |
+
+## Evidencia QR (24-sep, ~19:58 CDMX, bundle `index-BtPEe1fR.js`)
+
+Identificación con un asistente **real** (`identificarPorEmail` solo lee Notion y
+emite token: no escribe ni manda correo). No se reservó nada.
+
+| Prueba | Resultado |
+|---|---|
+| Pikstudio → Ver horarios | pide `fecha=2026-10-08`; una sola pestaña “Jueves, 8 De Octubre” |
+| Tiendanube → Ver horarios (control) | pide `fecha=2026-10-07`; dos pestañas, sin cambio |
+
+Ojo con la caché del navegador: una pestaña abierta desde antes del rebuild
+sigue corriendo el bundle viejo y pide el 7, así que muestra el banner
+`FECHA_NO_PERMITIDA_PARA_SPONSOR` en vez de saltar al 8. El backend igual
+protege. `index.html` sale con ETag/Last-Modified y sin `Cache-Control`; una
+recarga normal lo resuelve. No se tocó la config de nginx.
+
 ## Pendientes
 
-- Adler: pegar la env en Coolify Laura **después** del deploy, rebuild QR, refresh MCP.
 - No reejecutar one-shots de sponsors.
+- Opcional: `Cache-Control: no-cache` para `index.html` en el nginx del QR, para
+  que un rebuild se propague sin recarga manual. No se cambió hoy.
