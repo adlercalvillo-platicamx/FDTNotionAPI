@@ -236,12 +236,18 @@ require.cache[contactosPath] = {
       return {
         id: pageId,
         nombre: 'Mock',
-        empresa: pageId === 'sponsor-revie' ? 'Revie' : '',
+        empresa: pageId === 'sponsor-revie' ? 'Revie' : pageId === 'sponsor-caas' ? 'CaaS' : '',
         email: '',
         whatsapp: '',
         rolPuesto: '',
         ticketTipo: pageId === 'asistente-expo' ? 'Expo' : 'Presencial',
       };
+    },
+    async resolverSponsorPorEmpresa(empresa) {
+      if (String(empresa).toLowerCase() === 'revie') {
+        return { estado: 'unico', sponsor: { id: 'sponsor-revie', empresa: 'Revie' } };
+      }
+      return { estado: 'no_encontrado', candidatos: [] };
     },
     normalizarEmpresaBusqueda(valor) {
       return String(valor || '')
@@ -640,7 +646,18 @@ function baseParams(overrides = {}) {
             request_id: 'req-empresa-no-coincide',
           })
         ),
-      (e) => e instanceof BookingError && e.code === 'SPONSOR_EMPRESA_NO_COINCIDE'
+      (e) => {
+        if (!(e instanceof BookingError) || e.code !== 'SPONSOR_EMPRESA_NO_COINCIDE') return false;
+        // 25-sep: el 409 dice qué hacer y trae el id real de la empresa nombrada,
+        // para que el agente nunca tenga que "armar" un UUID.
+        assert.strictEqual(e.detalle.sponsor_empresa_resuelta, 'CaaS');
+        assert.strictEqual(e.detalle.sponsor_notion_id_recibido, 'sponsor-caas');
+        assert.strictEqual(e.detalle.sponsor_notion_id_de_empresa_confirmada, 'sponsor-revie');
+        assert.ok(/no le cambies caracteres/.test(e.message));
+        assert.ok(/sponsor_empresa_confirmada="CaaS"/.test(e.message));
+        assert.ok(/sponsor_notion_id="sponsor-revie"/.test(e.message));
+        return true;
+      }
     );
     assert.strictEqual(estado.porId.size, filasAntes);
   });

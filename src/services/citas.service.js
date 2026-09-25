@@ -2593,7 +2593,7 @@ async function requireSponsorExistente(sponsorPageId) {
   } catch (error) {
     if (error.status !== 404) throw error;
     const err = new Error(
-      `El sponsor "${sponsorPageId}" no existe en Contactos de Notion. Copia sponsor_notion_id tal cual de consultar_sugeridas_para_asistente (o de citasConfirmadas); no lo armes ni lo completes a partir de otro id.`
+      `El sponsor "${sponsorPageId}" no existe en Contactos de Notion. Copia sponsor_notion_id tal cual de consultar_sugeridas_para_asistente (o de citasConfirmadas); no lo armes ni lo completes a partir de otro id. Un id que ya te sirvió para ofrecer horarios era válido: si ahora falla, se le cambiaron caracteres; no lo "corrijas" otra vez, vuelve a consultar.`
     );
     err.status = 404;
     err.code = 'SPONSOR_NO_ENCONTRADO';

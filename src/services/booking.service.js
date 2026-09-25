@@ -786,6 +786,21 @@ function errorDeContactoInexistente(error, { sponsorPageId, asistentePageId }) {
 }
 
 /**
+ * page_id del sponsor cuya empresa coincide sin ambigüedad con el nombre que
+ * mandó el agente. Solo para enriquecer el 409 de empresa cruzada; cualquier
+ * fallo aquí devuelve null y el rechazo sigue igual.
+ */
+async function idSponsorPorEmpresaSiUnico(empresa) {
+  if (typeof contactosService.resolverSponsorPorEmpresa !== 'function') return null;
+  try {
+    const resolucion = await contactosService.resolverSponsorPorEmpresa(empresa);
+    return resolucion?.estado === 'unico' ? resolucion.sponsor?.id || null : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * La elegibilidad también se valida en la escritura final. Matchmaking y los
  * prompts excluyen Expo, pero reservar_cita puede llamarse sin sugerencia
  * previa; sin esta guarda un page_id Expo podía crear mesa, correos e .ics.
@@ -936,12 +951,24 @@ async function reservarCita({
       !normalizar(empresaEsperada) ||
       normalizar(empresaEsperada) !== normalizar(empresaReal)
     ) {
+      // 25-sep (Daniela Luna): el agente ofreció horarios de Flow, la persona
+      // confirmó la hora, y al reservar mandó el id de Flow con empresa "CaaS".
+      // Este 409 lo frenó bien, pero el agente reaccionó editando caracteres
+      // del UUID hasta que ya no existía. El mensaje ahora dice qué hacer con
+      // cada lectura del chat y trae el id real de la empresa nombrada, para
+      // que nunca haga falta armar uno.
+      const idEmpresaConfirmada = await idSponsorPorEmpresaSiUnico(empresaEsperada);
+      const pasoSiEligioEsperada = idEmpresaConfirmada
+        ? `usa sponsor_notion_id="${idEmpresaConfirmada}" (es el de ${empresaEsperada} en Contactos), consulta su disponibilidad y reserva con ese par.`
+        : `vuelve a consultar_sugeridas_para_asistente con sponsorEmpresa="${empresaEsperada}" y copia sponsor_notion_id y sponsor_empresa de sponsor_solicitado.`;
       throw new BookingError(
         'SPONSOR_EMPRESA_NO_COINCIDE',
-        `La empresa elegida "${empresaEsperada}" no corresponde al sponsor recibido (${empresaReal || 'sin empresa'}). Vuelve a consultar sponsor_solicitado y copia ambos valores de la misma respuesta.`,
+        `La empresa elegida "${empresaEsperada}" no corresponde al sponsor recibido: ese sponsor_notion_id es de ${empresaReal || 'otra empresa'}. El id SÍ existe; no le cambies caracteres. Decide por la conversación: si la persona confirmó la hora que le ofreciste de ${empresaReal || 'ese sponsor'}, reintenta con el mismo sponsor_notion_id y request_id y sponsor_empresa_confirmada="${empresaReal}". Si de verdad eligió ${empresaEsperada}, ${pasoSiEligioEsperada}`,
         {
           sponsor_empresa_confirmada: empresaEsperada,
           sponsor_empresa_resuelta: empresaReal || null,
+          sponsor_notion_id_recibido: sponsor_notion_id,
+          sponsor_notion_id_de_empresa_confirmada: idEmpresaConfirmada,
         }
       );
     }

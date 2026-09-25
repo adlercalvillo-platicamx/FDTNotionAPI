@@ -1,8 +1,30 @@
 # Prompt y detalles — Citas 1-1 | Gestión de Citas Fashion Digital Talks
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **24 de septiembre de 2026**. Respaldo previo en `prompts-agentes-20-09/`.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **25 de septiembre de 2026**. Respaldo previo en `prompts-agentes-20-09/`.
 
 Nombre en Plática: `Citas 1-1 | Gestión de Citas Fashion Digital Talks`. El `|` se sustituyó por `-` en el nombre de este archivo.
+
+## Qué cambió (25-sep — Daniela Luna: Flow ofrecido, CaaS mandado, UUID editado)
+
+- Prompt activo `Y12Y2trWqS7nOkjfg5Qe` (25 sep 2026, 21:36 UTC). Tres ediciones
+  encadenadas sobre `lap6lGagwVXTPRAYSFPr`: `BtS2carc0dpe9kFoYfft` →
+  `5XJoEWMTdm6AqvOQEMJA` → `Y12Y2trWqS7nOkjfg5Qe`.
+- `reservar_cita`, bullet nuevo: si el último mensaje abrió con una empresa
+  (“Con Flow puede ser:”) y la persona solo confirma una hora, la elegida es
+  *esa* empresa; los ids salen del sponsor cuyo `sponsorPageId` se pasó a
+  `consultar_disponibilidad_cita`. No sustituirla por otra listada antes.
+- Errores: bullet nuevo `SPONSOR_EMPRESA_NO_COINCIDE` (el id sí existe; leer
+  `sponsor_empresa_resuelta` y `sponsor_notion_id_de_empresa_confirmada`;
+  reintentar con el mismo id y `request_id` si confirmó la hora ofrecida, o usar
+  el id de la empresa nombrada si de verdad la eligió). `SPONSOR_NO_ENCONTRADO`
+  justo después de un NO_COINCIDE = el agente alteró el id; no hay tercer
+  intento y al escalar dice que el id se modificó.
+- NUNCA: “reconstruir o editar UUIDs (ni un carácter, ni ‘para corregirlos’)” y
+  “reservar con una empresa que la persona no eligió en su último mensaje”.
+- Backend (mismo turno, requiere redeploy): el 409 `SPONSOR_EMPRESA_NO_COINCIDE`
+  ahora dicta el camino y trae el id real de la empresa confirmada; el 404
+  `SPONSOR_NO_ENCONTRADO` avisa que un id que ya sirvió para ofrecer horarios
+  se alteró. Bitácora `bitacora-25sep-daniela-flow-uuid-editado.md`.
 
 ## Qué cambió (24-sep — Pikstudio solo el 8 de octubre)
 
@@ -289,8 +311,8 @@ Dos tandas distintas. Solo la segunda salió de esta sesión.
 | Asistencia humana | sí (reactivada 21-sep noche, retro Eduardo) |
 | Imagen | Firebase (`agents/c1IYn…`) |
 | Actualizado | 22 sep 2026, 04:23 UTC |
-| Prompt activo | `1zqe4BxA3Klcyy2FjPOm` (24 sep 2026, 20:07 UTC) |
-| Versiones de prompt | más de 200 (activa `1zqe4BxA3Klcyy2FjPOm`) |
+| Prompt activo | `Y12Y2trWqS7nOkjfg5Qe` (25 sep 2026, 21:36 UTC) |
+| Versiones de prompt | más de 200 (activa `Y12Y2trWqS7nOkjfg5Qe`) |
 | Subagentes | Marketing (`4HoKf6mkEekTKA3jXFK3`), task `assist`. Se consulta para dudas generales del evento; **no** para programa |
 
 ## Soporte y horario
@@ -352,7 +374,10 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 | Fecha | Operación | Notas | ID |
 | --- | --- | --- | --- |
-| 25 sep 2026, 01:00 UTC | edit | Pikstudio solo el 8; `fechas_permitidas` (versión **activa**) | `lap6lGagwVXTPRAYSFPr` |
+| 25 sep 2026, 21:36 UTC | edit | NUNCA: editar UUIDs / reservar empresa no elegida (versión **activa**) | `Y12Y2trWqS7nOkjfg5Qe` |
+| 25 sep 2026, 21:35 UTC | edit | Errores: `SPONSOR_EMPRESA_NO_COINCIDE` con camino; NO_ENCONTRADO tras NO_COINCIDE = id alterado | `5XJoEWMTdm6AqvOQEMJA` |
+| 25 sep 2026, 21:34 UTC | edit | reservar_cita: la empresa del último mensaje es la elegida si solo confirma hora | `BtS2carc0dpe9kFoYfft` |
+| 25 sep 2026, 01:00 UTC | edit | Pikstudio solo el 8; `fechas_permitidas` | `lap6lGagwVXTPRAYSFPr` |
 | 25 sep 2026, 01:00 UTC | edit | NUNCA: un solo día en fechas_permitidas | `ePsg24smSHmSEYBRVSoi` |
 | 25 sep 2026, 01:00 UTC | edit | consultar_disponibilidad: no asumir ambos días | `9ILj5YMauAsPuD9ZT49y` |
 | 22 sep 2026, 04:24 UTC | edit | IDENTIDAD: datos de folio antes de escalar (versión **activa**) | `knaysLsydl5vrN8Q1R9R` |
@@ -405,7 +430,7 @@ Mensaje de espera: *Te paso con el equipo de Fashion Digital Talks para que te a
 
 ## Prompt de sistema (completo)
 
-Texto vivo de get_agent_prompt el 24-sep (lap6lGagwVXTPRAYSFPr). Si hay duda, gana Plática.
+Texto vivo de get_agent_prompt el 25-sep (Y12Y2trWqS7nOkjfg5Qe). Si hay duda, gana Plática.
 
 # Agente 2 — Citas 1a1 | Fashion Digital Talks powered by flow
 
@@ -770,6 +795,7 @@ Cuando ya eligió sponsor y un horario concreto (de los ofrecidos o de `horario_
 Copia exacta, todo de la última respuesta que corresponde al sponsor elegido:
 - `sponsor_notion_id` de `sponsor_solicitado` cuando el contacto nombró una empresa; en los demás casos, de `sugeridas_para_ofrecer`, de `opciones_adicionales` o de la cita cancelada
 - `sponsor_empresa_confirmada` = `sponsor_empresa` canónica de ese mismo objeto; nunca la escribas de memoria ni la tomes de otro ítem
+- Si tu último mensaje abrió con una empresa (“Con Flow puede ser:”) y la persona solo confirma una hora (“el jueves a las 10”), la elegida es *esa* empresa: `sponsor_notion_id` y `sponsor_empresa_confirmada` son los del sponsor cuyo `sponsorPageId` pasaste a `consultar_disponibilidad_cita`. No la sustituyas por otra que listaste antes y que la persona no nombró
 - `asistente_notion_id` de la consulta por WhatsApp
 - `inicio` y `fin` del bloque elegido
 - Reserva normal: `request_id` = `wa:<telefono>:<sponsor_notion_id>:<inicio>` (mismo intento = mismo id)
@@ -791,7 +817,8 @@ Nunca inventes ni muestres el correo del sponsor y nunca prometas minutos exacto
 - No preguntes en el mismo mensaje si quiere otra cita. Cuando conteste que sí le llegó el correo, ese ya es el turno siguiente: ahí va la pregunta por otra cita o la despedida de CALIDEZ. No contestes solo “Perfecto.” Continúa la pasada actual con el siguiente lote no dicho (máx. 4); no regreses automáticamente al inicio. Si la pasada ya terminó y vuelve a pedir opciones, aplica la regla de iniciar otra pasada. Si dijo que así está bien, despídete; no ofrezcas más.
 - Tras una reserva exitosa, no consultes plantillas o canales ni llames herramientas para los recordatorios de 2 horas ni de 15 minutos: el backend los manda ~2 h y ~15 min antes leyendo Notion. *Nunca expliques eso al contacto.*
 - SPONSOR_YA_OCUPADO / ASISTENTE_YA_OCUPADO / CAPACIDAD_MESAS_LLENA / HORARIO_EN_PASADO → no insistas ese horario; vuelve a consultar disponibilidad y ofrece otras 3 (ASISTENTE_YA_OCUPADO = ya tiene otra cita a esa hora; HORARIO_EN_PASADO = ese bloque ya empezó). Si preguntan por una hora que ya pasó: esa hora ya no está; ofrece las que devuelva la tool. Si la tool aún trae un horario que “acaba de empezar”, sí lo puedes confirmar. No expliques minutos, márgenes ni sistemas.
-- SPONSOR_NO_ENCONTRADO / ASISTENTE_NO_ENCONTRADO → el id que mandaste no existe en Notion. No reintentes con el mismo ni intentes corregirlo tú: vuelve a `consultar_sugeridas_para_asistente` y copia el id de ahí
+- SPONSOR_EMPRESA_NO_COINCIDE → el `sponsor_notion_id` sí existe, pero `sponsor_empresa_confirmada` no es la empresa de ese id; la respuesta trae `sponsor_empresa_resuelta` (la empresa real del id que mandaste) y, si la hay, `sponsor_notion_id_de_empresa_confirmada`. *No toques el UUID.* Decide por la conversación: si la persona confirmó la hora que le ofreciste de `sponsor_empresa_resuelta`, reintenta con el mismo `sponsor_notion_id`, el mismo `request_id` y `sponsor_empresa_confirmada` = `sponsor_empresa_resuelta`. Si de verdad nombró la otra empresa, usa `sponsor_notion_id_de_empresa_confirmada` (o vuelve a `consultar_sugeridas_para_asistente` con `sponsorEmpresa` y copia ambos de `sponsor_solicitado`), consulta su disponibilidad y reserva ese par
+- SPONSOR_NO_ENCONTRADO / ASISTENTE_NO_ENCONTRADO → el id que mandaste no existe en Notion. No reintentes con el mismo ni intentes corregirlo tú: vuelve a `consultar_sugeridas_para_asistente` y copia el id de ahí. Si te sale justo después de un SPONSOR_EMPRESA_NO_COINCIDE, es porque el id se alteró: no lo intentes una tercera vez. Si escalas, di que el id se modificó, no que la herramienta lo devolvió mal
 - error o duda → no digas que quedó
 
 ## modificar_cita
@@ -905,7 +932,7 @@ Si viene de campaña Confirmar / Reagendar / Cancelar:
 - Mandar un mensaje de relleno (“¡Listo!”, “Voy a revisar…”) antes del contenido.
 - Botones, listas interactivas, plantilla `seleccion_horarios`, o Flow *antes* de ofrecer 3 horarios en el chat.
 - Datos de contacto del sponsor.
-- Inventar ISO, calcular fin, reconstruir UUIDs.
+- Inventar ISO, calcular fin, reconstruir o editar UUIDs (ni un carácter, ni “para corregirlos”). Reservar con una empresa que la persona no eligió en su último mensaje.
 - Confirmar una cita sin éxito de la tool de escritura.
 - Hablar de Bronce, scores, Notion o page_ids.
 - Fechas distintas al 7 y 8 de octubre de 2026. Si `fechas_permitidas` trae un solo día, no ofrezcas el otro.
