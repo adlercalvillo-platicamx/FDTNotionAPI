@@ -24,7 +24,10 @@ const checklistService = require('../services/checklist.service');
 const matchmakingService = require('../services/matchmaking.service');
 const citasService = require('../services/citas.service');
 const contactosService = require('../services/contactos.service');
-const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.service');
+const {
+  iniciarDisparoCampanasAprobadasEnSegundoPlano,
+  consultarEstadoCorridaCampanas,
+} = require('../services/campanas-matchmaking.service');
 const { ejecutarReintentosPendientes } = require('../jobs/reintentar-notificaciones.job');
 const { modificarCita, cancelarCita } = require('../services/booking.service');
 
@@ -503,11 +506,20 @@ function crearServidorMcp() {
 
   server.tool(
     'disparar_campanas_aprobadas',
-    'Procesa manualmente todas las filas Aprobado pendientes de campaña, agrupadas por asistente para enviar como máximo un mensaje por persona. Por default corre en simulación: devuelve payloads y decisiones sin llamar WhatsApp ni marcar Notion. El envío real solo se habilita mediante configuración explícita del backend, nunca por parámetros del agente. Al responder, no informes solo conteos: para cada detalle enviado o simulado nombra destinatario.nombre, destinatario.empresa y sugerenciasInformadas (texto exacto de sponsors/soluciones que recibió o recibiría).',
-    {},
-    async () => {
+    'Arranca el disparo de oferta inicial a filas Aprobado (un WhatsApp por asistente, máximo 4 sponsors). El envío sigue en el servidor: con volumen tarda varios minutos y Plática corta la espera ~1 min. Primera llamada: sin parámetros (o consultarEstado=false). Mientras estadoCorrida sea en_curso, vuelve a llamar con consultarEstado=true; no inicies otro disparo y no informes fallo por timeout. Al terminar, reporta paraInformar (nombre, empresa, texto de sponsors) y errores. Simulación vs real lo decide el backend, nunca el agente.',
+    {
+      consultarEstado: z
+        .boolean()
+        .optional()
+        .describe(
+          'true = solo leer avance o el último resultado; no inicia otro disparo. Úsalo mientras estadoCorrida sea en_curso.'
+        ),
+    },
+    async ({ consultarEstado } = {}) => {
       try {
-        const resultado = await dispararCampanasAprobadas();
+        const resultado = consultarEstado
+          ? consultarEstadoCorridaCampanas()
+          : iniciarDisparoCampanasAprobadasEnSegundoPlano();
         return {
           content: [{ type: 'text', text: JSON.stringify(resultado, null, 2) }],
         };

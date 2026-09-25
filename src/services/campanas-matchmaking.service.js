@@ -495,11 +495,140 @@ function payloadLastcall(contacto, modoSimulacion) {
   };
 }
 
+const AVISO_CORRIDA_EN_CURSO =
+  'El disparo sigue en el backend (WhatsApp + Notion, una persona a la vez). No es un fallo. Vuelve a llamar esta herramienta con consultarEstado=true hasta que estadoCorrida sea terminada o error. Informa lo que ya traiga paraInformar y errores; no digas que no se mandó nada.';
+
+let lockDisparoCampanas = false;
+let snapshotCorridaCampanas = { estadoCorrida: 'idle' };
+let promesaCorridaCampanas = null;
+
+function armarParaInformar(resumen) {
+  const lineas = [];
+  for (const item of resumen.detalle || []) {
+    const nombre = item.destinatario?.nombre || '(sin nombre)';
+    const empresa = item.destinatario?.empresa || '(sin empresa)';
+    if (item.motivo === 'CAMPANA_PREVIA') {
+      lineas.push(`Omitido — ${nombre} (${empresa}): ya tenía campaña.`);
+      continue;
+    }
+    const verbo = item.simulado
+      ? 'Simulado'
+      : item.marcadoSinEnviar
+        ? 'Marcado sin enviar'
+        : 'Enviado';
+    const sugerencias = item.sugerenciasInformadas ? `\n${item.sugerenciasInformadas}` : '';
+    lineas.push(`${verbo} — ${nombre} (${empresa})${sugerencias}`);
+  }
+  for (const err of resumen.errores || []) {
+    lineas.push(`Error — asistente ${err.asistentePageId}: ${err.mensaje}`);
+  }
+  return lineas;
+}
+
+function compactarResumenParaAgente(resumen) {
+  if (!resumen || typeof resumen !== 'object') return resumen;
+  const detalle = Array.isArray(resumen.detalle)
+    ? resumen.detalle.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const { payload, ...rest } = item;
+        return rest;
+      })
+    : [];
+  return {
+    ...resumen,
+    detalle,
+    paraInformar: armarParaInformar({ ...resumen, detalle }),
+  };
+}
+
+function consultarEstadoCorridaCampanas() {
+  const compacto = compactarResumenParaAgente(snapshotCorridaCampanas);
+  if (compacto.estadoCorrida === 'en_curso') {
+    return { ...compacto, avisoParaAgente: AVISO_CORRIDA_EN_CURSO };
+  }
+  return compacto;
+}
+
+function iniciarDisparoCampanasAprobadasEnSegundoPlano() {
+  if (lockDisparoCampanas) {
+    return {
+      ...consultarEstadoCorridaCampanas(),
+      yaHabiaCorrida: true,
+    };
+  }
+  lockDisparoCampanas = true;
+  snapshotCorridaCampanas = {
+    estadoCorrida: 'en_curso',
+    modoSimulacion: null,
+    contactosProcesados: 0,
+    enviadosOfertaInicial: 0,
+    simuladosOfertaInicial: 0,
+    marcadosSinEnviarOfertaInicial: 0,
+    sinEnviar: 0,
+    errores: [],
+    detalle: [],
+  };
+  promesaCorridaCampanas = Promise.resolve()
+    .then(() => dispararCampanasAprobadas({ lockYaTomado: true }))
+    .then((resumen) => {
+      snapshotCorridaCampanas = { ...resumen, estadoCorrida: 'terminada' };
+      return snapshotCorridaCampanas;
+    })
+    .catch((err) => {
+      snapshotCorridaCampanas = {
+        ...snapshotCorridaCampanas,
+        estadoCorrida: 'error',
+        errorFatal: err.message,
+      };
+      throw err;
+    })
+    .finally(() => {
+      lockDisparoCampanas = false;
+    });
+  return consultarEstadoCorridaCampanas();
+}
+
+async function esperarCorridaCampanasParaTests() {
+  if (!promesaCorridaCampanas) return consultarEstadoCorridaCampanas();
+  try {
+    await promesaCorridaCampanas;
+  } catch (_) {
+    /* el snapshot ya tiene errorFatal */
+  }
+  return consultarEstadoCorridaCampanas();
+}
+
+function resetCorridaCampanasParaTests() {
+  lockDisparoCampanas = false;
+  snapshotCorridaCampanas = { estadoCorrida: 'idle' };
+  promesaCorridaCampanas = null;
+}
+
 async function dispararCampanasAprobadas({
   modoSimulacion,
   soloMarcar = false,
   ahora = new Date(),
+  lockYaTomado = false,
 } = {}) {
+  if (!lockYaTomado) {
+    if (lockDisparoCampanas) {
+      const err = new Error(
+        'Ya hay un disparo de campañas en curso. Espera a que termine; no es un fallo de envío.'
+      );
+      err.code = 'DISPARO_EN_CURSO';
+      throw err;
+    }
+    lockDisparoCampanas = true;
+    snapshotCorridaCampanas = {
+      estadoCorrida: 'en_curso',
+      enviadosOfertaInicial: 0,
+      simuladosOfertaInicial: 0,
+      errores: [],
+      detalle: [],
+    };
+  }
+
+  try {
   if (soloMarcar && modoSimulacion === true) {
     throw new Error('soloMarcar y modoSimulacion no pueden usarse juntos.');
   }
@@ -513,6 +642,7 @@ async function dispararCampanasAprobadas({
   const candidatas = await citasService.buscarCitasAprobadasSinCampana();
   const grupos = agruparPorAsistente(candidatas);
   const resumen = {
+    estadoCorrida: 'en_curso',
     modoSimulacion: simulando,
     soloMarcar: Boolean(soloMarcar),
     contactosProcesados: grupos.size,
@@ -523,6 +653,7 @@ async function dispararCampanasAprobadas({
     errores: [],
     detalle: [],
   };
+  snapshotCorridaCampanas = resumen;
 
   for (const [asistentePageId, filas] of grupos.entries()) {
     try {
@@ -648,7 +779,22 @@ async function dispararCampanasAprobadas({
     }
   }
 
+  resumen.estadoCorrida = 'terminada';
   return resumen;
+  } catch (err) {
+    if (err.code !== 'DISPARO_EN_CURSO') {
+      snapshotCorridaCampanas = {
+        ...snapshotCorridaCampanas,
+        estadoCorrida: 'error',
+        errorFatal: err.message,
+      };
+    }
+    throw err;
+  } finally {
+    if (!lockYaTomado) {
+      lockDisparoCampanas = false;
+    }
+  }
 }
 
 async function ejecutarFollowups72h({ modoSimulacion, ahora = new Date() } = {}) {
@@ -1214,6 +1360,10 @@ module.exports = {
   TOPE_CUERPO_META,
   contactoYaInteractuo,
   dispararCampanasAprobadas,
+  iniciarDisparoCampanasAprobadasEnSegundoPlano,
+  consultarEstadoCorridaCampanas,
+  esperarCorridaCampanasParaTests,
+  resetCorridaCampanasParaTests,
   enviarRecordatorioEvento,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,

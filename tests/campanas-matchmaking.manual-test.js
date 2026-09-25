@@ -129,6 +129,10 @@ const {
   largoCuerpoOferta,
   TOPE_CUERPO_META,
   dispararCampanasAprobadas,
+  iniciarDisparoCampanasAprobadasEnSegundoPlano,
+  consultarEstadoCorridaCampanas,
+  esperarCorridaCampanasParaTests,
+  resetCorridaCampanasParaTests,
   esCandidataEnvioCampana,
   ESTADO_ENVIO_EN_CURSO,
   ESTADO_ENVIO_ENVIADA,
@@ -143,6 +147,7 @@ backoffUtil._setEsperarBackoffForTests(async (ms) => {
 });
 
 function limpiarEfectos() {
+  resetCorridaCampanasParaTests();
   envios.length = 0;
   actualizacionesContacto.length = 0;
   incrementosReactivaciones.length = 0;
@@ -316,12 +321,57 @@ function casoMcpSinParametrosSoloMarcar() {
     /server\.tool\(\s*'disparar_campanas_aprobadas'[\s\S]*?^\s{2}\);/m
   );
   assert.ok(bloque, 'debe existir la tool disparar_campanas_aprobadas');
-  assert.ok(/\{\s*\}/.test(bloque[0]), 'el schema de la tool debe seguir vacío');
+  assert.ok(/consultarEstado/.test(bloque[0]), 'el agente puede consultar avance sin reenviar');
   assert.ok(
-    /await dispararCampanasAprobadas\(\)/.test(bloque[0]),
-    'el agente no puede pasar flags'
+    /iniciarDisparoCampanasAprobadasEnSegundoPlano/.test(bloque[0]),
+    'MCP no espera el lote completo (timeout de Plática ~1 min)'
+  );
+  assert.ok(
+    !/await dispararCampanasAprobadas\(\)/.test(bloque[0]),
+    'el agente no espera el envío síncrono ni pasa flags de envío'
   );
   assert.ok(!/soloMarcar/.test(bloque[0]), 'soloMarcar no se expone por MCP');
+  assert.ok(!/modoSimulacion/.test(bloque[0]), 'el agente no puede pasar modoSimulacion');
+}
+
+async function casoDisparoEnSegundoPlanoNoDuplica() {
+  const previo = process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION;
+  process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION = 'false';
+  try {
+    configurarOferta();
+    const arranque = iniciarDisparoCampanasAprobadasEnSegundoPlano();
+    assert.strictEqual(arranque.estadoCorrida, 'en_curso');
+    const segunda = iniciarDisparoCampanasAprobadasEnSegundoPlano();
+    assert.strictEqual(segunda.yaHabiaCorrida, true);
+    const fin = await esperarCorridaCampanasParaTests();
+    assert.strictEqual(fin.estadoCorrida, 'terminada');
+    assert.strictEqual(fin.enviadosOfertaInicial, 1);
+    assert.strictEqual(llamadasEnviarPlantilla, 1);
+    assert.ok(Array.isArray(fin.paraInformar) && fin.paraInformar.length >= 1);
+    assert.ok(fin.detalle.every((item) => !item.payload), 'MCP no necesita el payload crudo');
+    const consulta = consultarEstadoCorridaCampanas();
+    assert.strictEqual(consulta.enviadosOfertaInicial, 1);
+    assert.strictEqual(llamadasEnviarPlantilla, 1);
+  } finally {
+    process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION = previo;
+  }
+}
+
+async function casoDisparoSolapadoNoArrancaOtro() {
+  const previo = process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION;
+  process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION = 'false';
+  try {
+    configurarOferta();
+    iniciarDisparoCampanasAprobadasEnSegundoPlano();
+    await assert.rejects(
+      () => dispararCampanasAprobadas({ modoSimulacion: false }),
+      (err) => err.code === 'DISPARO_EN_CURSO'
+    );
+    await esperarCorridaCampanasParaTests();
+    assert.strictEqual(llamadasEnviarPlantilla, 1);
+  } finally {
+    process.env.CAMPANAS_MATCHMAKING_MODO_SIMULACION = previo;
+  }
 }
 
 async function dispararReactivacion({ ultimaCampanaEnviada, reactivacionesEnviadas, fechaUltimaCampana, ahora, modoSimulacion = false, soloMarcar = false }) {
@@ -825,7 +875,10 @@ async function main() {
   console.log('✅ soloMarcar procesa toda la cola sin WhatsApp ni cálculo de horarios.');
   await casoSoloMarcarNoConviveConSimulacion();
   casoMcpSinParametrosSoloMarcar();
+  await casoDisparoEnSegundoPlanoNoDuplica();
+  await casoDisparoSolapadoNoArrancaOtro();
   console.log('✅ Guardas de soloMarcar y MCP permanecen cerradas.');
+  console.log('✅ El disparo MCP corre en segundo plano y no duplica envíos.');
 }
 
 main().catch((err) => {

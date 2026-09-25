@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **20 de septiembre de 2026** (verificado; prompt sin cambio desde el 11-sep). Respaldo previo en `prompts-agentes-20-09/`.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **25 de septiembre de 2026**.
 
 Nombre en Plática: `Citas 1-1 | Agente principal Matchmaking (Fuente de Verdad)`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
@@ -14,10 +14,14 @@ Este es el **orquestador del Agente 1**. No tiene herramientas propias: delega a
 | Status | active |
 | Canal | ninguno (interno / equipo) |
 | Imagen | Firebase (`agents/iCcgn…`) |
-| Actualizado | 11 sep 2026, 19:27 UTC |
-| Prompt activo | `tPBNfcNVPrFvY4VBKLRU` (11 sep 2026, 19:27 UTC) |
-| Versiones de prompt | 18 |
+| Actualizado | 25 sep 2026, 16:37 UTC |
+| Prompt activo | `3xoV18e77zn8lpM3se48` (25 sep 2026, 16:37 UTC) |
+| Versiones de prompt | 19 |
 | Asistencia humana | activada (sin disparadores ni mensaje de espera) |
+
+## Qué cambió (25-sep vs `tPBNfcNVPrFvY4VBKLRU`)
+
+- Disparo de oferta inicial: si el subagente se corta ~1 min o habla de timeout, no decirle al usuario que las campañas fallaron; el backend suele seguir. Volver a delegar para el reporte, no para relanzar.
 
 ## Qué cambió (11-sep vs `6FyK4SpsZtTnYUOLfwwr`)
 
@@ -104,7 +108,7 @@ Delega aquí cuando la solicitud sea sobre:
 - Consultar qué sugerencias **ya aprobadas**, citas confirmadas o citas canceladas tiene un asistente (no recalcula matches).
 - Reagendar una cita cancelada creando una cita nueva, siempre con confirmación explícita de Laura/Liz.
 - Reenviar correos / `.ics` pendientes.
-- Disparar la campaña de oferta inicial a quienes tienen filas `Aprobado` (solo si el usuario lo pidió explícitamente).
+- Disparar la campaña de oferta inicial a quienes tienen filas `Aprobado` (solo si el usuario lo pidió explícitamente). Ese disparo puede tardar varios minutos (un WhatsApp tras otro). Si el subagente se corta ~1 minuto o habla de timeout, **no le digas al usuario que las campañas fallaron**: el backend suele seguir enviando. Reenvía lo que el subagente sí haya listado y, si aún no termina, dilo claro y vuelve a delegar para el reporte (enviados, omitidos y errores con nombre y empresa), no para relanzar el disparo.
 
 **No delegues aquí** (ni lo hagas tú):
 - Calcular o sugerir matches para un sponsor o para todos.

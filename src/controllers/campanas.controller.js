@@ -1,5 +1,8 @@
 const crypto = require('crypto');
-const { dispararCampanasAprobadas } = require('../services/campanas-matchmaking.service');
+const {
+  dispararCampanasAprobadas,
+  consultarEstadoCorridaCampanas,
+} = require('../services/campanas-matchmaking.service');
 
 function secretosIguales(recibido, esperado) {
   const a = Buffer.from(String(recibido || ''));
@@ -22,6 +25,13 @@ async function enviarCampanasAprobadas(req, res) {
     const resultado = await dispararCampanasAprobadas();
     return res.status(200).json(resultado);
   } catch (err) {
+    if (err.code === 'DISPARO_EN_CURSO') {
+      return res.status(409).json({
+        error: 'DISPARO_EN_CURSO',
+        message: err.message,
+        ...consultarEstadoCorridaCampanas(),
+      });
+    }
     console.error('[CampanasWebhook]', err);
     return res.status(500).json({
       error: 'Internal Server Error',
