@@ -445,6 +445,16 @@ class Middleware:
     def process_matches_once(self) -> int:
         if not self.config.matches_habilitado:
             return 0
+        # Un match sin perfil Exa del asistente se evalúa a ciegas. La cola
+        # de contactos (Webhook enviado = false) tiene que vaciarse primero,
+        # aunque este ciclo ya haya mandado su lote de contactos.
+        pending_contacts = self.query_pending_contacts()
+        if pending_contacts:
+            log.info(
+                "Matches en espera: %s contactos todavía por enriquecer.",
+                len(pending_contacts),
+            )
+            return 0
         pending = self.query_match_rows()
         sent = 0
         for row in pending[: self.config.max_matches_per_cycle]:

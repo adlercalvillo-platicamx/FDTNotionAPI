@@ -189,6 +189,7 @@ class ProcessingTests(unittest.TestCase):
 
     def test_accepted_match_is_claimed_and_left_in_progress(self):
         worker = Middleware(config())
+        worker.query_pending_contacts = Mock(return_value=[])
         worker.query_match_rows = Mock(return_value=[match_row("row1")])
         worker.patch_page = Mock(return_value={})
         worker.notify_agent = Mock(return_value=(True, {"ok": True}))
@@ -211,6 +212,7 @@ class ProcessingTests(unittest.TestCase):
 
     def test_rejected_match_is_marked_failed(self):
         worker = Middleware(config())
+        worker.query_pending_contacts = Mock(return_value=[])
         worker.query_match_rows = Mock(
             return_value=[match_row("row1", state="Falló", attempts=1)]
         )
@@ -252,6 +254,48 @@ class ProcessingTests(unittest.TestCase):
             "tipo_tarea=contacto",
             worker.notify_agent.call_args.kwargs["message"],
         )
+
+    def test_matches_wait_while_contacts_remain(self):
+        worker = Middleware(config())
+        worker.query_pending_contacts = Mock(
+            return_value=[{"id": "contacto-pendiente"}]
+        )
+        worker.query_match_rows = Mock(side_effect=AssertionError("no debe consultar matches"))
+        worker.notify_agent = Mock(side_effect=AssertionError("no debe avisar matches"))
+        worker.patch_page = Mock(side_effect=AssertionError("no debe reclamar matches"))
+
+        self.assertEqual(0, worker.process_matches_once())
+        worker.query_match_rows.assert_not_called()
+
+    def test_same_cycle_finishes_contacts_before_matches(self):
+        worker = Middleware(config(max_contacts_per_cycle=1))
+        pending_contacts = [
+            {
+                "id": "contacto1",
+                "properties": {"Nombre": text_prop("Ana Pérez", "title")},
+            },
+            {
+                "id": "contacto2",
+                "properties": {"Nombre": text_prop("Luis Pérez", "title")},
+            },
+        ]
+        worker.query_pending_contacts = Mock(return_value=pending_contacts)
+        worker.query_match_rows = Mock(side_effect=AssertionError("todavía hay contactos"))
+        worker.notify_agent = Mock(return_value=(True, {}))
+        worker.patch_page = Mock(return_value={})
+
+        result = worker.process_once()
+
+        self.assertEqual({"contactos": 1, "matches": 0}, result)
+        self.assertEqual(
+            "contacto1",
+            worker.notify_agent.call_args.kwargs["client_id"],
+        )
+        self.assertIn(
+            "tipo_tarea=contacto",
+            worker.notify_agent.call_args.kwargs["message"],
+        )
+        worker.query_match_rows.assert_not_called()
 
 
 class GuardTests(unittest.TestCase):

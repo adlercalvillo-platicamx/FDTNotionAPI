@@ -8,8 +8,11 @@ Procesa dos universos:
 - Contactos con `Webhook enviado = false` (flujo existente).
 - Filas reales de Citas pendientes de `Estado Enriquecimiento Match`.
 
-El segundo flujo está apagado por default (`MATCHES_HABILITADO=false`). No lo
-enciendas hasta:
+El segundo flujo está apagado por default (`MATCHES_HABILITADO=false`). Aunque
+esté encendido, no manda matches mientras quede algún contacto con
+`Webhook enviado = false` (el mismo filtro del flujo de Contactos). Un ciclo
+puede avisar su lote de contactos y, si todavía sobran, deja los matches para
+el siguiente. No lo enciendas hasta:
 
 1. configurar el `NOTION_CONTACTO_BLOQUEO_AGENDA_ID` de Laura;
 2. probar una fila nombrada;
