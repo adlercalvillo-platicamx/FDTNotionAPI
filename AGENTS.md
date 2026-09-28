@@ -43,7 +43,9 @@ Convención: **nueva capacidad = service primero**, luego REST y (si aplica) too
 El enriquecimiento cualitativo por par no vive en el backend Node ni altera el
 score. `middleware-enriquecimiento/` consulta Citas y delega una fila a la vez
 al subagente Plática `vhmqfLCnNLKsBDh2HEd2`. Es una Application Coolify
-separada; `MATCHES_HABILITADO=false` por default. Antes de encenderla, nombrar
+separada; `MATCHES_HABILITADO=false` por default. Aunque esté encendido, no
+enriquece matches mientras quede un contacto con `Webhook enviado = false`.
+Antes de encenderla, nombrar
 la fila de prueba y revisar el backfill. Campos terminales: `Match Ideal
 Sponsor`, `Explicación Match Ideal`, `Estado Enriquecimiento Match`,
 `Intentos Enriquecimiento Match`, `Fecha Enriquecimiento Match`. Nunca toca
