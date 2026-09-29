@@ -203,7 +203,7 @@ async function main() {
       direction: 'outgoing',
       creationDate: '2026-10-05T15:41:00.000Z',
       content:
-        'Hola Ana, quiero darle seguimiento personalmente a tus citas 1 a 1, te puedo ayudar.',
+        'Hola Ana, ademas de saludarte, quisiera dar seguimiento a tus reuniones con expertos.',
     },
   ];
   resultado = await enviarFollowups72h({ modoSimulacion: false, ahora: LUNES_10 });
@@ -240,7 +240,7 @@ async function main() {
         {
           direction: 'outgoing',
           creationDate: '2026-10-05T16:00:00.000Z',
-          content: 'Quiero darle seguimiento personalmente a tus citas 1 a 1',
+          content: 'Quisiera dar seguimiento a tus reuniones con expertos',
         },
       ],
       '2026-10-05T15:00:00.000Z'

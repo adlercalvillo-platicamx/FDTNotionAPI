@@ -407,7 +407,10 @@ function normalizarContenidoMensaje(texto) {
 function followupSalientePosterior(messages, desde) {
   const limite = new Date(desde);
   if (Number.isNaN(limite.getTime())) return null;
-  const frase = 'quiero darle seguimiento personalmente a tus citas 1 a 1';
+  // Subcadena de followup_72hrs aprobada (29-sep). Sin acentos: el texto
+  // del mensaje se normaliza antes de comparar. Si Meta cambia el cuerpo,
+  // esta frase tiene que cambiar con él o un En curso vencido se reenvía.
+  const frase = 'quisiera dar seguimiento a tus reuniones con expertos';
   return (
     messages.find((message) => {
       const fecha = fechaMensaje(message);
