@@ -34,7 +34,7 @@ const MARGEN_MODIFICACION_MINUTOS = Number(
 
 // Contacto ficticio "Bloqueo de Agenda (Programa del Evento)" — las filas
 // Confirmada sin notificar que lo tienen en Contacto Principal ocupan al
-// sponsor (conferencia/conversatorio) pero NO restan de las 11 mesas.
+// sponsor (conferencia/conversatorio) pero NO restan de las 8 mesas.
 // Default = page_id en Contactos (nueva) de Adler. En producción, si Laura
 // replica el contacto, poner su page_id en NOTION_CONTACTO_BLOQUEO_AGENDA_ID.
 // Cadena vacía desactiva la exclusión — solo en pruebas/depuración; contra
@@ -80,7 +80,7 @@ function requireContactoBloqueoAgenda() {
         : 'no está configurada'
     } y este proceso apunta al workspace de producción de Laura. ` +
       `Sin el page_id del "Bloqueo de Agenda (Programa del Evento)" de ESE workspace, las filas de ` +
-      `conferencia volverían a restar mesas de las 11 disponibles sin ningún error visible. ` +
+      `conferencia volverían a restar mesas de las 8 disponibles sin ningún error visible. ` +
       `Configurar la variable con el page_id real antes de arrancar.`
   );
   err.status = 503; // precondición de configuración, igual que el horario del evento
@@ -151,7 +151,7 @@ function construirIndiceCitasConfirmadas(filasMapeadas) {
 
 /**
  * Cuenta cuántas citas ya están CONFIRMADAS con inicio exactamente en ese
- * horario — usado para la restricción de "máximo 11 mesas en paralelo".
+ * horario — usado para la restricción de "máximo 8 mesas en paralelo".
  *
  * NOTA: compara por igualdad exacta de "Fecha y Hora". Si tus bloques no son
  * siempre de 30 min exactos alineados, hay que cambiar esto a un filtro de
@@ -2216,7 +2216,7 @@ function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePa
 // horarios (WhatsApp Flow / botones / mini web app).
 //
 // Misma regla que reserva: sponsor ocupado (incluye bloqueos de conferencia)
-// y conteo de 11 mesas (excluye esas filas ficticias). POST /citas/reservar
+// y conteo de 8 mesas (excluye esas filas ficticias). POST /citas/reservar
 // sigue siendo la única fuente de verdad al confirmar (esta es una foto).
 //
 // Horario POR FECHA vía env (confirmado Laura 14-ago): miércoles y
@@ -2227,7 +2227,7 @@ function existeCitaActivaEntreEnCache(paresActivos, { sponsorPageId, asistentePa
 // Mismo valor que booking.service.js — duplicado a propósito para no
 // acoplar este service de lectura al de escritura. Si cambia el límite
 // de mesas, actualizar ambos.
-const CAPACIDAD_MAXIMA_MESAS = 11;
+const CAPACIDAD_MAXIMA_MESAS = 8;
 
 /**
  * Coolify / Docker / shells POSIX no inyectan Names de env con guiones
@@ -2395,7 +2395,7 @@ function assertFechaPermitidaParaSponsor(sponsorPageId, fecha) {
 }
 
 /**
- * Bloques libres de UN sponsor (capacidad de 11 mesas + ocupación propia).
+ * Bloques libres de UN sponsor (capacidad de 8 mesas + ocupación propia).
  * La oferta inicial usa solo el sponsor de mayor score; no hay cruce entre varios.
  * La reserva real vuelve a validar bajo mutex; esto sigue siendo una foto.
  */

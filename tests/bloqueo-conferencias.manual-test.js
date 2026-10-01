@@ -40,7 +40,7 @@ function fila({ inicio, sponsorId, asistentePageId }) {
 
 function casoIndiceYDisponibilidad() {
   const reales = [];
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 7; i += 1) {
     reales.push(fila({ inicio: INICIO, sponsorId: `real-${i}`, asistentePageId: `asistente-${i}` }));
   }
   const indice = construirIndiceCitasConfirmadas([
@@ -48,7 +48,7 @@ function casoIndiceYDisponibilidad() {
     fila({ inicio: INICIO, sponsorId: BLIP, asistentePageId: BLOQUEO }),
   ]);
   const entrada = indice.get(INICIO);
-  assert.strictEqual(entrada.count, 10, 'el bloqueo no debe contar como mesa');
+  assert.strictEqual(entrada.count, 7, 'el bloqueo no debe contar como mesa');
   assert.ok(entrada.sponsorIds.has(BLIP), 'Blip sí queda ocupado por el bloqueo');
 
   const paraBlip = armarBloqueDisponibilidad({
@@ -66,14 +66,14 @@ function casoIndiceYDisponibilidad() {
   });
   assert.strictEqual(paraOtro.disponible, true);
   assert.strictEqual(paraOtro.motivo, null);
-  assert.strictEqual(paraOtro.mesas_ocupadas, 10);
+  assert.strictEqual(paraOtro.mesas_ocupadas, 7);
   assert.strictEqual(paraOtro.mesas_libres, 1);
 
   const libresOtro = bloquesDisponiblesParaSponsor({
     sponsorPageId: OTRO,
     indiceConfirmadas: indice,
   });
-  assert.ok(libresOtro.some((b) => b.inicio === INICIO), 'un 11.º sponsor distinto sí puede usar el bloque');
+  assert.ok(libresOtro.some((b) => b.inicio === INICIO), 'un 8.º sponsor distinto sí puede usar el bloque');
 
   const libresBlip = bloquesDisponiblesParaSponsor({
     sponsorPageId: BLIP,
@@ -271,7 +271,7 @@ async function casoReintentoOmiteFilaBloqueo() {
 
 async function main() {
   casoIndiceYDisponibilidad();
-  console.log('✅ Bloqueo de Blip a las 12:00: SPONSOR_YA_OCUPADO; 10 citas reales + bloqueo = 10 mesas; otro sponsor sí agenda.');
+  console.log('✅ Bloqueo de Blip a las 12:00: SPONSOR_YA_OCUPADO; 7 citas reales + bloqueo = 7 mesas; el 8.º sponsor sí agenda.');
   casoProduccionSinVariableFalla();
   console.log('✅ Producción sin variable / con el default de pruebas / vacía → error 503 explícito.');
   casoProduccionConVariableFunciona();

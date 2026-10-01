@@ -190,10 +190,12 @@ function casoDisponibilidadDelSponsorTopNoCruzaConOtros() {
   const ocupadaTop = '2026-10-07T10:30:00-06:00';
   const ocupadaOtro = '2026-10-07T11:30:00-06:00';
   const llena = '2026-10-07T11:00:00-06:00';
+  const casiLlena = '2026-10-07T15:00:00-06:00';
   const indice = new Map([
     [ocupadaTop, { count: 1, sponsorIds: new Set(['sponsor-a']) }],
     [ocupadaOtro, { count: 1, sponsorIds: new Set(['sponsor-b']) }],
-    [llena, { count: 11, sponsorIds: new Set() }],
+    [llena, { count: 8, sponsorIds: new Set() }],
+    [casiLlena, { count: 7, sponsorIds: new Set() }],
   ]);
   const delTop = bloquesDisponiblesParaSponsor({
     sponsorPageId: 'sponsor-a',
@@ -201,7 +203,8 @@ function casoDisponibilidadDelSponsorTopNoCruzaConOtros() {
   });
   assert.ok(!delTop.some((b) => b.inicio === ocupadaTop), 'el top ocupado no se ofrece');
   assert.ok(delTop.some((b) => b.inicio === ocupadaOtro), 'ocupación de otro sponsor no bloquea al top');
-  assert.ok(!delTop.some((b) => b.inicio === llena), 'capacidad de 11 mesas sigue bloqueando');
+  assert.ok(!delTop.some((b) => b.inicio === llena), 'capacidad de 8 mesas sigue bloqueando');
+  assert.ok(delTop.some((b) => b.inicio === casiLlena), '7 mesas ocupadas todavía dejan la 8ª');
 }
 
 function casoAsistenteOcupadoNoSeOfreceNiImpideOtroBloque() {

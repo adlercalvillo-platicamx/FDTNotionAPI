@@ -521,10 +521,32 @@ function baseParams(overrides = {}) {
   });
 
   console.log('\n=== Capacidad (regresión) ===');
-  await ok('11 Confirmadas → CAPACIDAD_MESAS_LLENA', async () => {
+  await ok('7 Confirmadas → la 8ª entra en Mesa 8', async () => {
+    const bloqueOcho = '2026-10-07T13:00:00-06:00';
+    const finOcho = '2026-10-07T13:30:00-06:00';
+    for (let i = 1; i <= 7; i += 1) {
+      estado.seedConfirmada({
+        id: `ocho-${i}`,
+        sponsor: `s-ocho-${i}`,
+        inicio: bloqueOcho,
+        mesa: i,
+      });
+    }
+    const r = await reservarCita(
+      baseParams({
+        sponsor: 's-ocho-extra',
+        request_id: 'req-ocho-extra',
+        inicio: bloqueOcho,
+        fin: finOcho,
+      })
+    );
+    assert.strictEqual(r.estado, 'Confirmada');
+    assert.strictEqual(r.mesa, 8);
+  });
+  await ok('8 Confirmadas → CAPACIDAD_MESAS_LLENA', async () => {
     const bloqueFull = '2026-10-07T12:00:00-06:00';
     const finFull = '2026-10-07T12:30:00-06:00';
-    for (let i = 1; i <= 11; i += 1) {
+    for (let i = 1; i <= 8; i += 1) {
       estado.seedConfirmada({
         id: `full-${i}`,
         sponsor: `s-full-${i}`,

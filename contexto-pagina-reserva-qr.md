@@ -68,7 +68,7 @@ Sirve **tal cual** para horario y escritura, una vez que la página tenga
 | Lista de sponsors para el QR | Interno: `listarSponsorsActivos()` (Categoria=Sponsor, no Dado de Baja). Bronce se omite en matchmaking, no en esta lista. | **No** hay REST público de catálogo. **No** hay fotos ni copy de stand en Notion pensados para esta página. |
 | Sugerencias WhatsApp | `GET /matchmaking/sugerencias-asistente?telefono=` o `contactoId=`. `GET /citas/sugeridas?whatsapp=` o `asistente_notion_id=`. | Ninguno acepta `email`. **No usarlos como catálogo del QR** (son Aprobado / capas de matchmaking). |
 | Citas ya confirmadas | Sí, REST: ambos GET de arriba traen `citasConfirmadas`. MCP `consultar_sugeridas_para_asistente` también. Clave: teléfono o `contactoId`, no email. | — |
-| Horarios | `GET /citas/disponibilidad` (sponsor; opcional `asistente_notion_id`). 11 mesas, ocupación, bloqueos de programa. | — |
+| Horarios | `GET /citas/disponibilidad` (sponsor; opcional `asistente_notion_id`). 8 mesas, ocupación, bloqueos de programa. | — |
 | Reservar | `POST /citas/reservar` (mutex, mesa, `.ics`). Promueve fila `Sugerido` o `Aprobado` del par; si no hay, **crea fila nueva**. Par ya con cita real → `CITA_PARA_YA_ACTIVA`. Cancelada **no revive**: nueva fila + `cita_origen_cancelada_id`. | **No** promueve `Rechazado` (solo Sugerido/Aprobado). Un `Rechazado` + reserva directa hoy **crea otra fila**. Si el QR debe “levantar” un Rechazado, eso es cambio de negocio a diseñar, no asumir. |
 
 CORS: el API **no** tiene `cors` genérico. `/reserva-publica` sí, acotado

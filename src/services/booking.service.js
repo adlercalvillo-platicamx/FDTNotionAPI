@@ -49,7 +49,7 @@ const {
   nombreRepresentanteParaOferta,
 } = require('./campanas-matchmaking.service');
 
-const CAPACIDAD_MAXIMA_MESAS = 11; // ver sesión 2/3: límite físico de mesas por hora
+const CAPACIDAD_MAXIMA_MESAS = 8; // piso real desde 1-oct-2026; el mismo número vive en citas.service.js
 // Tolerancia sobre qué tan "pasado" puede estar un bloque (Adler, 27-ago;
 // unificado 11-sep: misma regla al ofrecer y al escribir). A las 11:06 ya
 // no se ofrece ni se reserva/mueve a las 11:00; a las 11:04 sí. NO es un

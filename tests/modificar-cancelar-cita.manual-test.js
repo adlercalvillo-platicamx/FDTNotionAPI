@@ -590,16 +590,17 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.strictEqual(correos.length, 0);
   });
 
-  await ok('11 mesas llenas en el horario nuevo → CAPACIDAD_MESAS_LLENA, sin tocar Notion', async () => {
+  await ok('8 mesas llenas en el horario nuevo → CAPACIDAD_MESAS_LLENA, sin tocar Notion', async () => {
     paginas.clear();
     crearPagina({ id: 'cita-mover', inicio: '2026-10-07T10:30:00-06:00', fin: '2026-10-07T11:00:00-06:00' });
-    for (let i = 1; i <= 11; i += 1) {
+    for (let i = 1; i <= 8; i += 1) {
       crearPagina({
         id: `llena-${i}`,
         inicio: '2026-10-07T12:00:00-06:00',
         fin: '2026-10-07T12:30:00-06:00',
         sponsor: `sponsor-llena-${i}`,
         asistente: `asistente-llena-${i}`,
+        mesa: `Mesa ${i}`,
       });
     }
     await assert.rejects(
