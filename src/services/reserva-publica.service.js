@@ -3,7 +3,7 @@ const citas = require('./citas.service');
 const { reservarCita, modificarCita, cancelarCita } = require('./booking.service');
 const { emitirTokenReserva } = require('./reserva-publica-token.service');
 
-const BOLETOS_CON_CITAS = new Set(['Presencial', 'Presencial VIP', 'Virtual', 'Speaker']);
+const BOLETOS_CON_CITAS = new Set(contactos.TIPOS_BOLETO_CON_CITAS);
 const NIVELES_SIN_CITAS = new Set(['Bronce']);
 const WHATSAPP_SOPORTE_CITAS = '+52 33 3236 1963';
 const UUID_CANONICO_RE =

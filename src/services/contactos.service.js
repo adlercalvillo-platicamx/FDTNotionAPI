@@ -226,6 +226,20 @@ const GIROS_ELEGIBLES_MATCHMAKING = [
   'Manufactura / produccion / sourcing',
 ];
 
+// Boletos que pueden tener reuniones con expertos. Expo, Prensa y vacío no.
+// Breakfast (1-oct-2026) tiene el mismo acceso que Presencial: entra al pool
+// solo si Quiere Citas no es 'No', y el tamaño sí filtra. VIP y Speaker
+// entran aunque hayan marcado 'No' y saltan el filtro de tamaño.
+const TIPOS_BOLETO_CON_CITAS = ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker', 'Breakfast'];
+const TIPOS_BOLETO_CON_OPTIN = new Set(['Presencial', 'Virtual', 'Breakfast']);
+
+function pasaOptInQuiereCitas(contacto) {
+  if (TIPOS_BOLETO_CON_OPTIN.has(contacto?.ticketTipo)) {
+    return contacto.quiereCitas1a1 !== 'No';
+  }
+  return true;
+}
+
 /**
  * Capa 1 — filtros duros que Notion puede resolver en un solo query.
  *
@@ -249,6 +263,9 @@ const GIROS_ELEGIBLES_MATCHMAKING = [
  *     natural — no hace falta ningún filtro adicional para reflejar esto,
  *     el ranking (Capa 2) ya los va a mostrar más abajo por tener menos
  *     puntos, sin necesidad de excluirlos.
+ *   - "Breakfast" → misma regla que Presencial (1-oct-2026): reunión en
+ *     sitio, entra salvo 'No' explícito en Quiere Citas, y el tamaño sí
+ *     filtra. No salta tamaño ni usa el multiplicador VIP.
  *   - "Expo" → NUNCA. Solo da acceso al piso de exhibición.
  *
  * `incluirVirtual` se conserva como parámetro por compatibilidad con las
@@ -303,7 +320,7 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // Etapa de Negocio; no se manda ese filtro a Notion.
   void etapasValidas;
   void incluirVirtual;
-  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker'];
+  const tiposBoletoElegibles = TIPOS_BOLETO_CON_CITAS;
 
   // Filtro de Giro/Industria — agregado 12 de agosto, confirmado por Laura
   // en la demo del 11 de agosto: "todo lo demás, no me interesa que tengan
@@ -340,14 +357,10 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   // condición.
   // Virtual se agregó a esta misma regla el 13 de agosto: Liz confirmó que
   // el formulario de Virtual ya tiene la misma pregunta de opt-in que
-  // Presencial (antes solo Presencial la tenía). Presencial VIP y Speaker
-  // siguen siempre elegibles (las citas vienen incluidas en el boleto).
-  const candidatos = filas.map(parsearContacto).filter((c) => {
-    if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Virtual') {
-      return c.quiereCitas1a1 !== 'No';
-    }
-    return true; // Presencial VIP/Speaker no requieren este campo
-  });
+  // Presencial (antes solo Presencial la tenía). Breakfast usa la misma
+  // regla desde el 1-oct-2026. Presencial VIP y Speaker siguen siempre
+  // elegibles (las citas vienen incluidas en el boleto).
+  const candidatos = filas.map(parsearContacto).filter(pasaOptInQuiereCitas);
 
   return candidatos;
 }
@@ -962,4 +975,7 @@ module.exports = {
   incrementarReactivaciones,
   listarSponsorsActivos,
   GIROS_ELEGIBLES_MATCHMAKING,
+  TIPOS_BOLETO_CON_CITAS,
+  TIPOS_BOLETO_CON_OPTIN,
+  pasaOptInQuiereCitas,
 };

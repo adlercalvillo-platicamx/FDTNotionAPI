@@ -180,6 +180,29 @@ check('calcularScore no piso en 0; ambos dan −20', icpVip.score === -20);
 
 console.log('\n=== Señales / explicación ===');
 check('MULTIPLICADOR_CANAL exportado', MULTIPLICADOR_CANAL['Presencial VIP'] === 1.4);
+check('Breakfast usa el mismo multiplicador que Presencial', MULTIPLICADOR_CANAL.Breakfast === 1.15);
+const breakfastScore = calcularScore(
+  { puestosBuscados: [], solucion: [], clientesPotencialesDeseados: '', etapaClienteBuscada: ['Grande'] },
+  {
+    nombre: 'Breakfast',
+    empresa: 'Marca Breakfast',
+    ticketTipo: 'Breakfast',
+    area: 'Direccion General / Founder / CEO',
+    solucionesBuscadas: [],
+    otraSolucionBuscada: '',
+    fuenteDato: null,
+    tamanoNegocio: null,
+    madurezNegocioExa: null,
+  },
+  0
+);
+check('Breakfast marca canal presencial y no VIP', breakfastScore.senales.esPresencial === true);
+check('Breakfast no es VIP', breakfastScore.senales.esVip === false);
+check('Breakfast ×1.15 en la señal', breakfastScore.senales.multiplicadorCanal === 1.15);
+check(
+  'detalle propio de Breakfast',
+  breakfastScore.detalle.some((linea) => linea.startsWith('breakfast:'))
+);
 const { senales } = vipA;
 const textoVip = generarExplicacionNatural({ empresa: 'Sin Match SA' }, senales);
 check('Explicación VIP habla de perfil similar, no de prioridad absoluta', textoVip.includes('perfil similar'));

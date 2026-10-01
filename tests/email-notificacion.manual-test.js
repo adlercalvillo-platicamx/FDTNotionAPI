@@ -418,6 +418,27 @@ function baseParams(overrides = {}) {
     assert.ok(mailAsistente.descripcion.includes('Agregar al calendario'));
   });
 
+  await ok('asistente Breakfast: correo presencial con mesa y sede, sin Meet', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'asistente-b': { ticketTipo: 'Breakfast' },
+      },
+    });
+    const r = await h.booking.reservarCita(baseParams({ request_id: 'req-breakfast-copy' }));
+    assert.strictEqual(r.estado, 'Confirmada');
+
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    assert.ok(mailSponsor.descripcion.includes('Tu cita será en la mesa 1.'));
+    assert.ok(mailSponsor.descripcion.includes('Club France'));
+    assert.ok(!mailSponsor.descripcion.includes('Google Meet'));
+    assert.ok(mailAsistente.descripcion.includes('💼 Mesa: 1'));
+    assert.ok(mailAsistente.descripcion.includes('Club France'));
+    assert.ok(!mailAsistente.descripcion.includes('Google Meet'));
+    assert.ok(!mailAsistente.descripcion.includes('Unos 15 minutos antes'));
+  });
+
   await ok('nombre en mayúsculas de Notion → representante Title Case, sin apellido materno', async () => {
     const h = crearHarness({
       emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },

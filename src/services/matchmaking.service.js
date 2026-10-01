@@ -75,6 +75,7 @@ const MARGEN_CANDIDATOS = 2;
 const MULTIPLICADOR_CANAL = {
   Virtual: 1.0,
   Presencial: 1.15,
+  Breakfast: 1.15, // 1-oct-2026: mismo canal que Presencial; no salta tamaño
   'Presencial VIP': 1.4,
   Speaker: 1.4,
 };
@@ -297,7 +298,7 @@ function evaluarSolicitudDirectaSponsor(asistente, sponsor) {
   if (asistente.ticketTipo === 'Expo') {
     return { elegible: false, motivo: 'BOLETO_EXPO_NO_PERMITE_CITAS' };
   }
-  if (!['Presencial', 'Presencial VIP', 'Virtual', 'Speaker'].includes(asistente.ticketTipo)) {
+  if (!notionContactos.TIPOS_BOLETO_CON_CITAS.includes(asistente.ticketTipo)) {
     return { elegible: false, motivo: 'BOLETO_NO_ELEGIBLE' };
   }
   if (!sponsor || sponsor.dadoDeBaja || sponsor.categoria !== 'Sponsor') {
@@ -456,8 +457,12 @@ function calcularScore(sponsor, candidato) {
     detalle.push('speaker: ponente del evento (mismo multiplicador que VIP, sin bonus de presencial)');
     senales.esSpeaker = true;
   }
-  if (candidato.ticketTipo === 'Presencial') {
-    detalle.push('presencial: asistente con boleto presencial (prioridad sobre virtual)');
+  if (candidato.ticketTipo === 'Presencial' || candidato.ticketTipo === 'Breakfast') {
+    detalle.push(
+      candidato.ticketTipo === 'Breakfast'
+        ? 'breakfast: asistente con boleto Breakfast (mismo multiplicador que presencial)'
+        : 'presencial: asistente con boleto presencial (prioridad sobre virtual)'
+    );
     senales.esPresencial = true;
   }
 

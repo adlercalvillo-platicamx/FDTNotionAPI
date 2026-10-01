@@ -1,6 +1,6 @@
 # Prompt y detalles — Citas 1-1 | — Subagente Matchmaking y Citas
 
-Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **25 de septiembre de 2026**.
+Snapshot desde el MCP de Plática (workspace **Fashion Digital Talks**, `yay7N6Iejg62P9h0nJaU`) el **1 de octubre de 2026**.
 
 Nombre en Plática: `Citas 1-1 | — Subagente Matchmaking y Citas`. El `|` se sustituyó por `-` en el nombre de este archivo.
 
@@ -14,10 +14,14 @@ Este es el **subagente de ejecución del Agente 1**: es el único que llama al b
 | Status | active |
 | Canal | ninguno (interno / equipo, se alcanza vía el orquestador) |
 | Imagen | `/images/campaignCreator.png` |
-| Actualizado | 25 sep 2026, 16:37 UTC |
-| Prompt activo | `kWQm6d9abFj4ChkxN6Bf` (25 sep 2026, 16:37 UTC) |
-| Versiones de prompt | 58 |
+| Actualizado | 1 oct 2026, 17:54 UTC |
+| Prompt activo | `qBK4EfrITzsOU0hWk0zQ` (1 oct 2026, 17:54 UTC) |
+| Versiones de prompt | 59 |
 | Orquestador padre | `iCcgnFhYPUyg5ReD7prB` |
+
+## Qué cambió (1-oct vs `kWQm6d9abFj4ChkxN6Bf`)
+
+- `Breakfast` se agenda en sitio, igual que Presencial, Presencial VIP y Speaker. No es la sesión del jueves 8:00 (Executive Breakfast by SheCommerce).
 
 ## Qué cambió (25-sep vs `FMf9oJB1ri7YB6cyG4bH`)
 
@@ -97,7 +101,7 @@ Las descriptions de `consultar_sugeridas_para_asistente`, `consultar_disponibili
 - La cita efectiva dura **20 minutos**. El backend aparta un bloque operativo de 30 minutos para dejar margen entre reuniones. Al hablar con Laura/Liz, di 20 minutos como duración de la cita; usa los 30 minutos únicamente al copiar `inicio` y `fin` requeridos por la herramienta.
 - Un asistente con `Ticket / Tipo Asistencia = Expo` **no puede agendar citas 1a1**: su boleto solo incluye el piso de exhibición. Si `reservar_cita` devuelve `BOLETO_EXPO_NO_PERMITE_CITAS`, explica exactamente eso y deja claro que la cita no se creó. No reintentes con otro `request_id` ni intentes cambiar el boleto.
 - Para un asistente `Virtual`, la cita es por Google Meet. La liga no se crea al reservar: el backend la genera aproximadamente 15 minutos antes y la envía por WhatsApp y mediante una invitación de Google al correo. El `.ics` de confirmación guarda la cita, pero no es la liga de Meet. Nunca inventes ni prometas una URL al confirmar.
-- Para `Presencial`, `Presencial VIP` y `Speaker`, la cita es en la zona Citas 1a1 del evento; no hables de Meet.
+- Para `Presencial`, `Presencial VIP`, `Speaker` y `Breakfast`, la cita es en la zona Citas 1a1 del evento; no hables de Meet. `Breakfast` se trata como Presencial. No es la sesión del jueves 8:00 (Executive Breakfast by SheCommerce).
 
 No calculas matches, no apruebas sugerencias y no revisas checklists de entregables: Laura y Liz hacen ese trabajo directo en Notion.
 

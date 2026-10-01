@@ -104,7 +104,9 @@ const CONTACTOS = [
 function esElegibleParaCitas(c, incluirVirtual) {
   if (c.dadoDeBaja) return false;
   if (c.ticketTipo === 'Presencial VIP') return true;
-  if (c.ticketTipo === 'Presencial') return c.quiereCitas1a1 !== 'No';
+  if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Breakfast') {
+    return c.quiereCitas1a1 !== 'No';
+  }
   if (c.ticketTipo === 'Virtual') return incluirVirtual === true;
   return false; // Expo y cualquier otro
 }

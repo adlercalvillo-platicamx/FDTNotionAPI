@@ -7,7 +7,11 @@
 //   node tests/sesion-14ago-diffs.manual-test.js
 
 const assert = require('assert');
-const { parsearContacto } = require('../src/services/contactos.service');
+const {
+  parsearContacto,
+  pasaOptInQuiereCitas,
+  TIPOS_BOLETO_CON_CITAS,
+} = require('../src/services/contactos.service');
 const {
   calcularScore,
   generarExplicacionNatural,
@@ -78,10 +82,7 @@ function paginaNotion({
 
 // Misma regla que buscarAsistentesCandidatos post-filtro (DIFF-1 B.3)
 function pasaPostFiltroQuiereCitas(c) {
-  if (c.ticketTipo === 'Presencial' || c.ticketTipo === 'Virtual') {
-    return c.quiereCitas1a1 !== 'No';
-  }
-  return true;
+  return pasaOptInQuiereCitas(c);
 }
 
 const sponsorBase = {
@@ -139,6 +140,14 @@ ok('Virtual + No → NO aparece', () => {
 });
 ok('Virtual + vacío → aparece', () => {
   assert.strictEqual(pasaPostFiltroQuiereCitas({ ticketTipo: 'Virtual', quiereCitas1a1: null }), true);
+});
+ok('Breakfast + Sí o vacío → aparece; No no', () => {
+  assert.strictEqual(pasaPostFiltroQuiereCitas({ ticketTipo: 'Breakfast', quiereCitas1a1: 'Sí' }), true);
+  assert.strictEqual(pasaPostFiltroQuiereCitas({ ticketTipo: 'Breakfast', quiereCitas1a1: null }), true);
+  assert.strictEqual(pasaPostFiltroQuiereCitas({ ticketTipo: 'Breakfast', quiereCitas1a1: 'No' }), false);
+});
+ok('Presencial VIP + No sigue entrando', () => {
+  assert.strictEqual(pasaPostFiltroQuiereCitas({ ticketTipo: 'Presencial VIP', quiereCitas1a1: 'No' }), true);
 });
 
 console.log('\n=== DIFF-2 matchmaking — Virtual (pesos + explicación) ===');
@@ -467,11 +476,12 @@ ok('Sponsor restringido al 8: reserva el 7 → FECHA_NO_PERMITIDA_PARA_SPONSOR',
 });
 
 console.log('\n=== Tipos boleto elegibles (DIFF-1 B.2) ===');
-ok('Virtual y Speaker siempre en lista elegible (incluirVirtual ignorado)', () => {
-  // Réplica de la constante post-diff
-  const tiposBoletoElegibles = ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker'];
-  assert.ok(tiposBoletoElegibles.includes('Virtual'));
-  assert.ok(tiposBoletoElegibles.includes('Speaker'));
+ok('Virtual, Speaker y Breakfast están en la lista elegible', () => {
+  assert.ok(TIPOS_BOLETO_CON_CITAS.includes('Virtual'));
+  assert.ok(TIPOS_BOLETO_CON_CITAS.includes('Speaker'));
+  assert.ok(TIPOS_BOLETO_CON_CITAS.includes('Breakfast'));
+  assert.ok(!TIPOS_BOLETO_CON_CITAS.includes('Expo'));
+  assert.ok(!TIPOS_BOLETO_CON_CITAS.includes('Prensa'));
 });
 
 console.log(`\n=== Resultado: ${fallos === 0 ? 'TODOS PASARON' : `${fallos} FALLARON`} ===\n`);

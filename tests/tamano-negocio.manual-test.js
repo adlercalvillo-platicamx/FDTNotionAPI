@@ -190,6 +190,29 @@ async function main() {
     false,
     'selección vacía del sponsor no deja pasar tamaños nuevos por accidente'
   );
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Breakfast', tamanoNegocio: TAMANO_MEDIANA },
+      ['Grande']
+    ),
+    false,
+    'Breakfast no salta el filtro de tamaño'
+  );
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Breakfast', tamanoNegocio: TAMANO_MEDIANA },
+      ['Mediana']
+    ),
+    true
+  );
+  assert.strictEqual(
+    esCandidatoPorTamanoNegocio(
+      { ticketTipo: 'Breakfast', tamanoNegocio: null, madurezNegocioExa: null },
+      ['Mediana']
+    ),
+    false,
+    'Breakfast vacío sin Exa no entra'
+  );
 
   console.log(
     '✅ Tamaño nuevo respeta al sponsor; legacy conserva Exa; VIP mantiene bypass.'

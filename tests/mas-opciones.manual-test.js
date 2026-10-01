@@ -23,6 +23,7 @@ require.cache[contactosPath] = {
       'Retailer / tienda multimarca / Marketplace',
       'Manufactura / produccion / sourcing',
     ],
+    TIPOS_BOLETO_CON_CITAS: ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker', 'Breakfast'],
   },
 };
 
@@ -214,6 +215,39 @@ async function main() {
     assert.strictEqual(matchmaking.evaluarSolicitudDirectaSponsor(vip, revie).elegible, true);
   });
 
+  ok('Breakfast no salta tamaño: Mediana solo con quien la pide', () => {
+    const breakfast = asistente({
+      categoria: 'Asistente',
+      ticketTipo: 'Breakfast',
+      tamanoNegocio: TAMANO_MEDIANA,
+      quiereCitas1a1: 'No',
+    });
+    assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(breakfast, revie), true);
+    assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(breakfast, conMediana), true);
+    assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(breakfast, soloGrande), false);
+    assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(breakfast, bronce), false);
+    assert.deepStrictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(breakfast, revie),
+      { elegible: true, motivo: null, via: 'tamano_solicitado' }
+    );
+    assert.strictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(breakfast, soloGrande).motivo,
+      'TAMANO_NO_COMPATIBLE'
+    );
+    const sinTamano = asistente({
+      categoria: 'Asistente',
+      ticketTipo: 'Breakfast',
+      tamanoNegocio: null,
+      madurezNegocioExa: null,
+    });
+    assert.strictEqual(matchmaking.esSponsorElegibleParaMasOpciones(sinTamano, revie), false);
+    const giroNo = { ...breakfast, giroIndustria: 'Agencia de marketing / publicidad' };
+    assert.strictEqual(
+      matchmaking.evaluarSolicitudDirectaSponsor(giroNo, revie).motivo,
+      'GIRO_NO_ELEGIBLE'
+    );
+  });
+
   ok('Capa 1 de tamaño no cambia: Grande no entra a Revie en matchmaking', () => {
     assert.strictEqual(
       matchmaking.esCandidatoPorTamanoNegocio(
@@ -301,6 +335,60 @@ async function main() {
     assert.strictEqual(extra[1].estatus_origen, 'tamano');
     assert.strictEqual(extra[1].sponsor_empresa, 'Con Mediana');
     assert.strictEqual(extra[1].citaId, null);
+  });
+
+  ok('Breakfast Mediana: Aprobado, luego Sugerido, luego solo sponsors que piden Mediana', () => {
+    const breakfast = asistente({
+      ticketTipo: 'Breakfast',
+      tamanoNegocio: TAMANO_MEDIANA,
+      quiereCitas1a1: null,
+    });
+    const otraMediana = {
+      id: 'otra-mediana',
+      categoria: 'Sponsor',
+      empresa: 'Otra Mediana',
+      nivelPatrocinio: 'Oro',
+      etapaClienteBuscada: ['Mediana'],
+      solucion: ['Pagos'],
+    };
+    const sponsorsActivos = [revie, soloGrande, conMediana, otraMediana];
+    const sponsorMap = new Map(sponsorsActivos.map((s) => [s.id.replace(/-/g, ''), s]));
+    const primero = armarSugeridasParaOfrecer({
+      sugeridas: [
+        {
+          estatus: 'Aprobado',
+          cita_page_id: 'apr-cristal',
+          sponsor_notion_id: conMediana.id,
+          sponsor_empresa: conMediana.empresa,
+        },
+      ],
+      citasCanceladas: [],
+      citasConfirmadas: [],
+    });
+    const extra = armarOpcionesAdicionales({
+      asistente: breakfast,
+      sugeridasSugerido: [
+        {
+          cita_page_id: 'sug-revie',
+          sponsor_notion_id: revie.id,
+          sponsor_empresa: revie.empresa,
+          score: 4,
+        },
+      ],
+      sponsorsParaAgendar: primero,
+      citasConfirmadas: [],
+      sponsorsActivos,
+      sponsorMap,
+    });
+    const orden = [...primero, ...extra];
+    assert.deepStrictEqual(
+      orden.map((item) => item.estatus_origen),
+      ['aprobado', 'sugerido', 'tamano']
+    );
+    assert.strictEqual(orden[0].sponsor_notion_id, conMediana.id);
+    assert.strictEqual(orden[1].sponsor_notion_id, revie.id);
+    assert.strictEqual(orden[2].sponsor_empresa, 'Otra Mediana');
+    assert.ok(!orden.some((item) => item.sponsor_notion_id === soloGrande.id));
   });
 
   if (fallos) process.exit(1);

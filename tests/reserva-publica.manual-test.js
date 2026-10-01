@@ -36,6 +36,7 @@ require.cache[contactosPath] = {
   loaded: true,
   exports: {
     GIROS_ELEGIBLES_MATCHMAKING: GIROS,
+    TIPOS_BOLETO_CON_CITAS: ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker', 'Breakfast'],
     async buscarContactosPorEmail() {
       return coincidenciasEmail;
     },
@@ -180,6 +181,13 @@ async function main() {
   await rechaza('BOLETO_EXPO_NO_PERMITE_CITAS', () =>
     identificarPorEmail('expo@example.com')
   );
+
+  coincidenciasEmail = [{ ...ASISTENTE, ticketTipo: 'Prensa' }];
+  await rechaza('BOLETO_NO_ELEGIBLE', () => identificarPorEmail('prensa@example.com'));
+
+  coincidenciasEmail = [{ ...ASISTENTE, ticketTipo: 'Breakfast', quiereCitas1a1: 'No' }];
+  const identidadBreakfast = await identificarPorEmail('breakfast@example.com');
+  assert.equal(identidadBreakfast.asistente.ticketTipo, 'Breakfast');
 
   coincidenciasEmail = [{ ...ASISTENTE, giroIndustria: 'Agencia de marketing / publicidad' }];
   await assert.rejects(

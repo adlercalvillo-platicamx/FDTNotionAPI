@@ -435,6 +435,34 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     }
   });
 
+  await ok('Breakfast: cambio de horario con mesa y sede, sin Meet', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-breakfast',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+    });
+    CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Breakfast';
+    try {
+      const r = await modificarCita({
+        citaId: 'cita-breakfast',
+        nuevaFechaHora: '2026-10-07T12:00:00-06:00',
+        ahora: AHORA_ANTES_DEL_EVENTO,
+      });
+      assert.strictEqual(r.estado, 'Confirmada');
+      const textoAsistente = correos[1].text;
+      const textoSponsor = correos[0].text;
+      assert.ok(textoSponsor.includes('Tu cita será en la mesa 1.'));
+      assert.ok(textoSponsor.includes('Club France'));
+      assert.ok(!textoSponsor.includes('Google Meet'));
+      assert.ok(textoAsistente.includes('Mesa:'));
+      assert.ok(textoAsistente.includes('Club France'));
+      assert.ok(!textoAsistente.includes('Google Meet'));
+    } finally {
+      CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Presencial';
+    }
+  });
+
   await ok('Notion en mayúsculas → Hola con primer nombre Title Case', async () => {
     const nombreAsistenteOriginal = CONTACTOS[ASISTENTE_DINUS].nombre;
     const nombreSponsorOriginal = CONTACTOS[SPONSOR_PLATICA].nombre;
@@ -709,6 +737,25 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
 
     const enBloque = await citasReal.contarCitasEnBloque({ inicio: '2026-10-07T10:30:00-06:00' });
     assert.strictEqual(enBloque, 0, 'el horario queda libre para otros');
+  });
+
+  await ok('Breakfast: cancelación sin copy de Meet', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-cancel-breakfast',
+      inicio: '2026-10-07T10:30:00-06:00',
+      fin: '2026-10-07T11:00:00-06:00',
+    });
+    CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Breakfast';
+    try {
+      const r = await cancelarCita({ citaId: 'cita-cancel-breakfast' });
+      assert.strictEqual(r.estado, 'Cancelada');
+      assert.ok(!correos[0].text.includes('Google Meet'));
+      assert.ok(!correos[1].text.includes('Google Meet'));
+      assert.ok(correos[1].text.includes('confirmo la cancelación'));
+    } finally {
+      CONTACTOS[ASISTENTE_DINUS].ticketTipo = 'Presencial';
+    }
   });
 
   await ok('Falla el correo → sigue Cancelada (no vuelve a ocupar mesa) y queda marcada', async () => {

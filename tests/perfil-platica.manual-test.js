@@ -83,9 +83,12 @@ async function main() {
   assert.strictEqual(directo.lastname, 'Perez');
   assert.strictEqual(directo.company, 'Moda MX');
   assert.strictEqual(directo.customFields.role_puesto, 'Director De Tecnologia');
+  assert.strictEqual(directo.customFields.tipo_de_asistencia, 'Presencial VIP');
   assert.strictEqual(directo.customFields.redes_sociales, '@adlercalvillo | empresaadler.mx');
   assert.deepStrictEqual(directo.customFields.soluciones_buscadas, ['Pagos', 'Logística']);
   assert.strictEqual(directo.customFields.quiere_cita_1_a_1, undefined);
+  const breakfast = payloadPerfil({ ...contacto, ticketTipo: 'Breakfast' }, []);
+  assert.strictEqual(breakfast.customFields.tipo_de_asistencia, 'Breakfast');
 
   // GET /v1/clients responde { workspaces: [ { clients: [ … ] } ] }. Leer el
   // sobre en vez del cliente hacía creer que no tenía soluciones (7-sep).

@@ -41,6 +41,7 @@ const fetches = [];
   );
   assert.strictEqual(esAsistenteVirtual({ ticketTipo: 'Virtual' }), true);
   assert.strictEqual(esAsistenteVirtual({ ticketTipo: 'Expo' }), false);
+  assert.strictEqual(esAsistenteVirtual({ ticketTipo: 'Breakfast' }), false);
   assert.strictEqual(ORGANIZADOR_MEET, 'rp@fashiondigitaltalks.com');
 
   delete process.env.MEET_VIRTUAL_HABILITADO;

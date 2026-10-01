@@ -39,6 +39,7 @@ require.cache[contactosPath] = {
   loaded: true,
   exports: {
     GIROS_ELEGIBLES_MATCHMAKING: [GIRO_MODA],
+    TIPOS_BOLETO_CON_CITAS: ['Presencial VIP', 'Presencial', 'Virtual', 'Speaker', 'Breakfast'],
     buscarAsistentePorWhatsApp: async () => null,
     buscarAsistentesPorFolio: async (folio) => (folio === 'FOLIO-OK' ? [asistente] : []),
     obtenerContacto: async (id) => {
