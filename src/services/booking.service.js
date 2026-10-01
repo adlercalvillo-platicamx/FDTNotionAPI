@@ -253,6 +253,8 @@ function interpretarFilaIdempotente(existente) {
  * Contactos en Notion (sponsor + asistente). Dos correos distintos:
  *   - Sponsor: copy de negocios (empresas + datos del asistente; 15-sep).
  *     Nombre y puesto en Title Case; empresa solo si viene gritada.
+ *     Página web y Instagram / LinkedIn se agregan solo si hay dato
+ *     (1-oct): Ticketópolis los grita y a veces pega el https sin ://.
  *   - Asistente: copy operativo (encargada 1a1 + empresa, mesa, fecha, horario).
  *     SIN correo/teléfono del sponsor. Primer nombre y representante se
  *     normalizan desde Notion (Ticketópolis suele ir en mayúsculas).
@@ -355,11 +357,141 @@ function presentarEmpresaCorreo(valor) {
   return textoEnTituloSiGritado(texto) || texto;
 }
 
+// Respuestas de formulario que no son una web ni una red. Se omiten del correo.
+const SIN_DATO_PRESENCIA = new Set([
+  '-',
+  '--',
+  '.',
+  '..',
+  'na',
+  'n/a',
+  'n/d',
+  'nd',
+  'no',
+  'no aplica',
+  'no tengo',
+  'no tenemos',
+  'no hay',
+  'no contamos con una',
+  'ninguno',
+  'ninguna',
+  'en proceso',
+  'aun no',
+  'aún no',
+  'suspendida',
+  's/n',
+  'sn',
+]);
+
+function pareceUrl(valor) {
+  if (/\s/.test(valor)) return false;
+  if (/^https?:\/\//.test(valor)) return true;
+  if (/^https?(?=[a-z0-9])/.test(valor) && /\./.test(valor)) return true;
+  if (/^www\./.test(valor)) return true;
+  return (
+    /(?:^|\.)(?:instagram|linkedin|facebook|tiktok|youtube)\.com(?:\/|$|\?|[a-z0-9])/.test(valor) ||
+    /\.(?:com|mx|ai|ar|org|net|io|co|la|es|global|app|dev|edu)(?:\/|$|\?)/.test(valor)
+  );
+}
+
+// Del más largo al más corto: "com" no puede ganarle a "com.mx", ni "co" a "com".
+const TLDS_PRESENCIA = [
+  'com.mx',
+  'com.ar',
+  'com.es',
+  'org.mx',
+  'edu.mx',
+  'gob.mx',
+  'net.mx',
+  'global',
+  'com',
+  'org',
+  'net',
+  'edu',
+  'app',
+  'dev',
+  'mx',
+  'ai',
+  'ar',
+  'io',
+  'co',
+  'la',
+  'es',
+];
+
+// Ticketópolis a veces guarda "HTTPSWWW.LINKEDIN.COMINNOMBRE": sin :// ni /.
+// Se toma el dominio más largo que termina en un TLD conocido y, si después
+// queda texto pegado, se le pone la diagonal. Una URL que ya trae ruta no se toca.
+function separarHostYRuta(hostPegado) {
+  const lower = hostPegado.toLowerCase();
+  let finHost = -1;
+  for (let i = 0; i < lower.length; i += 1) {
+    if (lower[i] !== '.') continue;
+    const despues = lower.slice(i + 1);
+    for (const tld of TLDS_PRESENCIA) {
+      if (!despues.startsWith(tld)) continue;
+      const fin = i + 1 + tld.length;
+      const siguiente = lower[fin];
+      if (siguiente !== undefined && !/[a-z0-9]/.test(siguiente)) break;
+      if (fin > finHost) finHost = fin;
+      break;
+    }
+  }
+  if (finHost < 0) return null;
+  return {
+    host: hostPegado.slice(0, finHost),
+    ruta: hostPegado.slice(finHost),
+  };
+}
+
+function insertarSlashTrasHost(url) {
+  const partes = url.match(/^(https?:\/\/)([^/?#]+)(.*)$/);
+  if (!partes) return url;
+  const scheme = partes[1];
+  const resto = partes[3];
+  if (resto.startsWith('/')) return url;
+  const separado = separarHostYRuta(partes[2]);
+  if (!separado || !separado.ruta) return url;
+  let ruta = separado.ruta;
+  if (separado.host.toLowerCase().endsWith('linkedin.com')) {
+    ruta = ruta.replace(/^(in|company)(?!\/)/, '$1/');
+  }
+  return `${scheme}${separado.host}/${ruta}${resto}`;
+}
+
+function repararUrl(valor) {
+  let out = valor;
+  if (!/^https?:\/\//.test(out)) {
+    if (out.startsWith('https')) out = `https://${out.slice(5)}`;
+    else if (out.startsWith('http')) out = `http://${out.slice(4)}`;
+    else out = `https://${out}`;
+  }
+  return insertarSlashTrasHost(out);
+}
+
+function presentarPresenciaDigital(valor) {
+  const crudo = String(valor || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  if (!crudo) return '';
+  const bajo = crudo.toLocaleLowerCase('es');
+  if (SIN_DATO_PRESENCIA.has(bajo) || bajo.length <= 1 || /^x+$/.test(bajo)) return '';
+  if (pareceUrl(bajo)) return repararUrl(bajo);
+  if (/\s/.test(bajo)) return textoEnTitulo(crudo);
+  return bajo;
+}
+
 /** Mismos campos que el correo de confirmación al sponsor. El asistente no los ve. */
 function lineasDatosContactoAsistente(asistente) {
   const nombre = nombreParaPerfilPlatica(asistente.nombre).name || 'Asistente';
   const empresa = presentarEmpresaCorreo(asistente.empresa);
   const puesto = textoEnTitulo(asistente.rolPuesto);
+  const pagina =
+    presentarPresenciaDigital(asistente.webRedes) ||
+    presentarPresenciaDigital(asistente.sitioWebEmpresa);
+  const redes = presentarPresenciaDigital(asistente.linkedinInstagram);
+  const redesDistintas = redes && redes !== pagina ? redes : '';
   return [
     'Datos de contacto del asistente:',
     `Nombre: ${nombre}`,
@@ -367,6 +499,8 @@ function lineasDatosContactoAsistente(asistente) {
     puesto ? `Puesto: ${puesto}` : null,
     asistente.email ? `Correo: ${asistente.email}` : null,
     asistente.whatsapp ? `Teléfono: ${asistente.whatsapp}` : null,
+    pagina ? `Página web: ${pagina}` : null,
+    redesDistintas ? `Instagram / LinkedIn: ${redesDistintas}` : null,
   ].filter((linea) => linea !== null);
 }
 
@@ -1863,4 +1997,5 @@ module.exports = {
   ASUNTO_CONFIRMACION_SPONSOR,
   ASUNTO_MODIFICACION_SPONSOR,
   ASUNTO_CANCELACION_SPONSOR,
+  presentarPresenciaDigital,
 };

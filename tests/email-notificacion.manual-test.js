@@ -272,6 +272,9 @@ function crearHarness({
           email: email === undefined ? 'sponsor@test.com' : email,
           whatsapp: extra.whatsapp || '555',
           ticketTipo: extra.ticketTipo || null,
+          webRedes: extra.webRedes || '',
+          sitioWebEmpresa: extra.sitioWebEmpresa || '',
+          linkedinInstagram: extra.linkedinInstagram || '',
         };
       },
     },
@@ -938,6 +941,84 @@ function baseParams(overrides = {}) {
     assert.strictEqual(pagina.id, 'fila-aprobada');
     assert.ok(calls.some((c) => c.url === '/pages/fila-aprobada' && c.method === 'PATCH'));
     assert.ok(!calls.some((c) => c.url === '/pages' && c.method === 'POST'));
+  });
+
+  console.log('\n=== presencia digital en el correo del sponsor ===');
+  await ok('normaliza mayúsculas, repara https pegado y omite placeholders', async () => {
+    const h = crearHarness();
+    const presentar = h.booking.presentarPresenciaDigital;
+    assert.strictEqual(presentar('HTTPS://WWW.WALMART.COM.MX'), 'https://www.walmart.com.mx');
+    assert.strictEqual(presentar('HTTPSATAVIOMODA.COM.AR'), 'https://ataviomoda.com.ar');
+    assert.strictEqual(
+      presentar('HTTPSWWW.INSTAGRAM.COMATAVIOMODA'),
+      'https://www.instagram.com/ataviomoda'
+    );
+    assert.strictEqual(
+      presentar('HTTPSWWW.LINKEDIN.COMINBRENDA-SOLANO'),
+      'https://www.linkedin.com/in/brenda-solano'
+    );
+    assert.strictEqual(
+      presentar('HTTPS://WWW.LINKEDIN.COM/IN/SABRINADLTG'),
+      'https://www.linkedin.com/in/sabrinadltg'
+    );
+    assert.strictEqual(presentar('LINKEDIN.COMINMZAPATALF'), 'https://linkedin.com/in/mzapatalf');
+    assert.strictEqual(presentar('@MODELGENIA'), '@modelgenia');
+    assert.strictEqual(presentar('MIREILLEDEGEL'), 'mireilledegel');
+    assert.strictEqual(presentar('LAURA VECICONTI'), 'Laura Veciconti');
+    assert.strictEqual(presentar('NA'), '');
+    assert.strictEqual(presentar('NO TENGO'), '');
+    assert.strictEqual(presentar('-'), '');
+    assert.strictEqual(presentar('XXXXXXX'), '');
+    assert.strictEqual(presentar(''), '');
+  });
+
+  await ok('el sponsor ve web y redes; el asistente no; sin dato no sale la línea', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'asistente-b': {
+          webRedes: 'HTTPSATAVIOMODA.COM.AR',
+          linkedinInstagram: 'HTTPSWWW.INSTAGRAM.COMATAVIOMODA',
+          sitioWebEmpresa: 'https://otra.example',
+        },
+      },
+    });
+    await h.booking.reservarCita(baseParams({ request_id: 'req-presencia' }));
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    const mailAsistente = h.emailCalls.find((c) => c.destinatarios.includes('b@t.com'));
+    assert.ok(mailSponsor.descripcion.includes('Página web: https://ataviomoda.com.ar'));
+    assert.ok(mailSponsor.descripcion.includes('Instagram / LinkedIn: https://www.instagram.com/ataviomoda'));
+    assert.ok(!mailSponsor.descripcion.includes('otra.example'));
+    assert.ok(!mailAsistente.descripcion.includes('Página web'));
+    assert.ok(!mailAsistente.descripcion.includes('Instagram / LinkedIn'));
+    assert.ok(!mailAsistente.descripcion.includes('ataviomoda'));
+  });
+
+  await ok('placeholder y campo vacío no agregan líneas', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'asistente-b': { webRedes: 'NA', linkedinInstagram: '-', sitioWebEmpresa: '' },
+      },
+    });
+    await h.booking.reservarCita(baseParams({ request_id: 'req-presencia-vacia' }));
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    assert.ok(!mailSponsor.descripcion.includes('Página web'));
+    assert.ok(!mailSponsor.descripcion.includes('Instagram / LinkedIn'));
+    assert.ok(mailSponsor.descripcion.includes('Datos de contacto del asistente'));
+  });
+
+  await ok('si Web / Redes viene vacía, usa Sitio Web Empresa', async () => {
+    const h = crearHarness({
+      emailsPorId: { 'sponsor-a': 'a@t.com', 'asistente-b': 'b@t.com' },
+      contactosPorId: {
+        'asistente-b': { webRedes: 'NO TENGO', sitioWebEmpresa: 'HTTPS://JOUBLANCBIJOUX.COM' },
+      },
+    });
+    await h.booking.reservarCita(baseParams({ request_id: 'req-presencia-sitio' }));
+    const mailSponsor = h.emailCalls.find((c) => c.destinatarios.includes('a@t.com'));
+    assert.ok(mailSponsor.descripcion.includes('Página web: https://joublancbijoux.com'));
+    assert.ok(!mailSponsor.descripcion.includes('Instagram / LinkedIn'));
   });
 
   console.log('\n=== clasificarErrorSmtp (email.service real) ===');
