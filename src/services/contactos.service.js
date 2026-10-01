@@ -11,6 +11,11 @@ const { notionFetch } = require('../utils/notion-client');
 
 const CONTACTOS_DATA_SOURCE_ID = process.env.NOTION_CONTACTOS_DATA_SOURCE_ID;
 
+// Follow-up y last call leen solo la oferta inicial. "Quiere citas no" es
+// otra campaña: mismo checkbox de respuesta, pero no entra a esos crons.
+const CAMPANA_OFERTA_INICIAL = 'Oferta inicial';
+const CAMPANA_QUIERE_CITAS_NO = 'Quiere citas no';
+
 function requireDataSourceId() {
   if (!CONTACTOS_DATA_SOURCE_ID) throw new Error('Falta NOTION_CONTACTOS_DATA_SOURCE_ID en variables de entorno');
 }
@@ -363,6 +368,22 @@ async function buscarAsistentesCandidatos({ etapasValidas, incluirVirtual = fals
   const candidatos = filas.map(parsearContacto).filter(pasaOptInQuiereCitas);
 
   return candidatos;
+}
+
+/**
+ * Asistentes activos que marcaron Quiere Citas 1a1 = No.
+ * Giro, boleto y tamaño se filtran después: Notion no aguanta otro nivel.
+ */
+async function listarAsistentesConQuiereCitasNo() {
+  requireDataSourceId();
+  const filas = await queryContactosPaginado({
+    and: [
+      { property: 'Categoria', select: { equals: 'Asistente' } },
+      { property: 'Dado de Baja', checkbox: { equals: false } },
+      { property: 'Quiere Citas 1a1', select: { equals: 'No' } },
+    ],
+  });
+  return filas.map(parsearContacto);
 }
 
 /**
@@ -802,7 +823,7 @@ async function listarContactosConOfertaInicialVencida(fechaLimite) {
         and: [
           { property: 'Categoria', select: { equals: 'Asistente' } },
           { property: 'Dado de Baja', checkbox: { equals: false } },
-          { property: 'Última Campaña Enviada', select: { equals: 'Oferta inicial' } },
+          { property: 'Última Campaña Enviada', select: { equals: CAMPANA_OFERTA_INICIAL } },
           { property: 'Fecha Última Campaña', date: { on_or_before: fechaLimite } },
         ],
       },
@@ -944,10 +965,13 @@ async function buscarAsistentePorWhatsApp(telefonoEntrada) {
 }
 
 module.exports = {
+  CAMPANA_OFERTA_INICIAL,
+  CAMPANA_QUIERE_CITAS_NO,
   parsearContacto,
   clasificarTamanoNegocio,
   obtenerContacto,
   buscarAsistentesCandidatos,
+  listarAsistentesConQuiereCitasNo,
   sugerirMatches,
   buscarDadoDeBajaPorEmailOTelefono,
   buscarContactosPorEmail,

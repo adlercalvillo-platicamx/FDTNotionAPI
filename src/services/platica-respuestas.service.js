@@ -3,6 +3,8 @@ const { hidratarPerfilPlatica } = require('./perfil-platica.service');
 const platicaClient = require('./platica-client.service');
 
 const OFERTA_INICIAL = 'Oferta inicial';
+const CAMPANA_QUIERE_CITAS_NO = 'Quiere citas no';
+const CAMPANAS_QUE_MARCAN_RESPUESTA = new Set([OFERTA_INICIAL, CAMPANA_QUIERE_CITAS_NO]);
 const ETIQUETA_ESCRIBIO_SIN_CAMPANA = 'Citas 1a1 - Escribió sin campaña';
 const FUENTES_PLANTILLA_EXTERNAS = new Set([
   'campaign.message.received',
@@ -102,7 +104,10 @@ async function registrarRespuestaOfertaInicial(payload) {
       etiquetaAplicada,
     };
   }
-  if (contacto.ultimaCampanaEnviada !== OFERTA_INICIAL || !contacto.fechaUltimaCampana) {
+  if (
+    !CAMPANAS_QUE_MARCAN_RESPUESTA.has(contacto.ultimaCampanaEnviada) ||
+    !contacto.fechaUltimaCampana
+  ) {
     return { procesado: false, motivo: 'SIN_OFERTA_INICIAL', contactoId: contacto.id, hidratacion };
   }
 
@@ -139,6 +144,8 @@ async function registrarRespuestaOfertaInicial(payload) {
 
 module.exports = {
   OFERTA_INICIAL,
+  CAMPANA_QUIERE_CITAS_NO,
+  CAMPANAS_QUE_MARCAN_RESPUESTA,
   ETIQUETA_ESCRIBIO_SIN_CAMPANA,
   FUENTES_PLANTILLA_EXTERNAS,
   telefonoDelEvento,

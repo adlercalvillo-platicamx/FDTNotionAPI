@@ -194,6 +194,19 @@ async function main() {
   assert.strictEqual(hidrataciones.length, 1);
 
   reset();
+  contacto.ultimaCampanaEnviada = 'C - Reactivación';
+  resultado = await registrarRespuestaOfertaInicial(evento());
+  assert.strictEqual(resultado.motivo, 'SIN_OFERTA_INICIAL');
+  assert.strictEqual(escrituras.length, 0, 'otra campaña no marca respuesta');
+
+  reset();
+  contacto.ultimaCampanaEnviada = 'Quiere citas no';
+  resultado = await registrarRespuestaOfertaInicial(evento());
+  assert.strictEqual(resultado.actualizado, true);
+  assert.strictEqual(escrituras.length, 1, 'quiere_citas_no marca el mismo checkbox');
+  assert.strictEqual(etiquetas.length, 0);
+
+  reset();
   resultado = await registrarRespuestaOfertaInicial(evento());
   assert.strictEqual(resultado.actualizado, true);
   assert.strictEqual(escrituras.length, 1);
