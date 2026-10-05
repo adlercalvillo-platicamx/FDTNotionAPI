@@ -65,6 +65,7 @@ Sponsor`, `Explicación Match Ideal`, `Estado Enriquecimiento Match`,
 | Reservar cita real | **POST `/citas/reservar`** | API tool de Plática `reservar_cita`; solo tras confirmación conversacional explícita. **No exponerla como MCP** |
 | Recordatorio WhatsApp 15 min | **POST `/citas/enviar-recordatorios-15min`** (`X-API-Key`; cron cada 5 min los días del evento). Lee Notion, no depende de lo que pasó al reservar. `POST /citas/programar-recordatorio-15min` quedó en **410**. | — |
 | Recordatorio WhatsApp 2 h | **POST `/citas/enviar-recordatorios-2h`** (`X-API-Key`; cron cada 5 min los días del evento). Cada cita real en las próximas 2 h; plantilla `notificacion_cita_2horas_antes`. | — |
+| Recordatorio WhatsApp 24 h | **POST `/citas/enviar-recordatorios-24h`** (`X-API-Key`; cron cada 15 min el 6, 7 y 8 oct). Un mensaje por asistente con todas sus reuniones, cuando la primera entra en las próximas 24 h. Plantilla `confirmacion_cita_1_dia_antes`: `{{1}}` primer nombre, `{{2}}` agenda. Estado en Contactos. Env vacía no escribe. | — |
 | Modificar / cancelar cita real | **POST `/citas/modificar-cita`**, **POST `/citas/cancelar-cita`** | `modificar_cita`, `cancelar_cita` (misma lógica; confirmación explícita en la descripción; ambigüedad → lista, no elegir) |
 | Sugeridas / piso / QR | GET `/citas/sugeridas?whatsapp=&folio=&sponsor_empresa=`. | `consultar_sugeridas_para_asistente`: WhatsApp primero; folio de reservación/boleto como fallback e hidratación del número actual. `sponsorEmpresa` resuelve el nombre aproximado del QR y valida el par con boleto+giro+tamaño; en solicitud directa no bloquean `Quiere Citas=No`, área ni soluciones. Sin sponsor, `motivo_sin_opciones` distingue giro no elegible de opciones agotadas. Devuelve `fase_evento`, copys, cancelada+Aprobado (tope 4), adicionales y **todas** las confirmadas con día/hora. Al agotar una pasada: “Por ahora ya son todas las disponibles.” `copy_sin_mas_opciones` es interno. |
 | Sugerencias Aprobado (Carlos) | GET `/matchmaking/sugerencias-asistente?telefono=` (alias `whatsapp=`; `contactoId=` opcional). Incluye `citasConfirmadas` aparte | — |
@@ -182,6 +183,28 @@ Identificación doble en ambos: `telefono` (el servidor valida que `Contacto Pri
 - Estado propio en Citas: `Estado Recordatorio 2h` / `Fecha` / `Notas`. No
   comparte reclamo con el de 15 min: una cita puede recibir los dos avisos.
 - Sin la env, `{ omitido: true, motivo: 'SIN_PLANTILLA' }` y no toca Notion.
+
+## Recordatorio 24 h (5-oct, cron)
+
+- Un WhatsApp por asistente, no uno por cita. Sale cuando su primera cita
+  `Confirmada` / `Confirmada sin notificar` entra en las próximas 24 h. Con
+  cron cada 15 min, entre 24 h y ~23 h 45 min antes. El mensaje lista todas
+  las citas que todavía no empiezan, incluidos los dos días. No hay segundo
+  mensaje al día siguiente.
+- Cron a `POST /citas/enviar-recordatorios-24h`. Body opcional `ahora` /
+  `minutos` (1–2880) y `simulacion: true` solo para pruebas: lee Notion,
+  arma `{{1}}`/`{{2}}` y no escribe ni manda WhatsApp.
+- Estado en el contacto, no en la cita y no en Plática: `Estado Recordatorio
+  24h` / `Fecha Recordatorio 24h` / `Notas Recordatorio 24h`. `En curso` se
+  escribe antes de Plática; un reclamo de más de 10 min se vuelve a tomar.
+  `Enviado` y `Omitido` no se repiten. `Falló` sí. Una cancelación posterior
+  no corrige el mensaje ya enviado.
+- Plantilla `PLATICA_TEMPLATE_CITA_24H=confirmacion_cita_1_dia_antes` (aprobada
+  5-oct; si la env no está, el service usa ese name). `{{1}}` primer nombre.
+  `{{2}}` la agenda en un solo parámetro, reuniones separadas con `; `
+  (`7 oct a las 10:30 am con Marco Trujillo, de Plática.mx`). Sin saltos
+  dentro del parámetro, sin mesa y sin URL de Meet.
+- Env vacía → `{ omitido: true, motivo: 'SIN_PLANTILLA' }` y no toca Notion.
 
 ## Matchmaking
 
