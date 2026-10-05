@@ -471,6 +471,25 @@ function contactoEsAmazon(contacto) {
   return /amazon/i.test(String(contacto?.empresa || '')) || /amazon/i.test(String(contacto?.nombre || ''));
 }
 
+// Adler 5-oct: el last call de Quiere citas no no va a becarios ni a los
+// dos puestos que pidió aparte. "Jr" suelto no basta: E-Business Jr Manager se queda.
+function puestoExcluidoDeLastcallQuiereCitasNo(contacto) {
+  const puesto = String(contacto?.rolPuesto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!puesto) return false;
+  if (puesto.includes('becari')) return true;
+  if (puesto.includes('pasante')) return true;
+  if (/\bintern\b/.test(puesto)) return true;
+  if (puesto.includes('estudiante')) return true;
+  if (puesto.includes('content creator')) return true;
+  if (/dise[n]?ador grafico jr/.test(puesto)) return true;
+  return false;
+}
+
 function estadoLastcallProcesable(contacto, ahora) {
   if (contacto.estadoLastcall === ESTADO_LASTCALL_ENVIADO) return false;
   if (contacto.estadoLastcall !== ESTADO_LASTCALL_EN_CURSO) return true;
@@ -1144,6 +1163,158 @@ function enviarLastcall(opciones) {
   return ejecucion;
 }
 
+async function ejecutarLastcallQuiereCitasNo({ modoSimulacion, ahora = new Date() } = {}) {
+  const simulando = modoSimulacionLastcall(modoSimulacion);
+  exigirEnvioRealLastcallHabilitado(simulando);
+
+  const ventana = evaluarVentanaLastcall(ahora);
+  const resumen = {
+    modoSimulacion: simulando,
+    horarioLaboral: esHorarioLaboralFollowup(ahora),
+    ventanaCumplida: ventana.cumplida,
+    abreEl: ventana.abreEl,
+    candidatos: 0,
+    simulados: 0,
+    enviados: 0,
+    omitidosPuesto: 0,
+    omitidosAmazon: 0,
+    omitidosEstado: 0,
+    reconciliados: 0,
+    errores: [],
+    detalle: [],
+  };
+
+  if (!ventana.cumplida) {
+    return { ...resumen, motivo: 'VENTANA_NO_CUMPLIDA' };
+  }
+  if (!resumen.horarioLaboral) {
+    return { ...resumen, motivo: 'FUERA_DE_HORARIO_LABORAL' };
+  }
+
+  const contactos = await contactosService.listarContactosConUltimaCampana(
+    contactosService.CAMPANA_QUIERE_CITAS_NO
+  );
+  resumen.candidatos = contactos.length;
+
+  for (const contacto of contactos) {
+    try {
+      if (contactoEsAmazon(contacto)) {
+        resumen.omitidosAmazon += 1;
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'AMAZON' });
+        continue;
+      }
+      if (puestoExcluidoDeLastcallQuiereCitasNo(contacto)) {
+        resumen.omitidosPuesto += 1;
+        resumen.detalle.push({
+          contactoId: contacto.id,
+          nombre: contacto.nombre,
+          puesto: contacto.rolPuesto,
+          motivo: 'PUESTO_EXCLUIDO',
+        });
+        continue;
+      }
+      if (!estadoLastcallProcesable(contacto, ahora)) {
+        resumen.omitidosEstado += 1;
+        resumen.detalle.push({
+          contactoId: contacto.id,
+          motivo: contacto.estadoLastcall === ESTADO_LASTCALL_ENVIADO ? 'YA_ENVIADO' : 'EN_CURSO_RECIENTE',
+        });
+        continue;
+      }
+      if (!contacto.whatsapp || !contacto.fechaUltimaCampana) {
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'DATOS_INCOMPLETOS' });
+        continue;
+      }
+
+      const messages = await platicaClient.cargarMensajesCliente(contacto.whatsapp);
+      if (
+        contacto.estadoLastcall === ESTADO_LASTCALL_EN_CURSO &&
+        lastcallSalientePosterior(messages, contacto.fechaLastcall)
+      ) {
+        if (!simulando) {
+          await contactosService.actualizarEstadoLastcall({
+            contactoId: contacto.id,
+            estado: ESTADO_LASTCALL_ENVIADO,
+            fecha: contacto.fechaLastcall || ahora.toISOString(),
+            reactivacionesEnviadas: (contacto.reactivacionesEnviadas || 0) + 1,
+          });
+        }
+        resumen.reconciliados += 1;
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'ENVIO_RECONCILIADO_EN_PLATICA' });
+        continue;
+      }
+
+      const payload = payloadLastcall(contacto, simulando);
+      if (simulando) {
+        resumen.simulados += 1;
+        resumen.detalle.push({
+          contactoId: contacto.id,
+          nombre: contacto.nombre,
+          puesto: contacto.rolPuesto,
+          whatsapp: contacto.whatsapp,
+          payload,
+          simulado: true,
+        });
+        continue;
+      }
+
+      const inicioEnvio = ahora.toISOString();
+      await contactosService.actualizarEstadoLastcall({
+        contactoId: contacto.id,
+        estado: ESTADO_LASTCALL_EN_CURSO,
+        fecha: inicioEnvio,
+      });
+
+      try {
+        await platicaClient.enviarPlantilla(payload);
+      } catch (errorEnvio) {
+        try {
+          await contactosService.actualizarEstadoLastcall({
+            contactoId: contacto.id,
+            estado: ESTADO_LASTCALL_FALLO,
+            fecha: ahora.toISOString(),
+          });
+        } catch (_) {
+          /* En curso vence en 10 min */
+        }
+        throw errorEnvio;
+      }
+
+      await reintentarConBackoff(async () => {
+        await contactosService.actualizarEstadoLastcall({
+          contactoId: contacto.id,
+          estado: ESTADO_LASTCALL_ENVIADO,
+          fecha: ahora.toISOString(),
+          reactivacionesEnviadas: (contacto.reactivacionesEnviadas || 0) + 1,
+        });
+      });
+      resumen.enviados += 1;
+      resumen.detalle.push({
+        contactoId: contacto.id,
+        nombre: contacto.nombre,
+        whatsapp: contacto.whatsapp,
+        fechaLastcall: ahora.toISOString(),
+        simulado: false,
+      });
+    } catch (error) {
+      resumen.errores.push({
+        contactoId: contacto.id,
+        nombre: contacto.nombre,
+        mensaje: error.message || String(error),
+      });
+    }
+  }
+
+  return resumen;
+}
+
+let colaLastcallQuiereCitasNo = Promise.resolve();
+function enviarLastcallQuiereCitasNo(opciones) {
+  const ejecucion = colaLastcallQuiereCitasNo.then(() => ejecutarLastcallQuiereCitasNo(opciones));
+  colaLastcallQuiereCitasNo = ejecucion.catch(() => {});
+  return ejecucion;
+}
+
 function plantillaRecordatorio(modoSimulacion) {
   const configurada = process.env[TEMPLATE_ENV_RECORDATORIO];
   if (configurada) return configurada;
@@ -1363,6 +1534,8 @@ module.exports = {
   enviarFollowups72h,
   payloadLastcall,
   enviarLastcall,
+  enviarLastcallQuiereCitasNo,
+  puestoExcluidoDeLastcallQuiereCitasNo,
   esHorarioLaboralFollowup,
   evaluarVentanaFollowup,
   evaluarVentanaLastcall,

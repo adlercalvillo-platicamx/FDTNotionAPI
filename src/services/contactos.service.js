@@ -840,6 +840,32 @@ async function listarContactosConOfertaInicialVencida(fechaLimite) {
   return resultados;
 }
 
+async function listarContactosConUltimaCampana(campana) {
+  requireDataSourceId();
+  const resultados = [];
+  let startCursor;
+  do {
+    const body = {
+      filter: {
+        and: [
+          { property: 'Categoria', select: { equals: 'Asistente' } },
+          { property: 'Dado de Baja', checkbox: { equals: false } },
+          { property: 'Última Campaña Enviada', select: { equals: campana } },
+        ],
+      },
+      page_size: 100,
+    };
+    if (startCursor) body.start_cursor = startCursor;
+    const data = await notionFetch(`/data_sources/${CONTACTOS_DATA_SOURCE_ID}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    resultados.push(...(data.results || []).map(parsearContacto));
+    startCursor = data.has_more ? data.next_cursor : null;
+  } while (startCursor);
+  return resultados;
+}
+
 /**
  * Todos los Sponsor activos (excluye Dado de Baja) — universo que recorre
  * la orquestación global de matchmaking (sugerirMatchesGlobal). No excluye
@@ -995,6 +1021,7 @@ module.exports = {
   actualizarEstadoFollowup72h,
   actualizarEstadoLastcall,
   listarContactosConOfertaInicialVencida,
+  listarContactosConUltimaCampana,
   marcarRecordatorioEventoEnviado,
   incrementarReactivaciones,
   listarSponsorsActivos,

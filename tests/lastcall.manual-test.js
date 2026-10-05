@@ -40,6 +40,10 @@ require.cache[contactosPath] = {
   filename: contactosPath,
   loaded: true,
   exports: {
+    CAMPANA_QUIERE_CITAS_NO: 'Quiere citas no',
+    async listarContactosConUltimaCampana(campana) {
+      return contactos.filter((contacto) => contacto.ultimaCampanaEnviada === campana);
+    },
     async listarContactosConOfertaInicialVencida(fechaLimite) {
       consultasContactos += 1;
       const limite = new Date(fechaLimite).getTime();
@@ -89,6 +93,8 @@ require.cache[platicaPath] = {
 delete require.cache[servicePath];
 const {
   enviarLastcall,
+  enviarLastcallQuiereCitasNo,
+  puestoExcluidoDeLastcallQuiereCitasNo,
   evaluarVentanaLastcall,
   estadoLastcallProcesable,
   lastcallSalientePosterior,
@@ -209,6 +215,39 @@ async function main() {
   assert.strictEqual(envios.length, 1);
   assert.strictEqual(envios[0].params[0], 'Ana');
   assert.strictEqual(actualizaciones.some((item) => item.contactoId === 'amz'), false);
+
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'BECARIA' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'PASANTE' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'CHANEL ECOMMERCE INTERN' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'ESTUDIANTE' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'CONTENT CREATOR' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'DISEADOR GRAFICO JR' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'Diseñador gráfico Jr' }), true);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'E-BUSINESS JR MANAGER' }), false);
+  assert.strictEqual(puestoExcluidoDeLastcallQuiereCitasNo({ rolPuesto: 'CREADOR DE CONTENIDO' }), false);
+
+  reset([
+    contactoBase({
+      id: 'becaria',
+      nombre: 'PAMELA ESPINOZA',
+      rolPuesto: 'BECARIA',
+      ultimaCampanaEnviada: 'Quiere citas no',
+    }),
+    contactoBase({
+      id: 'con-cita',
+      nombre: 'LORENA REZA',
+      rolPuesto: 'COORDINADORA PLANEACION',
+      ultimaCampanaEnviada: 'Quiere citas no',
+      whatsapp: '+52 449 000 0002',
+    }),
+    contactoBase({ ultimaCampanaEnviada: 'Oferta inicial' }),
+  ]);
+  citasPorAsistente.set('con-cita', [{ id: 'cita-lorena', estatus: 'Confirmada' }]);
+  resultado = await enviarLastcallQuiereCitasNo({ modoSimulacion: true, ahora: MARTES_10 });
+  assert.strictEqual(resultado.omitidosPuesto, 1);
+  assert.strictEqual(resultado.simulados, 1);
+  assert.strictEqual(resultado.detalle.find((item) => item.simulado).nombre, 'LORENA REZA');
+  assert.strictEqual(envios.length, 0);
 
   assert.ok(
     lastcallSalientePosterior(

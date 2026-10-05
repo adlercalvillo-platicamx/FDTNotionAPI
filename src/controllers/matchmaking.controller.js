@@ -5,6 +5,7 @@ const {
   enviarRecordatorioEvento,
   enviarFollowups72h,
   enviarLastcall,
+  enviarLastcallQuiereCitasNo,
 } = require('../services/campanas-matchmaking.service');
 const { enviarQuiereCitasNo } = require('../services/quiere-citas-no.service');
 const { consultarSugerenciasAprobadasPorAsistente } = require('../services/citas.service');
@@ -145,6 +146,19 @@ async function enviarLastcallHttp(_req, res) {
   }
 }
 
+async function enviarLastcallQuiereCitasNoHttp(_req, res) {
+  try {
+    const resultado = await enviarLastcallQuiereCitasNo();
+    return res.status(200).json(resultado);
+  } catch (error) {
+    console.error('[MatchmakingController] Error en last call de quiere citas no:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message || 'Error al procesar last call de quiere citas no.',
+    });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /matchmaking/sugerir-todos
 // Body opcional: { "topN": 3 }
@@ -187,5 +201,6 @@ module.exports = {
   enviarFollowups72hHttp,
   enviarQuiereCitasNoHttp,
   enviarLastcallHttp,
+  enviarLastcallQuiereCitasNoHttp,
   sugerenciasAsistente,
 };

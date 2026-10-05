@@ -9,6 +9,7 @@ router.post('/enviar-recordatorio-evento', matchmakingController.enviarRecordato
 router.post('/enviar-followups-72h', matchmakingController.enviarFollowups72hHttp);
 router.post('/enviar-quiere-citas-no', matchmakingController.enviarQuiereCitasNoHttp);
 router.post('/enviar-lastcall', matchmakingController.enviarLastcallHttp);
+router.post('/enviar-lastcall-quiere-citas-no', matchmakingController.enviarLastcallQuiereCitasNoHttp);
 router.get('/sugerencias-asistente', matchmakingController.sugerenciasAsistente);
 
 module.exports = router;
