@@ -8,9 +8,9 @@ const {
 const MINUTOS_MAX = 48 * 60;
 
 /**
- * Cron de Coolify cada 15 min el 6, 7 y 8 de octubre. Idempotente: el estado
- * vive en el contacto (campos Recordatorio 24h). Un asistente recibe un solo
- * mensaje, con todas sus citas, cuando la primera entra en la ventana.
+ * Cron de Coolify cada 15 min el 6 y 7 de octubre. Un asistente recibe un
+ * mensaje por día, solo con las citas de ese día. Los días ya enviados quedan
+ * en Notas Recordatorio 24h.
  *
  * `ahora`, `minutos` y `simulacion` son solo para pruebas; el cron va sin body.
  * `simulacion: true` lee Notion y arma {{1}}/{{2}}, no escribe ni manda WhatsApp.

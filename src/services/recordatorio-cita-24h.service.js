@@ -1,8 +1,9 @@
 // src/services/recordatorio-cita-24h.service.js
 //
-// Un solo WhatsApp por asistente, 24 h antes de su primera cita real.
-// El texto lista todas las citas que todavía no empiezan, también las del
-// otro día. No se manda otro mensaje al día siguiente.
+// Un WhatsApp por asistente y por día, 24 h antes de la primera cita de
+// ese día. El texto lista solo las citas de ese día. Quien tiene el 7 y el
+// 8 recibe dos mensajes: el 6 las del 7, y el 7 las del 8. Quien solo tiene
+// el 7 recibe uno, el 6.
 //
 // Misma razón que el de 15 min y el de 2 h: Plática no deja cancelar un
 // mensaje con scheduleTime. Un cron lee Notion y manda ya. El estado vive
@@ -83,21 +84,44 @@ function agendaParaPlantilla(lineas) {
   return { texto: unirAgenda(partes), recortada: false };
 }
 
-function recordatorioSePuedeTomar(estado, fechaIso, ahoraMs) {
-  if (!estado || estado === citasService.ESTADO_RECORDATORIO_FALLO) return true;
-  if (estado !== citasService.ESTADO_RECORDATORIO_EN_CURSO) return false;
+function diaDeCita(inicio) {
+  const match = String(inicio || '').match(/^(\d{4}-\d{2}-\d{2})T/);
+  return match ? match[1] : '';
+}
+
+function diasYaEnviados(notas) {
+  return new Set(String(notas || '').match(/\d{4}-\d{2}-\d{2}/g) || []);
+}
+
+function notasConservandoDias(notasPrevias, extra) {
+  const lista = [...diasYaEnviados(notasPrevias)].sort().join(' ');
+  return [lista, extra].filter(Boolean).join(' ');
+}
+
+function notasConDia(notasPrevias, dia, extra) {
+  const dias = diasYaEnviados(notasPrevias);
+  if (dia) dias.add(dia);
+  return notasConservandoDias([...dias].join(' '), extra);
+}
+
+function recordatorioSePuedeTomar(estado, fechaIso, ahoraMs, dia, notas) {
+  if (estado === citasService.ESTADO_RECORDATORIO_OMITIDO) return false;
+  if (diasYaEnviados(notas).has(dia)) return false;
+  if (estado !== citasService.ESTADO_RECORDATORIO_EN_CURSO) return true;
   const reclamadoMs = Date.parse(fechaIso || '');
   if (!Number.isFinite(reclamadoMs)) return true;
   return ahoraMs - reclamadoMs >= citasService.RECLAMO_RECORDATORIO_VENCIDO_MINUTOS * 60 * 1000;
 }
 
-function agruparPorAsistente(citas) {
+function lotesPorDia(citas) {
   const grupos = new Map();
   for (const cita of citas) {
-    const clave = idCanonico(cita.asistentePageId);
-    if (!clave) continue;
+    const asistente = idCanonico(cita.asistentePageId);
+    const dia = diaDeCita(cita.inicio);
+    if (!asistente || !dia) continue;
+    const clave = `${asistente}|${dia}`;
     if (!grupos.has(clave)) {
-      grupos.set(clave, { asistentePageId: cita.asistentePageId, citas: [] });
+      grupos.set(clave, { asistentePageId: cita.asistentePageId, dia, citas: [] });
     }
     grupos.get(clave).citas.push(cita);
   }
@@ -109,8 +133,8 @@ function agruparPorAsistente(citas) {
     .sort((a, b) => String(a.citas[0].inicio).localeCompare(String(b.citas[0].inicio)));
 }
 
-function primeraEnVentana(grupo, desdeMs, hastaMs) {
-  const inicioMs = Date.parse(grupo.citas[0]?.inicio || '');
+function diaEnVentana(lote, desdeMs, hastaMs) {
+  const inicioMs = Date.parse(lote.citas[0]?.inicio || '');
   return Number.isFinite(inicioMs) && inicioMs > desdeMs && inicioMs <= hastaMs;
 }
 
@@ -132,9 +156,8 @@ async function sponsorDe(cache, sponsorPageId) {
  *   ¿Me confirmas tu asistencia?
  *
  * {{1}} primer nombre del asistente (Title Case). Fuente: Contactos.Nombre.
- * {{2}} todas las reuniones Confirmada / Confirmada sin notificar que
- * todavía no empiezan, en orden, un solo parámetro sin saltos:
- *   7 oct a las 10:30 am con Marco Trujillo, de Plática.mx; 8 oct a las 11:00 am con Rodrigo Cerda, de Tiendanube
+ * {{2}} las reuniones de un solo día, en orden, un solo parámetro sin saltos:
+ *   7 oct a las 10:30 am con Marco Trujillo, de Plática.mx; 7 oct a las 4:00 pm con Rodrigo Cerda, de Tiendanube
  * Fecha = día/mes del ISO de la cita. Hora = 12 h del mismo ISO.
  * Encargado = nombre + apellido paterno del sponsor + ", de " + Empresa.
  * Sin mesa y sin URL de Meet.
@@ -178,7 +201,7 @@ async function enviarRecordatorios24hPendientes({
   const desdeMs = Date.parse(desde);
   const hastaMs = Date.parse(hasta);
   const ahoraMs = Date.parse(momento);
-  const candidatos = agruparPorAsistente(citas).filter((grupo) => primeraEnVentana(grupo, desdeMs, hastaMs));
+  const candidatos = lotesPorDia(citas).filter((lote) => diaEnVentana(lote, desdeMs, hastaMs));
   const sponsors = new Map();
 
   const resultado = {
@@ -193,23 +216,30 @@ async function enviarRecordatorios24hPendientes({
     detalle: [],
   };
 
-  for (const grupo of candidatos) {
+  for (const lote of candidatos) {
     const marca = new Date().toISOString();
     let asistente;
     try {
-      asistente = await contactosService.obtenerContacto(grupo.asistentePageId);
+      asistente = await contactosService.obtenerContacto(lote.asistentePageId);
     } catch (error) {
       resultado.fallidos += 1;
       resultado.detalle.push({
-        asistentePageId: grupo.asistentePageId,
-        citas: grupo.citas.length,
+        asistentePageId: lote.asistentePageId,
+        dia: lote.dia,
+        citas: lote.citas.length,
         estado: 'Falló',
         motivo: error.message,
       });
       continue;
     }
 
-    if (!recordatorioSePuedeTomar(asistente?.estadoRecordatorio24h, asistente?.fechaRecordatorio24h, ahoraMs)) {
+    if (!recordatorioSePuedeTomar(
+      asistente?.estadoRecordatorio24h,
+      asistente?.fechaRecordatorio24h,
+      ahoraMs,
+      lote.dia,
+      asistente?.notasRecordatorio24h,
+    )) {
       continue;
     }
 
@@ -217,15 +247,16 @@ async function enviarRecordatorios24hPendientes({
       try {
         const { whatsapp, params, recortada } = await paramsDeRecordatorio24h({
           asistente,
-          citas: grupo.citas,
+          citas: lote.citas,
           sponsors,
         });
         const sinTelefono = !telefonoConversacion(whatsapp);
         resultado[sinTelefono ? 'omitidos' : 'enviados'] += 1;
         resultado.detalle.push({
-          asistentePageId: grupo.asistentePageId,
+          asistentePageId: lote.asistentePageId,
           nombre: asistente?.nombre || null,
-          citas: grupo.citas.length,
+          dia: lote.dia,
+          citas: lote.citas.length,
           estado: sinTelefono ? 'Omitido' : 'Simulado',
           motivo: sinTelefono ? 'SIN_WHATSAPP' : undefined,
           recortada,
@@ -234,9 +265,10 @@ async function enviarRecordatorios24hPendientes({
       } catch (error) {
         resultado.fallidos += 1;
         resultado.detalle.push({
-          asistentePageId: grupo.asistentePageId,
+          asistentePageId: lote.asistentePageId,
           nombre: asistente?.nombre || null,
-          citas: grupo.citas.length,
+          dia: lote.dia,
+          citas: lote.citas.length,
           estado: 'Falló',
           motivo: error.message,
         });
@@ -246,15 +278,16 @@ async function enviarRecordatorios24hPendientes({
 
     try {
       await marcar({
-        contactoId: grupo.asistentePageId,
+        contactoId: lote.asistentePageId,
         estado: citasService.ESTADO_RECORDATORIO_EN_CURSO,
         fecha: marca,
       });
     } catch (error) {
       resultado.fallidos += 1;
       resultado.detalle.push({
-        asistentePageId: grupo.asistentePageId,
-        citas: grupo.citas.length,
+        asistentePageId: lote.asistentePageId,
+        dia: lote.dia,
+        citas: lote.citas.length,
         estado: 'Falló',
         motivo: `RECLAMO: ${error.message}`,
       });
@@ -264,21 +297,22 @@ async function enviarRecordatorios24hPendientes({
     try {
       const { whatsapp, params, recortada } = await paramsDeRecordatorio24h({
         asistente,
-        citas: grupo.citas,
+        citas: lote.citas,
         sponsors,
       });
 
       if (!telefonoConversacion(whatsapp)) {
         await marcar({
-          contactoId: grupo.asistentePageId,
+          contactoId: lote.asistentePageId,
           estado: citasService.ESTADO_RECORDATORIO_OMITIDO,
           fecha: marca,
-          notas: 'SIN_WHATSAPP: el asistente no tiene teléfono en Contactos.',
+          notas: notasConservandoDias(asistente?.notasRecordatorio24h, 'SIN_WHATSAPP: el asistente no tiene teléfono en Contactos.'),
         });
         resultado.omitidos += 1;
         resultado.detalle.push({
-          asistentePageId: grupo.asistentePageId,
-          citas: grupo.citas.length,
+          asistentePageId: lote.asistentePageId,
+          dia: lote.dia,
+          citas: lote.citas.length,
           estado: 'Omitido',
           motivo: 'SIN_WHATSAPP',
         });
@@ -286,16 +320,19 @@ async function enviarRecordatorios24hPendientes({
       }
 
       const respuesta = await enviarPlantillaRecordatorio({ phone: whatsapp, templateName, params });
+      const notas = notasConDia(asistente?.notasRecordatorio24h, lote.dia, recortada ? 'AGENDA_RECORTADA' : '');
       await marcar({
-        contactoId: grupo.asistentePageId,
+        contactoId: lote.asistentePageId,
         estado: citasService.ESTADO_RECORDATORIO_ENVIADO,
         fecha: marca,
-        notas: recortada ? 'AGENDA_RECORTADA' : '',
+        notas,
       });
+      if (asistente) asistente.notasRecordatorio24h = notas;
       resultado.enviados += 1;
       resultado.detalle.push({
-        asistentePageId: grupo.asistentePageId,
-        citas: grupo.citas.length,
+        asistentePageId: lote.asistentePageId,
+        dia: lote.dia,
+        citas: lote.citas.length,
         estado: 'Enviado',
         messageId: respuesta?.messageId || null,
         params,
@@ -303,30 +340,32 @@ async function enviarRecordatorios24hPendientes({
       console.log(
         '[Recordatorio24h] Enviado',
         JSON.stringify({
-          asistentePageId: grupo.asistentePageId,
-          citas: grupo.citas.length,
+          asistentePageId: lote.asistentePageId,
+          dia: lote.dia,
+          citas: lote.citas.length,
           messageId: respuesta?.messageId || null,
         })
       );
     } catch (error) {
       console.error(
         '[Recordatorio24h] Falló',
-        JSON.stringify({ asistentePageId: grupo.asistentePageId, error: error.message })
+        JSON.stringify({ asistentePageId: lote.asistentePageId, dia: lote.dia, error: error.message })
       );
       try {
         await marcar({
-          contactoId: grupo.asistentePageId,
+          contactoId: lote.asistentePageId,
           estado: citasService.ESTADO_RECORDATORIO_FALLO,
           fecha: marca,
-          notas: error.message,
+          notas: notasConservandoDias(asistente?.notasRecordatorio24h, error.message),
         });
       } catch (errorAlMarcar) {
         console.error('[Recordatorio24h] Tampoco se pudo marcar el fallo:', errorAlMarcar.message);
       }
       resultado.fallidos += 1;
       resultado.detalle.push({
-        asistentePageId: grupo.asistentePageId,
-        citas: grupo.citas.length,
+        asistentePageId: lote.asistentePageId,
+        dia: lote.dia,
+        citas: lote.citas.length,
         estado: 'Falló',
         motivo: error.message,
       });
@@ -342,7 +381,8 @@ module.exports = {
   fechaCorta,
   lineaDeCita,
   agendaParaPlantilla,
-  agruparPorAsistente,
+  diaDeCita,
+  lotesPorDia,
   TEMPLATE_ENV,
   TEMPLATE_NAME,
   MINUTOS_ANTES,
