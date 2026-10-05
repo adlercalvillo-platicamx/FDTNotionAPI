@@ -194,7 +194,13 @@ async function modificar(req, res) {
   }
 
   try {
-    const resultado = await modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora });
+    const resultado = await modificarCita({
+      telefono,
+      citaId,
+      sponsorEmpresa,
+      nuevaFechaHora,
+      motivoOperativo: req.body?.motivoOperativo === true,
+    });
     return res.status(200).json(resultado);
   } catch (error) {
     return responderErrorDeCita(res, error, 'la modificación de la cita');

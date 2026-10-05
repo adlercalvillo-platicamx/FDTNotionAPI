@@ -706,6 +706,7 @@ function cuerpoModificacionAsistente({
   hora,
   mesa,
   virtual = false,
+  motivoOperativo = false,
 }) {
   const conQuien = fraseConEncargada({ representanteSponsor, empresaSponsor, deLaEmpresa: false });
   const n = numeroDeMesa(mesa);
@@ -713,6 +714,12 @@ function cuerpoModificacionAsistente({
     `Hola ${primerNombreAsistente}, te confirmo el cambio de horario de cita con ${conQuien} y los nuevos detalles de tu reunión:`,
     '',
   ];
+  if (motivoOperativo) {
+    lineas.push(
+      'Lo movimos porque el sponsor participa en el programa del evento en ese horario y necesitamos liberar su agenda alrededor de su sesión.',
+      ''
+    );
+  }
   if (fecha) lineas.push(`📅 Fecha: ${fecha}`, '');
   if (hora) lineas.push(`🕐 Nuevo horario: ${hora} h`, '');
   if (virtual) {
@@ -732,9 +739,11 @@ function cuerpoModificacionAsistente({
     );
   }
   lineas.push(
-    virtual
-      ? `Si presentas algún inconveniente, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`
-      : `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
+    motivoOperativo
+      ? `Si tienes alguna duda o quieres otro horario, escríbenos por WhatsApp al: ${WHATSAPP_SOPORTE_CITAS}`
+      : virtual
+        ? `Si presentas algún inconveniente, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`
+        : `Si presentas algún inconveniente para llegar, puedes comunicarte vía whatsapp al: ${WHATSAPP_SOPORTE_CITAS}`,
     '',
     '¡Nos vemos pronto!'
   );
@@ -1689,7 +1698,7 @@ function requerirHorarioNoPasado(nuevoInicioMs, ahoraMs) {
   }
 }
 
-function conTextosDeModificacion(notificacion, { horarioNuevo, mesa }) {
+function conTextosDeModificacion(notificacion, { horarioNuevo, mesa, motivoOperativo = false }) {
   const empresaAsistente = notificacion.empresaAsistente || 'el asistente';
   const empresaSponsor = notificacion.empresaSponsor || 'el sponsor';
   const partes = partesFechaHora(horarioNuevo);
@@ -1713,6 +1722,7 @@ function conTextosDeModificacion(notificacion, { horarioNuevo, mesa }) {
       hora: partes.hora,
       mesa,
       virtual: Boolean(notificacion.asistenteVirtual),
+      motivoOperativo,
     }),
     asuntoSponsor: ASUNTO_MODIFICACION_SPONSOR,
     asuntoAsistente: ASUNTO_MODIFICACION_ASISTENTE,
@@ -1758,9 +1768,10 @@ function conTextosDeCancelacion(notificacion, inicio) {
  * @param {string} [params.citaId]         - page_id de la cita (camino de Laura/Liz)
  * @param {string} [params.sponsorEmpresa] - desambigua cuando el asistente tiene varias citas
  * @param {string} params.nuevaFechaHora   - ISO 8601 del bloque destino
+ * @param {boolean} [params.motivoOperativo] - solo el lote de bloqueos 1.5h; el agente y el QR no lo mandan
  * @param {string|number|Date} [params.ahora] - solo para tests; default Date.now()
  */
-async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora, ahora }) {
+async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora, motivoOperativo = false, ahora }) {
   if (!nuevaFechaHora) {
     throw new BookingError('INVALID_INPUT', '"nuevaFechaHora" es requerida en formato ISO 8601.');
   }
@@ -1859,6 +1870,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
           horarioAnterior,
           horarioNuevo: inicio,
           mesa,
+          motivoOperativo: motivoOperativo === true,
         }),
         titulo: cita.titulo || notificacion.tituloCita,
         asunto: `Cambio de horario — ${cita.titulo || notificacion.tituloCita}`,

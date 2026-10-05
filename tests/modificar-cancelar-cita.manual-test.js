@@ -400,6 +400,31 @@ const AHORA_ANTES_DEL_EVENTO = '2026-10-01T09:00:00-06:00';
     assert.ok(textoAsistente.includes('aprovechar al máximo los 20 minutos'));
     assert.ok(!textoAsistente.includes('Datos de contacto'));
     assert.ok(!textoAsistente.includes('sponsor@platica.test'));
+    assert.ok(!textoAsistente.includes('programa del evento'));
+    assert.ok(textoAsistente.includes('Si presentas algún inconveniente para llegar'));
+  });
+
+  await ok('motivoOperativo solo cambia el correo del asistente', async () => {
+    paginas.clear();
+    crearPagina({
+      id: 'cita-motivo',
+      inicio: '2026-10-07T12:00:00-06:00',
+      fin: '2026-10-07T12:30:00-06:00',
+    });
+    const r = await modificarCita({
+      citaId: 'cita-motivo',
+      nuevaFechaHora: '2026-10-07T12:30:00-06:00',
+      motivoOperativo: true,
+      ahora: AHORA_ANTES_DEL_EVENTO,
+    });
+    assert.strictEqual(r.estado, 'Confirmada');
+    const textoSponsor = correos[0].text;
+    const textoAsistente = correos[1].text;
+    assert.ok(textoAsistente.includes('programa del evento'));
+    assert.ok(textoAsistente.includes('Si tienes alguna duda o quieres otro horario, escríbenos por WhatsApp al: +52 33 3236 1963'));
+    assert.ok(!textoAsistente.includes('inconveniente para llegar'));
+    assert.ok(!textoSponsor.includes('programa del evento'));
+    assert.ok(!textoSponsor.includes('+52 33 3236 1963'));
   });
 
   await ok('Virtual: cambio de horario sin mesa/sede para asistente; sponsor conserva mesa', async () => {
