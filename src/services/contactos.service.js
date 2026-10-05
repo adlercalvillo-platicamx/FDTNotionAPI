@@ -173,6 +173,9 @@ function parsearContacto(pagina) {
     estadoLastcall: select(p['Estado Lastcall']),
     fechaLastcall: fecha(p['Fecha Lastcall']),
     recordatorioEventoEnviado: checkbox(p['Recordatorio Evento Enviado']),
+    estadoRecordatorio24h: select(p['Estado Recordatorio 24h']),
+    fechaRecordatorio24h: fecha(p['Fecha Recordatorio 24h']),
+    notasRecordatorio24h: texto(p['Notas Recordatorio 24h']),
     bio: texto(p['Bio']),
     fotoSpeaker: url(p['Foto Speaker']),
     sitioWebEmpresa: url(p['Sitio Web Empresa']),
@@ -793,6 +796,23 @@ async function actualizarEstadoFollowup72h({
   });
 }
 
+async function actualizarEstadoRecordatorio24h({ contactoId, estado, fecha, notas }) {
+  requireDataSourceId();
+  const properties = {
+    'Estado Recordatorio 24h': { select: estado ? { name: estado } : null },
+    'Fecha Recordatorio 24h': { date: fecha ? { start: fecha } : null },
+  };
+  if (notas !== undefined) {
+    properties['Notas Recordatorio 24h'] = {
+      rich_text: notas ? [{ text: { content: String(notas).slice(0, 1900) } }] : [],
+    };
+  }
+  return notionFetch(`/pages/${contactoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
+}
+
 async function actualizarEstadoLastcall({
   contactoId,
   estado,
@@ -1019,6 +1039,7 @@ module.exports = {
   actualizarEstadoCampana,
   marcarRespuestaOfertaInicial,
   actualizarEstadoFollowup72h,
+  actualizarEstadoRecordatorio24h,
   actualizarEstadoLastcall,
   listarContactosConOfertaInicialVencida,
   listarContactosConUltimaCampana,

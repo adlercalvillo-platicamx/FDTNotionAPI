@@ -1959,6 +1959,33 @@ function buscarCitasParaRecordatorio2h(args) {
   return buscarCitasParaRecordatorio({ ...args, campos: CAMPOS_RECORDATORIO_2H });
 }
 
+/**
+ * Citas reales que todavía no empiezan. El recordatorio de 24 h agrupa
+ * por asistente: la primera que cae en la ventana dispara un solo mensaje
+ * y el texto incluye también las posteriores (el otro día del evento).
+ * El estado de envío no vive en la fila; vive en el contacto.
+ */
+async function buscarCitasRealesDesde({ desde }) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      {
+        or: ESTATUS_CITA_REAL.map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+      { property: 'Fecha y Hora', date: { after: desde } },
+    ],
+  });
+
+  return filas
+    .map((fila) => datosDeCita(fila))
+    .filter((cita) => cita.sponsorPageId && cita.asistentePageId && cita.inicio)
+    .filter((cita) => !esFilaBloqueoAgenda(cita.asistentePageId))
+    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
+}
+
 function marcarEstadoRecordatorio2h(args) {
   return marcarEstadoRecordatorio({ ...args, campos: CAMPOS_RECORDATORIO_2H });
 }
@@ -2721,6 +2748,7 @@ module.exports = {
   marcarEstadoRecordatorio15min,
   buscarCitasParaRecordatorio2h,
   marcarEstadoRecordatorio2h,
+  buscarCitasRealesDesde,
   persistirMeetVirtual,
   ESTADO_RECORDATORIO_EN_CURSO,
   ESTADO_RECORDATORIO_ENVIADO,

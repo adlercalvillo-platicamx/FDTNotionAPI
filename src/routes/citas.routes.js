@@ -7,10 +7,12 @@ const {
   programarRecordatorio15min,
 } = require('../controllers/recordatorio-cita-15min.controller');
 const { enviarRecordatorios2h } = require('../controllers/recordatorio-cita-2h.controller');
+const { enviarRecordatorios24h } = require('../controllers/recordatorio-cita-24h.controller');
 
 router.post('/reservar', citasController.reservar);
 router.post('/enviar-recordatorios-15min', enviarRecordatorios15min);
 router.post('/enviar-recordatorios-2h', enviarRecordatorios2h);
+router.post('/enviar-recordatorios-24h', enviarRecordatorios24h);
 // Retirada: contesta 410. Ver recordatorio-cita-15min.controller.js.
 router.post('/programar-recordatorio-15min', programarRecordatorio15min);
 router.post('/modificar-cita', citasController.modificar);
