@@ -238,18 +238,20 @@ const AHORA = '2026-10-06T10:30:00-06:00';
     assert.strictEqual(r.enviados, 1);
     assert.strictEqual(r.detalle[0].estado, 'Simulado');
     assert.strictEqual(r.detalle[0].nombre, 'JUAN PEREZ');
+    assert.strictEqual(r.detalle[0].dia, '2026-10-07');
     assert.deepStrictEqual(r.detalle[0].params, [
       'Juan',
-      '7 oct a las 10:30 am con Marco Trujillo, de Plática.mx; 8 oct a las 11:00 am con Rodrigo Cerda, de Tiendanube',
+      '7 oct a las 10:30 am con Marco Trujillo, de Plática.mx',
     ]);
     assert.strictEqual(marcas.length, 0);
     assert.strictEqual(fetches.length, 0);
   });
 
-  await okAsync('lista las dos citas en un mensaje y no programa', async () => {
+  await okAsync('el 6 manda solo las del 7, aunque también tenga el 8', async () => {
     limpiar();
     filas = [
-      fila({ id: 'cita-tarde', inicio: '2026-10-08T11:00:00-06:00', sponsorPageId: 'sponsor-2' }),
+      fila({ id: 'cita-8', inicio: '2026-10-08T11:00:00-06:00', sponsorPageId: 'sponsor-2' }),
+      fila({ id: 'cita-tarde', inicio: '2026-10-07T16:00:00-06:00', sponsorPageId: 'sponsor-2' }),
       fila(),
     ];
     const r = await enviarRecordatorios24hPendientes({ ahora: AHORA });
@@ -260,12 +262,34 @@ const AHORA = '2026-10-06T10:30:00-06:00';
     assert.strictEqual(fetches[0].body.template.name, 'confirmacion_cita_1_dia_antes');
     assert.deepStrictEqual(fetches[0].body.template.params, [
       'Juan',
-      '7 oct a las 10:30 am con Marco Trujillo, de Plática.mx; 8 oct a las 11:00 am con Rodrigo Cerda, de Tiendanube',
+      '7 oct a las 10:30 am con Marco Trujillo, de Plática.mx; 7 oct a las 4:00 pm con Rodrigo Cerda, de Tiendanube',
     ]);
+    assert.strictEqual(marcas.at(-1).notas, '2026-10-07');
     assert.deepStrictEqual(
       marcas.map((m) => m.estado),
       ['En curso', 'Enviado']
     );
+  });
+
+  await okAsync('el 7 manda solo las del 8 y no repite las del 7', async () => {
+    limpiar();
+    contactos['asistente-1'].estadoRecordatorio24h = 'Enviado';
+    contactos['asistente-1'].notasRecordatorio24h = '2026-10-07';
+    filas = [
+      fila({ id: 'cita-7-tarde', inicio: '2026-10-07T18:00:00-06:00' }),
+      fila({ id: 'cita-8', inicio: '2026-10-08T11:00:00-06:00', sponsorPageId: 'sponsor-2' }),
+      fila({ id: 'cita-8-tarde', inicio: '2026-10-08T16:00:00-06:00', sponsorPageId: 'sponsor-2' }),
+    ];
+    const r = await enviarRecordatorios24hPendientes({ ahora: '2026-10-07T11:00:00-06:00' });
+    assert.strictEqual(r.enviados, 1);
+    assert.strictEqual(fetches.length, 1);
+    assert.strictEqual(r.detalle[0].dia, '2026-10-08');
+    assert.deepStrictEqual(fetches[0].body.template.params, [
+      'Juan',
+      '8 oct a las 11:00 am con Rodrigo Cerda, de Tiendanube; 8 oct a las 4:00 pm con Rodrigo Cerda, de Tiendanube',
+    ]);
+    assert.ok(String(marcas.at(-1).notas).includes('2026-10-07'));
+    assert.ok(String(marcas.at(-1).notas).includes('2026-10-08'));
   });
 
   await okAsync('la cita del otro día, sola, todavía no entra', async () => {
@@ -280,6 +304,7 @@ const AHORA = '2026-10-06T10:30:00-06:00';
   await okAsync('ya enviado no se repite', async () => {
     limpiar();
     contactos['asistente-1'].estadoRecordatorio24h = 'Enviado';
+    contactos['asistente-1'].notasRecordatorio24h = '2026-10-07';
     filas = [fila(), fila({ id: 'cita-2', inicio: '2026-10-08T11:00:00-06:00', sponsorPageId: 'sponsor-2' })];
     const r = await enviarRecordatorios24hPendientes({ ahora: AHORA });
     assert.strictEqual(r.revisados, 1);
@@ -327,6 +352,7 @@ const AHORA = '2026-10-06T10:30:00-06:00';
     assert.strictEqual(primero.enviados, 1);
 
     contactos['asistente-1'].estadoRecordatorio24h = 'En curso';
+    contactos['asistente-1'].notasRecordatorio24h = '';
     contactos['asistente-1'].fechaRecordatorio24h = '2026-10-06T10:29:00-06:00';
     fetches.length = 0;
     const fresco = await enviarRecordatorios24hPendientes({ ahora: AHORA });
