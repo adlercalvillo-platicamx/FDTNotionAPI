@@ -199,6 +199,17 @@ async function main() {
   assert.strictEqual(resultado.errores.length, 1);
   assert.strictEqual(contactos[0].estadoLastcall, 'Falló');
 
+  reset([
+    contactoBase({ id: 'amz', nombre: 'LUIZ DAMASCENO', empresa: 'AMAZON', whatsapp: '+52 550 000 0001' }),
+    contactoBase(),
+  ]);
+  resultado = await enviarLastcall({ modoSimulacion: false, ahora: MARTES_10 });
+  assert.strictEqual(resultado.omitidosAmazon, 1);
+  assert.strictEqual(resultado.enviados, 1);
+  assert.strictEqual(envios.length, 1);
+  assert.strictEqual(envios[0].params[0], 'Ana');
+  assert.strictEqual(actualizaciones.some((item) => item.contactoId === 'amz'), false);
+
   assert.ok(
     lastcallSalientePosterior(
       [
@@ -214,6 +225,7 @@ async function main() {
 
   console.log('✅ La ventana del 6-oct 09:30 CDMX se respeta.');
   console.log('✅ Sin cita activa entra; Confirmada sale; Cancelada entra; respondió no excluye.');
+  console.log('✅ Amazon no recibe last call ni se le escribe estado.');
   console.log('✅ Simulación, primer nombre y estados En curso/Enviado/Falló funcionan.');
   console.log('✅ Un En curso vencido se reconcilia sin duplicar WhatsApp.');
 }

@@ -36,7 +36,9 @@ const FOLLOWUP_DESDE_DEFAULT = '2026-10-05T09:30';
 const TEMPLATE_ENV_LASTCALL = 'PLATICA_TEMPLATE_LASTCALL';
 const TEMPLATE_SIMULACION_LASTCALL = 'lastcall_cita1a1';
 const LASTCALL_DESDE_ENV = 'LASTCALL_DESDE';
-const LASTCALL_DESDE_DEFAULT = '2026-10-06T09:30';
+// Adler 5-oct: el envío es hoy, no el 6. Coolify pisa este default si la
+// variable sigue en 2026-10-06T09:30.
+const LASTCALL_DESDE_DEFAULT = '2026-10-05T09:30';
 const ESTADO_LASTCALL_EN_CURSO = 'En curso';
 const ESTADO_LASTCALL_ENVIADO = 'Enviado';
 const ESTADO_LASTCALL_FALLO = 'Falló';
@@ -463,6 +465,10 @@ function evaluarVentanaLastcall(ahora = new Date()) {
     cumplida: ahora.getTime() >= abreEl.getTime(),
     abreEl: abreEl.toISOString(),
   };
+}
+
+function contactoEsAmazon(contacto) {
+  return /amazon/i.test(String(contacto?.empresa || '')) || /amazon/i.test(String(contacto?.nombre || ''));
 }
 
 function estadoLastcallProcesable(contacto, ahora) {
@@ -1003,6 +1009,7 @@ async function ejecutarLastcall({ modoSimulacion, ahora = new Date() } = {}) {
     simulados: 0,
     enviados: 0,
     omitidosConCita: 0,
+    omitidosAmazon: 0,
     omitidosEstado: 0,
     reconciliados: 0,
     errores: [],
@@ -1024,6 +1031,11 @@ async function ejecutarLastcall({ modoSimulacion, ahora = new Date() } = {}) {
 
   for (const contacto of contactos) {
     try {
+      if (contactoEsAmazon(contacto)) {
+        resumen.omitidosAmazon += 1;
+        resumen.detalle.push({ contactoId: contacto.id, motivo: 'AMAZON' });
+        continue;
+      }
       if (contactoYaInteractuo(citasPorAsistente.get(contacto.id) || [])) {
         resumen.omitidosConCita += 1;
         resumen.detalle.push({ contactoId: contacto.id, motivo: 'YA_TIENE_CITA' });
@@ -1358,6 +1370,7 @@ module.exports = {
   estadoLastcallProcesable,
   mensajeEntrantePosterior,
   followupSalientePosterior,
+  contactoEsAmazon,
   lastcallSalientePosterior,
   largoCuerpoOferta,
   TOPE_CUERPO_META,
