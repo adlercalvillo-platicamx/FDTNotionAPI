@@ -62,25 +62,15 @@ async function ejecutarReservaFlow(params) {
       sponsorNombre: sponsor?.nombre || 'el sponsor',
       inicio,
     });
-    const textoSponsor = `${asistente?.empresa || asistente?.nombre || 'Un asistente'} agendó un espacio contigo el ${formatearInicio(inicio)}.`;
-    await Promise.allSettled([
-      asistente?.whatsapp
-        ? platica.enviarAvisoCita({
-            phone: asistente.whatsapp,
-            text: textoAsistente,
-            templateName: process.env.PLATICA_TEMPLATE_CITA_ASISTENTE,
-            templateParams: [sponsor?.nombre || '', formatearInicio(inicio)],
-          })
-        : Promise.resolve(),
-      sponsor?.whatsapp
-        ? platica.enviarAvisoCita({
-            phone: sponsor.whatsapp,
-            text: textoSponsor,
-            templateName: process.env.PLATICA_TEMPLATE_CITA_SPONSOR,
-            templateParams: [asistente?.empresa || asistente?.nombre || '', formatearInicio(inicio)],
-          })
-        : Promise.resolve(),
-    ]);
+    // WhatsApp al sponsor lo manda booking.service.js (plantillas agendada/modificada/cancelada).
+    if (asistente?.whatsapp) {
+      await platica.enviarAvisoCita({
+        phone: asistente.whatsapp,
+        text: textoAsistente,
+        templateName: process.env.PLATICA_TEMPLATE_CITA_ASISTENTE,
+        templateParams: [sponsor?.nombre || '', formatearInicio(inicio)],
+      });
+    }
     return resultado;
   } catch (err) {
     const code = err instanceof BookingError ? err.code : 'ERROR';

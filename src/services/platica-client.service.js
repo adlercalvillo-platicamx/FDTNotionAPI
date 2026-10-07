@@ -176,21 +176,23 @@ async function enviarTexto({ phone, text }) {
   });
 }
 
-async function enviarPlantilla({ phone, templateName, params }) {
+async function enviarPlantilla({ phone, templateName, params, skipHidratar = false }) {
   const conversationId = telefonoConversacion(phone);
   if (!conversationId) throw new Error('Teléfono vacío para WhatsApp');
   if (!templateName) throw new Error('Falta nombre de plantilla');
   // Toda plantilla enviada por este backend intenta hidratar primero el
   // perfil. El fallo de sincronización no bloquea un recordatorio/oferta:
   // se registra y el envío conserva su semántica previa.
-  try {
-    const { hidratarPerfilPlatica } = require('./perfil-platica.service');
-    await hidratarPerfilPlatica({
-      whatsapp: conversationId,
-      actualizarClienteFn: actualizarCliente,
-    });
-  } catch (error) {
-    console.warn(`[Platica] No se pudo hidratar ${conversationId} antes de la plantilla:`, error.message);
+  if (!skipHidratar) {
+    try {
+      const { hidratarPerfilPlatica } = require('./perfil-platica.service');
+      await hidratarPerfilPlatica({
+        whatsapp: conversationId,
+        actualizarClienteFn: actualizarCliente,
+      });
+    } catch (error) {
+      console.warn(`[Platica] No se pudo hidratar ${conversationId} antes de la plantilla:`, error.message);
+    }
   }
   return platicaFetch('/v1/messages/template', {
     ...payloadCanalYAgente(),

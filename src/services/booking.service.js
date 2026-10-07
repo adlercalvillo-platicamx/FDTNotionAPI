@@ -48,6 +48,7 @@ const {
   primerNombreParaSaludo,
   nombreRepresentanteParaOferta,
 } = require('./campanas-matchmaking.service');
+const notificacionSponsorWhatsapp = require('./notificacion-sponsor-whatsapp.service');
 
 const CAPACIDAD_MAXIMA_MESAS = 8; // piso real desde 1-oct-2026; el mismo número vive en citas.service.js
 // Tolerancia sobre qué tan "pasado" puede estar un bloque (Adler, 27-ago;
@@ -347,8 +348,33 @@ async function resolverNotificacionCita({
     representanteSponsor,
     primerNombreAsistente,
     asistenteVirtual,
+    ticketTipoAsistente: asistente.ticketTipo || '',
+    whatsappSponsor: sponsor.whatsapp || null,
     datosContactoAsistente,
   };
+}
+
+/** Plantilla al sponsor; no altera Estatus ni revierte correo si falla. */
+async function avisarSponsorWhatsAppTrasCita(notificacion, accion, { inicio, mesa }) {
+  if (!notificacion?.whatsappSponsor) {
+    return { omitido: true, motivo: 'SIN_WHATSAPP_SPONSOR' };
+  }
+  const base = {
+    whatsappSponsor: notificacion.whatsappSponsor,
+    empresaAsistente: notificacion.empresaAsistente,
+    ticketTipo: notificacion.ticketTipoAsistente,
+    inicio,
+  };
+  if (accion === 'agendada') {
+    return notificacionSponsorWhatsapp.notificarSponsorCitaAgendada({ ...base, mesa });
+  }
+  if (accion === 'modificada') {
+    return notificacionSponsorWhatsapp.notificarSponsorCitaModificada({ ...base, mesa });
+  }
+  if (accion === 'cancelada') {
+    return notificacionSponsorWhatsapp.notificarSponsorCitaCancelada(base);
+  }
+  return { omitido: true, motivo: 'ACCION_DESCONOCIDA' };
 }
 
 function presentarEmpresaCorreo(valor) {
@@ -1326,6 +1352,10 @@ async function reservarCita({
               motivoDetalle: mensaje,
               ladosPendientes,
             });
+            const whatsapp_sponsor = await avisarSponsorWhatsAppTrasCita(notificacion, 'agendada', {
+              inicio,
+              mesa: numeroMesa,
+            });
             return {
               ya_existia: false,
               notion_page_id: citaPendiente.id,
@@ -1341,10 +1371,15 @@ async function reservarCita({
                 lados_pendientes: ladosPendientes,
                 lados_enviados: ladosEnviados,
               },
+              whatsapp_sponsor,
             };
           }
         }
 
+        const whatsapp_sponsor = await avisarSponsorWhatsAppTrasCita(notificacion, 'agendada', {
+          inicio,
+          mesa: numeroMesa,
+        });
         return {
           ya_existia: false,
           notion_page_id: citaPendiente.id,
@@ -1354,6 +1389,7 @@ async function reservarCita({
           ...(cita_origen_cancelada_id
             ? { cita_origen_cancelada_id }
             : {}),
+          whatsapp_sponsor,
         };
       } catch (notionError) {
         ultimoError = notionError;
@@ -1859,7 +1895,11 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
       horario_anterior: horarioAnterior,
     };
 
+    const whatsappSponsorModificar = () =>
+      avisarSponsorWhatsAppTrasCita(notificacion, 'modificada', { inicio, mesa });
+
     if (!tieneDestinatarios(notificacion)) {
+      respuesta.whatsapp_sponsor = await whatsappSponsorModificar();
       return respuesta;
     }
 
@@ -1878,6 +1918,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
         fin,
         secuencia: siguienteSecuenciaIcs(),
       });
+      respuesta.whatsapp_sponsor = await whatsappSponsorModificar();
       return respuesta;
     } catch (emailError) {
       // El cambio de horario ya es real y NO se revierte. Se degrada el
@@ -1898,6 +1939,7 @@ async function modificarCita({ telefono, citaId, sponsorEmpresa, nuevaFechaHora,
       return {
         ...respuesta,
         estado: 'Confirmada sin notificar',
+        whatsapp_sponsor: await whatsappSponsorModificar(),
         notificacion_error: {
           categoria,
           mensaje,
@@ -1946,7 +1988,11 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
       horario_cancelado: cita.inicio,
     };
 
+    const whatsappSponsorCancelar = () =>
+      avisarSponsorWhatsAppTrasCita(notificacion, 'cancelada', { inicio: cita.inicio });
+
     if (!tieneDestinatarios(notificacion)) {
+      respuesta.whatsapp_sponsor = await whatsappSponsorCancelar();
       return respuesta;
     }
 
@@ -1962,6 +2008,7 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
         secuencia: siguienteSecuenciaIcs(),
         cancelacion: true,
       });
+      respuesta.whatsapp_sponsor = await whatsappSponsorCancelar();
       return respuesta;
     } catch (emailError) {
       const {
@@ -1979,6 +2026,7 @@ async function cancelarCita({ telefono, citaId, sponsorEmpresa }) {
       return {
         ...respuesta,
         aviso_pendiente: true,
+        whatsapp_sponsor: await whatsappSponsorCancelar(),
         notificacion_error: {
           categoria,
           mensaje,
