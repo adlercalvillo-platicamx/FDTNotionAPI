@@ -1794,6 +1794,56 @@ async function buscarCitasAprobadasSinCampana() {
     .filter((fila) => esCandidataEnvioCampana(fila));
 }
 
+/**
+ * Filas Sugerido del sponsor para push `oportunidad_cita_sponsor`. Laura
+ * cura la cola en Notion; el envío solo lee Sugerido (no Aprobado).
+ * Idempotencia en la fila: `Estado Envío Campaña` ≠ Enviada (sin tocar
+ * `Campaña Enviada`, reservada a la oferta inicial en Aprobado).
+ */
+async function listarSugeridasParaPushOportunidad(sponsorPageId) {
+  requireDataSourceId();
+  const excluirBloqueo = filtroExcluirContactoBloqueo();
+  const and = [
+    { property: 'Estatus', select: { equals: 'Sugerido' } },
+    { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+  ];
+  if (excluirBloqueo) and.push(excluirBloqueo);
+  const filas = await queryCitasPaginado({ and });
+
+  return filas
+    .map((fila) => ({
+      id: fila.id,
+      asistentePageId: fila.properties?.['Contacto Principal']?.relation?.[0]?.id || null,
+      sponsorPageId: fila.properties?.['Contacto Match']?.relation?.[0]?.id || null,
+      score: scoreDeFilaCita(fila),
+      estadoEnvioCampana: fila.properties?.['Estado Envío Campaña']?.select?.name || null,
+      fechaInicioEnvio: fila.properties?.['Fecha Inicio Envío']?.date?.start || null,
+    }))
+    .filter((fila) => fila.asistentePageId)
+    .filter((fila) => esCandidataEnvioCampana(fila));
+}
+
+/** Aprobado del asistente con `Campaña Enviada` falso (oferta inicial pendiente). */
+async function listarAprobadosSinCampanaPorAsistente(asistentePageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Principal', relation: { contains: asistentePageId } },
+      { property: 'Estatus', select: { equals: 'Aprobado' } },
+      { property: 'Campaña Enviada', checkbox: { equals: false } },
+    ],
+  });
+
+  return filas
+    .map((fila) => ({
+      id: fila.id,
+      asistentePageId,
+      sponsorPageId: fila.properties?.['Contacto Match']?.relation?.[0]?.id || null,
+      score: scoreDeFilaCita(fila),
+    }))
+    .filter((fila) => fila.sponsorPageId);
+}
+
 const ESTATUS_ELEGIBLES_RECORDATORIO = [
   'Sugerido',
   'Aprobado',
@@ -2741,6 +2791,8 @@ module.exports = {
   copysContextuales,
   consultarSugerenciasAprobadasPorAsistente,
   buscarCitasAprobadasSinCampana,
+  listarSugeridasParaPushOportunidad,
+  listarAprobadosSinCampanaPorAsistente,
   cargarCitasPorAsistenteParaRecordatorio,
   scoreDeFilaCita,
   obtenerAsistentesConCitaConfirmada,

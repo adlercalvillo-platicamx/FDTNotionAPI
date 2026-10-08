@@ -10,6 +10,7 @@ router.post('/enviar-followups-72h', matchmakingController.enviarFollowups72hHtt
 router.post('/enviar-quiere-citas-no', matchmakingController.enviarQuiereCitasNoHttp);
 router.post('/enviar-lastcall', matchmakingController.enviarLastcallHttp);
 router.post('/enviar-lastcall-quiere-citas-no', matchmakingController.enviarLastcallQuiereCitasNoHttp);
+router.post('/enviar-push-oportunidad-sponsor', matchmakingController.enviarPushOportunidadSponsorHttp);
 router.get('/sugerencias-asistente', matchmakingController.sugerenciasAsistente);
 
 module.exports = router;

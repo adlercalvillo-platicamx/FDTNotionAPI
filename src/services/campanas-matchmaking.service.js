@@ -284,6 +284,124 @@ function payloadPara({ contacto, sugerencias, modoSimulacion }) {
   return prepararOferta({ contacto, sugerencias, modoSimulacion }).payload;
 }
 
+const TEMPLATE_ENV_PROPUESTA_CITA = 'PLATICA_TEMPLATE_PROPUESTA_CITA';
+const TEMPLATE_ENV_OPORTUNIDAD_SPONSOR_LEGACY = 'PLATICA_TEMPLATE_OPORTUNIDAD_SPONSOR';
+const TEMPLATE_SIMULACION_PROPUESTA_CITA = 'propuesta_cita';
+// Cuerpo aprobado en Meta (get_template propuesta_cita, 8-oct-2026).
+const CUERPO_BASE_PROPUESTA_CITA = [
+  '¡Hola, {{1}}! Qué gusto saludarte 😊',
+  '',
+  'Te escribo de parte del equipo de Fashion Digital Talks 2026.',
+  '',
+  'Se abrió una oportunidad para una reunión de 20 minutos con {{2}}. Creemos que sería una gran oportunidad porque coinciden en soluciones como {{3}}.',
+  '',
+  '¿Te gustaría que te ayude a revisar horarios disponibles?',
+].join('\n');
+
+function plantillaPropuestaCita(modoSimulacion) {
+  const configurada =
+    process.env[TEMPLATE_ENV_PROPUESTA_CITA] || process.env[TEMPLATE_ENV_OPORTUNIDAD_SPONSOR_LEGACY];
+  if (configurada) return configurada;
+  if (modoSimulacion) return TEMPLATE_SIMULACION_PROPUESTA_CITA;
+  throw new Error(`Falta ${TEMPLATE_ENV_PROPUESTA_CITA}; no se puede enviar propuesta_cita`);
+}
+
+function largoCuerpoPropuestaCita(params) {
+  let cuerpo = CUERPO_BASE_PROPUESTA_CITA;
+  (params || []).forEach((valor, indice) => {
+    cuerpo = cuerpo.replace(`{{${indice + 1}}}`, String(valor || ''));
+  });
+  return cuerpo.length;
+}
+
+function joinSolucionesComoParametro(soluciones) {
+  const partes = (soluciones || [])
+    .map((solucion) => resaltar(limpiarParametroPlantilla(solucion), MARCA_NEGRITA))
+    .filter(Boolean);
+  if (partes.length === 0) return '';
+  if (partes.length === 1) return partes[0];
+  if (partes.length === 2) return `${partes[0]} y ${partes[1]}`;
+  return `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`;
+}
+
+function prepararPayloadPropuestaCita({ contacto, sponsor, modoSimulacion }) {
+  if (!contacto?.whatsapp) throw new Error('El contacto no tiene WhatsApp');
+  const param1 = primerNombreParaSaludo(contacto.nombre) || 'Asistente';
+  const empresa = limpiarParametroPlantilla(sponsor?.empresa);
+  const param2 = empresa || 'el sponsor';
+  const todas = solucionesRelevantes(sponsor, contacto.solucionesBuscadas, Infinity);
+  for (let cantidad = todas.length; cantidad >= 1; cantidad -= 1) {
+    const param3 = joinSolucionesComoParametro(todas.slice(0, cantidad));
+    if (!param3) continue;
+    const params = [param1, param2, param3];
+    if (largoCuerpoPropuestaCita(params) + COLCHON_CONTEO_META <= TOPE_CUERPO_META) {
+      return {
+        phone: contacto.whatsapp,
+        templateName: plantillaPropuestaCita(modoSimulacion),
+        params,
+        tipoPlantilla: 'propuesta_cita',
+      };
+    }
+  }
+  const fallback = joinSolucionesComoParametro(todas.slice(0, 1));
+  if (!fallback) {
+    throw new Error('No hay soluciones para armar propuesta_cita');
+  }
+  const params = [param1, param2, fallback];
+  if (largoCuerpoPropuestaCita(params) + COLCHON_CONTEO_META > TOPE_CUERPO_META) {
+    throw new Error('propuesta_cita no cabe en 1024 caracteres');
+  }
+  return {
+    phone: contacto.whatsapp,
+    templateName: plantillaPropuestaCita(modoSimulacion),
+    params,
+    tipoPlantilla: 'propuesta_cita',
+  };
+}
+
+async function prepararPayloadOfertaInicialParaPush({
+  contacto,
+  filasAprobado,
+  sponsorUnico,
+  modoSimulacion,
+}) {
+  if (!contacto?.whatsapp) throw new Error('El contacto no tiene WhatsApp');
+  const ordenadas = [...(filasAprobado || [])].sort(
+    (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)
+  );
+  const contactos = require('./contactos.service');
+  const sponsorsVistos = new Set();
+  const sugerencias = [];
+  const filasOfrecidas = [];
+  for (const fila of ordenadas) {
+    if (sugerencias.length >= 4) break;
+    if (!fila.sponsorPageId || sponsorsVistos.has(fila.sponsorPageId)) continue;
+    sponsorsVistos.add(fila.sponsorPageId);
+    filasOfrecidas.push(fila);
+    sugerencias.push(await contactos.obtenerContacto(fila.sponsorPageId));
+  }
+  if (sugerencias.length === 0 && sponsorUnico) {
+    sugerencias.push(sponsorUnico);
+  }
+  if (sugerencias.length === 0) {
+    throw new Error('No hay sponsors para oferta inicial');
+  }
+  const oferta = prepararOferta({ contacto, sugerencias, modoSimulacion });
+  return {
+    ...oferta.payload,
+    tipoPlantilla: 'oferta_inicial',
+    filasAprobadoMarcar: filasOfrecidas.map((f) => f.id),
+  };
+}
+
+async function persistirOfertaInicialTrasEnvio({ contactoId, filasAprobadoIds, fechaEnvio }) {
+  const citasService = require('./citas.service');
+  await persistirEnvioCampana({ contactoId, fechaEnvio });
+  if (filasAprobadoIds?.length) {
+    await citasService.marcarCampanaEnviada(filasAprobadoIds);
+  }
+}
+
 /**
  * Reporte legible para Laura/Liz. Cada renglón corresponde exactamente a una
  * variable de sponsor enviada en la plantilla seleccionada.
@@ -1530,6 +1648,14 @@ module.exports = {
   textoSugerencias,
   prepararOferta,
   payloadPara,
+  prepararPayloadPropuestaCita,
+  prepararPayloadOfertaInicialParaPush,
+  persistirOfertaInicialTrasEnvio,
+  plantillaPropuestaCita,
+  prepararPayloadOportunidadSponsor: prepararPayloadPropuestaCita,
+  plantillaOportunidadSponsor: plantillaPropuestaCita,
+  solucionesRelevantes,
+  joinSolucionesComoParametro,
   payloadFollowup72h,
   enviarFollowups72h,
   payloadLastcall,

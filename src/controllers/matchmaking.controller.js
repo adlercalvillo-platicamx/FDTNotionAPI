@@ -8,6 +8,7 @@ const {
   enviarLastcallQuiereCitasNo,
 } = require('../services/campanas-matchmaking.service');
 const { enviarQuiereCitasNo } = require('../services/quiere-citas-no.service');
+const { ejecutarPushOportunidadSponsor } = require('../services/push-oportunidad-sponsor.service');
 const { consultarSugerenciasAprobadasPorAsistente } = require('../services/citas.service');
 const { variantesTelefono } = require('../services/contactos.service');
 
@@ -159,6 +160,32 @@ async function enviarLastcallQuiereCitasNoHttp(_req, res) {
   }
 }
 
+async function enviarPushOportunidadSponsorHttp(req, res) {
+  const sponsor = req.body?.sponsor;
+  if (!sponsor) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'Se requiere body.sponsor (infracommerce o revie).',
+    });
+  }
+  try {
+    const resultado = await ejecutarPushOportunidadSponsor({
+      sponsor,
+      modoSimulacion: req.body?.modoSimulacion,
+    });
+    return res.status(200).json(resultado);
+  } catch (error) {
+    if (error.code === 'SPONSOR_DESCONOCIDO') {
+      return res.status(400).json({ error: error.code, message: error.message });
+    }
+    console.error('[MatchmakingController] Error en push oportunidad sponsor:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message || 'Error al procesar push oportunidad sponsor.',
+    });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /matchmaking/sugerir-todos
 // Body opcional: { "topN": 3 }
@@ -202,5 +229,6 @@ module.exports = {
   enviarQuiereCitasNoHttp,
   enviarLastcallHttp,
   enviarLastcallQuiereCitasNoHttp,
+  enviarPushOportunidadSponsorHttp,
   sugerenciasAsistente,
 };
