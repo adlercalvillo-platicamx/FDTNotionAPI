@@ -8,6 +8,7 @@ Adler pidió cerrar el diseño antes de construir. La baja entra ya, en los dos 
 ## Qué quedó decidido
 - La llave es el teléfono.
 - Notion marca `Dado de Baja` → bloquear en Plática. Plática bloquea → marcar la baja. Desbloquear o desmarcar también se refleja.
+- Si está bloqueado o dado de baja, no se le manda WhatsApp: ni campaña, ni recordatorio, ni mensaje del agente. El correo de la cita sí sale. Decisión de Adler, 5 nov.
 - Quien escribe por WhatsApp y no está en Notion no se crea allá.
 - Una fila nueva, asistente o sponsor, sube a Plática solo si ya tiene nombre y WhatsApp, y nunca si `Teléfono válido` es `no`.
 - Lo que ya falló por teléfono no se reintenta. Hace falta seguimiento en la misma fila: `Estado Sync Plática`, intentos, fecha y notas. `Duplicado`, `Teléfono inválido` y `Omitido` no se vuelven a intentar solos.
@@ -54,7 +55,14 @@ No pide otra aplicación ni otra réplica. Vive en el backend que ya corre. Noti
 ## FAQ
 No se construye un cron. Laura edita el artículo de Conocimientos en Marketing y, cuando avise, ese texto se copia a Citas. Los dos PDF siguen activos hasta revisarlos. La tabla de Notion queda para cuando las preguntas cambien seguido; hoy no está en su workspace.
 
-## Pendiente
-Si alguien de baja tiene cita, el bloqueo de Plática rechaza también el WhatsApp del recordatorio. El correo sí sale. Adler dijo que el recordatorio sí debe salir. Falta elegir: bloquear igual, o esperar a que pase la cita.
+## Ruta de verificación (5 nov, tarde)
+Adler pidió solo la ruta para que mañana Laura cree la suscripción y no tenga que volver. No hay sincronización.
 
+`POST /webhooks/notion` guarda el `verification_token` en memoria y responde 200 a cualquier otro evento sin procesarlo. `GET /webhooks/notion/verificacion` con `X-API-Key` lo devuelve para pegarlo en Notion en la misma llamada. Un reinicio lo olvida; Notion puede reenviarlo.
+
+`node tests/notion-webhook.manual-test.js` OK. Falta desplegar este código en Coolify. Sin ese deploy, la dirección de mañana sigue sin existir en producción.
+
+Los clics siguen en [guia-webhooks-notion-laura.md](guia-webhooks-notion-laura.md).
+
+## Pendiente
 Su ficha de Plática no se corrigió: en Notion no hay una fila "Adler Calvillo" y la búsqueda de clientes no filtró por nombre. No se tocó otra ficha.

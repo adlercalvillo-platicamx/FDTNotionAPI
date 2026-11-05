@@ -15,7 +15,7 @@ npm start
 
 Pruebas: scripts a mano (`node tests/….js`), no Jest. Ver [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc).
 
-Health sin auth: `GET /health`. `POST /webhooks/whatsapp-flows` usa HMAC (`FLOW_WEBHOOK_SECRET`) y `POST /webhooks/platica/mensajes` usa HMAC (`PLATICA_WEBHOOK_SECRET`); ninguno usa `X-API-Key`. El resto exige `X-API-Key` = `API_SECRET_KEY`. Respaldo diario de las tablas de Laura: `POST /notion/respaldar` (cron Coolify; R2 lo arma Luis — `instrucciones-luis-r2-respaldos-notion.md`).
+Health sin auth: `GET /health`. `POST /webhooks/whatsapp-flows` usa HMAC (`FLOW_WEBHOOK_SECRET`) y `POST /webhooks/platica/mensajes` usa HMAC (`PLATICA_WEBHOOK_SECRET`); ninguno usa `X-API-Key`. `POST /webhooks/notion` tampoco: guarda el token de verificación de la integración y responde 200 a los eventos, sin sincronizar. `GET /webhooks/notion/verificacion` sí exige `X-API-Key` y devuelve ese token. El resto exige `X-API-Key` = `API_SECRET_KEY`. Respaldo diario de las tablas de Laura: `POST /notion/respaldar` (cron Coolify; R2 lo arma Luis — `instrucciones-luis-r2-respaldos-notion.md`).
 
 Contrato activo de reserva: [`contrato-citas-conversacionales.md`](contrato-citas-conversacionales.md). El contrato y JSON del WhatsApp Flow quedan solo como rollback legado; el Agente 2 no debe mandar botones ni Flows.
 Página QR: [`contexto-pagina-reserva-qr.md`](contexto-pagina-reserva-qr.md).
