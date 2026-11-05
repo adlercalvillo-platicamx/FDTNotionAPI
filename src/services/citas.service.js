@@ -975,6 +975,29 @@ async function contarCitasConfirmadasPorSponsor(sponsorPageId) {
   ).length;
 }
 
+/**
+ * Citas reales de un sponsor, en orden. Sin bloqueos de conferencia:
+ * no son una reunión con una persona y no van en el WhatsApp de agenda.
+ */
+async function listarCitasRealesPorSponsor(sponsorPageId) {
+  requireDataSourceId();
+  const filas = await queryCitasPaginado({
+    and: [
+      { property: 'Contacto Match', relation: { contains: sponsorPageId } },
+      {
+        or: ESTATUS_CITA_REAL.map((estatus) => ({
+          property: 'Estatus',
+          select: { equals: estatus },
+        })),
+      },
+    ],
+  });
+  return filas
+    .map((fila) => datosDeCita(fila))
+    .filter((cita) => cita.asistentePageId && !esFilaBloqueoAgenda(cita.asistentePageId))
+    .sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')));
+}
+
 // ═══════════════════════════════════════════════════════════════
 // NUEVO (9 de agosto) — flujo de aprobación conversacional de matches
 //
@@ -1213,6 +1236,9 @@ async function consultarSugeridasPorIdentificador({
     if (asistente) {
       identificadoPor = 'whatsapp';
       id = asistente.id;
+    } else {
+      const comoSponsor = await responderSiEsSponsor(phone, ahora);
+      if (comoSponsor) return comoSponsor;
     }
   }
 
@@ -1415,6 +1441,75 @@ async function consultarSugeridasPorIdentificador({
     canceladas_para_ofrecer: citasCanceladas.slice(0, LIMITE_CANCELADAS_PARA_OFRECER),
     hay_mas_canceladas: citasCanceladas.length > LIMITE_CANCELADAS_PARA_OFRECER,
   };
+}
+
+function modalidadAgendaSponsor(ticketTipo) {
+  return String(ticketTipo || '').trim() === 'Virtual' ? 'Virtual' : 'Presencial';
+}
+
+function horarioAgendaSponsor(inicio) {
+  try {
+    return formatearHorarioLegible(inicio);
+  } catch {
+    return inicio || null;
+  }
+}
+
+/**
+ * Payload corto para un sponsor que escribe. No trae listas de asistente
+ * ni datos de contacto del otro lado, solo la agenda de sus reuniones.
+ */
+function armarRespuestaSponsor({ sponsor, citas, contactosPorId, ahora } = {}) {
+  const mapa = contactosPorId instanceof Map ? contactosPorId : new Map();
+  const faseEvento = obtenerFaseEvento({ ahora });
+  const agenda = (citas || []).map((cita) => {
+    const contacto = mapa.get(cita.asistentePageId) || {};
+    return {
+      asistente_nombre: contacto.nombre || null,
+      asistente_empresa: contacto.empresa || null,
+      horario_legible: horarioAgendaSponsor(cita.inicio),
+      mesa: cita.mesa || null,
+      modalidad: modalidadAgendaSponsor(contacto.ticketTipo),
+    };
+  });
+  return {
+    es_sponsor: true,
+    puede_reservar: false,
+    puede_modificar: false,
+    puede_cancelar: false,
+    sponsor_nombre: sponsor?.nombre || null,
+    sponsor_empresa: sponsor?.empresa || null,
+    fase_evento: faseEvento,
+    copys_contextuales: copysContextuales(faseEvento),
+    agenda_sponsor: agenda,
+    sugeridas_para_ofrecer: [],
+    opciones_adicionales: [],
+    citasConfirmadas: [],
+    citas_para_ofrecer: [],
+  };
+}
+
+async function responderSiEsSponsor(telefono, ahora) {
+  const contactos = require('./contactos.service');
+  let sponsors = [];
+  try {
+    sponsors = await contactos.buscarContacto({ telefono, categoria: 'Sponsor' });
+  } catch {
+    return null;
+  }
+  const sponsor = sponsors[0];
+  if (!sponsor) return null;
+  const citas = await listarCitasRealesPorSponsor(sponsor.id);
+  const mapa = new Map();
+  for (const cita of citas) {
+    if (mapa.has(cita.asistentePageId)) continue;
+    try {
+      mapa.set(cita.asistentePageId, await contactos.obtenerContacto(cita.asistentePageId));
+    } catch {
+      mapa.set(cita.asistentePageId, null);
+    }
+  }
+  return armarRespuestaSponsor({ sponsor, citas, contactosPorId: mapa, ahora });
 }
 
 function textoSolucionSponsor(sponsor) {
@@ -2767,6 +2862,8 @@ module.exports = {
   MARCA_CANCELACION_PENDIENTE,
   ESTATUS_CITA_REAL,
   contarCitasConfirmadasPorSponsor,
+  listarCitasRealesPorSponsor,
+  armarRespuestaSponsor,
   requireSponsorExistente,
   crearCitaSugerida,
   buscarSugerenciasPendientesPorSponsor,

@@ -350,6 +350,10 @@ async function resolverNotificacionCita({
     asistenteVirtual,
     ticketTipoAsistente: asistente.ticketTipo || '',
     whatsappSponsor: sponsor.whatsapp || null,
+    primerNombreSponsor: primerNombreParaSaludo(sponsor.nombre) || '',
+    nombreAsistente: asistente.nombre || '',
+    empresaAsistenteCruda: asistente.empresa || '',
+    sponsorPageId,
     datosContactoAsistente,
   };
 }
@@ -361,8 +365,11 @@ async function avisarSponsorWhatsAppTrasCita(notificacion, accion, { inicio, mes
   }
   const base = {
     whatsappSponsor: notificacion.whatsappSponsor,
-    empresaAsistente: notificacion.empresaAsistente,
+    primerNombreSponsor: notificacion.primerNombreSponsor,
+    nombreAsistente: notificacion.nombreAsistente,
+    empresaAsistente: notificacion.empresaAsistenteCruda,
     ticketTipo: notificacion.ticketTipoAsistente,
+    sponsorPageId: notificacion.sponsorPageId,
     inicio,
   };
   if (accion === 'agendada') {
@@ -988,6 +995,13 @@ async function requerirAsistenteConAccesoCitas(asistentePageId) {
     throw new BookingError(
       'CONTACTO_NO_RESUELTO',
       `No se pudo leer al asistente antes de reservar: ${error.message}`
+    );
+  }
+
+  if (asistente.categoria === 'Sponsor') {
+    throw new BookingError(
+      'SPONSOR_NO_PUEDE_RESERVAR',
+      'Quien escribe es sponsor. La reserva, el cambio y la cancelación los hace el asistente. La cita no se creó.'
     );
   }
 
